@@ -674,7 +674,7 @@ Token arrives
            org_ids: ["org_1", "org_2"],    ← from provider
            org_roles: [...],               ← from provider
            roles: ["editor", "analyst"],   ← auto-injected by engine
-           permissions: ["view-own-orders"] ← auto-injected by engine
+           permissions: ["view_own_orders"] ← auto-injected by engine
          }
 ```
 
@@ -683,6 +683,8 @@ Token arrives
 ## Permission Model
 
 Permissions are reusable objects with name, slug, and description. They can be shared across roles. Follows Hasura/PostgreSQL RLS semantics with MongoDB-style operators (CASL).
+
+**Slug format:** Permission slugs use **underscores only** (snake_case). Examples: `view_own_orders`, `edit_org_orders`, `delete_draft_orders`. Validated with regex: `/^[a-z][a-z0-9_]*$/`.
 
 ### Operators (MongoDB-style, CASL-native)
 
@@ -752,7 +754,7 @@ When writing a FK column (e.g., `customer_id`), the engine checks if the user ca
 Power users can write raw SQL WHERE clauses with parameterized values:
 
 ```typescript
-'advanced-reporting': {
+'advanced_reporting': {
   name: 'Advanced reporting access',
   table: 'main.orders',
   operations: { select: true },
@@ -793,7 +795,7 @@ const engine = createEngine<SuperAppSchema>({
   },
 
   permissions: {
-    'view-own-orders': {
+    'view_own_orders': {
       name: 'View own orders',
       description: 'Read orders filtered by user organization membership',
       table: 'main.orders',
@@ -807,7 +809,7 @@ const engine = createEngine<SuperAppSchema>({
       limit: 1000,
     },
 
-    'edit-org-orders': {
+    'edit_org_orders': {
       name: 'Edit organization orders',
       description: 'Update orders within own org, owners and admins only',
       table: 'main.orders',
@@ -828,7 +830,7 @@ const engine = createEngine<SuperAppSchema>({
       preset: { updated_by: '$user.id' },
     },
 
-    'create-orders': {
+    'create_orders': {
       name: 'Create orders',
       description: 'Insert new orders with tenant auto-assignment',
       table: 'main.orders',
@@ -844,7 +846,7 @@ const engine = createEngine<SuperAppSchema>({
       },
     },
 
-    'delete-draft-orders': {
+    'delete_draft_orders': {
       name: 'Delete draft orders',
       description: 'Delete only draft orders within own org',
       table: 'main.orders',
@@ -862,9 +864,9 @@ const engine = createEngine<SuperAppSchema>({
   },
 
   roles: {
-    analyst:  ['view-own-orders'],
-    editor:   ['view-own-orders', 'edit-org-orders', 'create-orders'],
-    admin:    ['view-own-orders', 'edit-org-orders', 'create-orders', 'delete-draft-orders'],
+    analyst:  ['view_own_orders'],
+    editor:   ['view_own_orders', 'edit_org_orders', 'create_orders'],
+    admin:    ['view_own_orders', 'edit_org_orders', 'create_orders', 'delete_draft_orders'],
   },
 })
 ```
