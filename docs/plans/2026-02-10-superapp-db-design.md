@@ -47,10 +47,307 @@ Frontend (any framework)
 | Auth | better-auth (default, swappable) | JWT-based, modular provider interface |
 | Permission engine | CASL (@casl/ability) | Battle-tested permission checking, MongoDB-style operators |
 | Query builder | Kysely | Type-safe SQL generation, used on both client and server |
-| Admin UI | React | Permission editor, query audit, integrations management |
+| Admin UI | React + Vite | Permission editor, query audit, integrations management |
+| UI framework | shadcn/ui + Radix UI | Modern, accessible, composable components built on Tailwind |
+| Styling | Tailwind CSS 4 | Utility-first, consistent design tokens, dark mode built-in |
+| Data tables | TanStack Table | Headless, virtualized, sortable/filterable data grids |
+| Forms | React Hook Form + zod | Type-safe forms with JSON schema validation |
+| Charts | Recharts | Lightweight charts for dashboard sparklines |
 | JSON editor | Monaco Editor (@monaco-editor/react) | Autocomplete, validation, type inference for permission JSON |
+| Icons | Lucide React | Consistent, clean icon set matching shadcn/ui |
 | Schema validation | ajv | Runtime JSON schema validation |
 | CLI | Built-in | `npx @superapp/db generate` for TypeScript type generation |
+
+---
+
+## Design System
+
+### Design Philosophy
+
+Inspired by Linear, Vercel, and PlanetScale. Clean, data-dense, zero visual noise. Every pixel earns its place.
+
+**Principles:**
+- **Data-first**: Tables, code, and numbers are the content — the UI frames them, never competes.
+- **Keyboard-navigable**: Power users never leave the keyboard. Command palette (Cmd+K), shortcuts everywhere.
+- **Dark mode native**: Designed dark-first, light mode is the adaptation.
+- **Density toggle**: Compact mode for power users, comfortable mode for everyone else.
+
+### Color Palette
+
+Tailwind CSS 4 with custom CSS variables for theming:
+
+```
+── Brand ────────────────────────────────────────────────
+Primary          Indigo-500  #6366f1    Buttons, links, active states
+Primary hover    Indigo-400  #818cf8    Hover states
+Primary subtle   Indigo-950  #1e1b4b    Backgrounds with brand tint (dark)
+                 Indigo-50   #eef2ff    Backgrounds with brand tint (light)
+
+── Neutrals (Slate) ─────────────────────────────────────
+Background       Slate-950   #020617    App background (dark)
+                 White       #ffffff    App background (light)
+Surface          Slate-900   #0f172a    Cards, panels, sidebar (dark)
+                 Slate-50    #f8fafc    Cards, panels, sidebar (light)
+Border           Slate-800   #1e293b    Dividers, card borders (dark)
+                 Slate-200   #e2e8f0    Dividers, card borders (light)
+Text primary     Slate-50    #f8fafc    Headings, body text (dark)
+                 Slate-900   #0f172a    Headings, body text (light)
+Text secondary   Slate-400   #94a3b8    Labels, descriptions, meta
+Text muted       Slate-500   #64748b    Placeholders, disabled
+
+── Semantic ─────────────────────────────────────────────
+Success          Emerald-500 #10b981    Connected, active, granted
+Warning          Amber-500   #f59e0b    Filtered queries, attention
+Error            Rose-500    #f43f5e    Denied, disconnected, errors
+Info             Sky-500     #0ea5e9    Tips, info badges
+
+── Permission-specific ──────────────────────────────────
+Select           Sky-400     #38bdf8    Read operations
+Insert           Emerald-400 #34d399    Create operations
+Update           Amber-400   #fbbf24    Update operations
+Delete           Rose-400    #fb7185    Delete operations
+Relationship     Violet-400  #a78bfa    FK traversal, joins
+Dynamic value    Amber-300   #fcd34d    $user.* variables (key icon)
+```
+
+### Typography
+
+```
+Font stack:
+  UI text:    Inter (variable)       — clean, readable at all sizes
+  Monospace:  JetBrains Mono         — code, SQL, JSON, column names
+
+Sizes (Tailwind scale):
+  Page title:     text-xl    font-semibold     tracking-tight
+  Section title:  text-base  font-medium
+  Body:           text-sm    font-normal        (default)
+  Label:          text-xs    font-medium        text-secondary  uppercase  tracking-wider
+  Code inline:    text-sm    font-mono          bg-surface  px-1.5  py-0.5  rounded
+  SQL preview:    text-sm    font-mono          leading-relaxed
+```
+
+### Spacing & Layout
+
+```
+Sidebar:        w-56 (224px)       fixed, collapsible to w-14 (56px icons only)
+Content area:   max-w-6xl          centered with px-8 padding
+Card:           rounded-lg         border border-border  bg-surface
+Card padding:   p-6
+Section gap:    space-y-6
+Inline gap:     gap-3
+```
+
+### Component Patterns (shadcn/ui)
+
+**Buttons:**
+```
+Primary:     bg-primary text-white hover:bg-primary-hover
+Secondary:   bg-surface border border-border hover:bg-slate-800
+Ghost:       hover:bg-slate-800 text-secondary
+Danger:      bg-rose-500/10 text-rose-400 hover:bg-rose-500/20
+```
+
+**Cards:**
+```
+Default:     bg-surface border border-border rounded-lg
+Interactive: hover:border-primary/50 cursor-pointer transition
+Selected:    border-primary ring-1 ring-primary/20
+```
+
+**Badges (permission status):**
+```
+Granted:     bg-emerald-500/10 text-emerald-400 border-emerald-500/20
+Denied:      bg-rose-500/10 text-rose-400 border-rose-500/20
+Filtered:    bg-amber-500/10 text-amber-400 border-amber-500/20
+Read-only:   bg-slate-500/10 text-slate-400 border-slate-500/20
+```
+
+**Tables (TanStack Table):**
+```
+Header:      bg-slate-900/50  text-xs  uppercase  tracking-wider  text-secondary
+Row:         border-b border-border  hover:bg-slate-800/50
+Row alt:     no striping (clean look)
+Cell:        py-3 px-4 text-sm
+Selected:    bg-primary/5 border-l-2 border-l-primary
+```
+
+**Code/SQL blocks:**
+```
+Container:   bg-slate-950 rounded-lg border border-border font-mono text-sm
+Line numbers:text-slate-600 select-none pr-4 border-r border-border
+Keywords:    text-sky-400        (SELECT, FROM, WHERE, AND)
+Strings:     text-emerald-400    ('active', "name")
+Numbers:     text-amber-400      (1000, 0.5)
+Parameters:  text-violet-400     ($1, $2, :user_id)
+Comments:    text-slate-500      (-- injected by permission)
+```
+
+### Admin UI Layout
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  ┌──────┐  superapp           Project: Acme Corp ▾   ▪ ▪ alice  │
+│  │ logo │  ─────────────────────────────────────────  ⌘K search  │
+├──┴──────┴────┬───────────────────────────────────────────────────┤
+│              │                                                    │
+│  Dashboard   │   Page title                                      │
+│              │   Description text in muted color                  │
+│  Integrations│                                                    │
+│              │   ┌─ Card ──────────────────────────────────────┐  │
+│  Explorer    │   │                                             │  │
+│              │   │  Content area                               │  │
+│  Auth        │   │                                             │  │
+│              │   └─────────────────────────────────────────────┘  │
+│  Roles       │                                                    │
+│              │   ┌─ Card ──────────────────────────────────────┐  │
+│  Permissions │   │                                             │  │
+│              │   │  Content area                               │  │
+│  Users       │   │                                             │  │
+│              │   └─────────────────────────────────────────────┘  │
+│  Audit Log   │                                                    │
+│              │                                                    │
+│  Settings    │                                                    │
+│              │                                                    │
+│  ──────────  │                                                    │
+│  ⌘K Search   │                                                    │
+│  ? Help      │                                                    │
+└──────────────┴────────────────────────────────────────────────────┘
+```
+
+**Sidebar:**
+- Active item: `bg-primary/10 text-primary border-l-2 border-l-primary`
+- Hover: `bg-slate-800/50`
+- Icons from Lucide: Database, Search, Shield, Users, ScrollText, Settings, etc.
+- Collapsible: Cmd+B toggles between full sidebar and icon-only mode
+
+**Command palette (Cmd+K):**
+- shadcn/ui `<CommandDialog>` (built on cmdk)
+- Search across: pages, tables, roles, permissions, users, recent queries
+- Keyboard-first navigation
+
+### Permission Editor — Visual Builder Styling
+
+**Condition pills:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                                                                  │
+│  bg-surface rounded-lg border border-border p-3                  │
+│  hover:border-slate-600 transition group                         │
+│                                                                  │
+│  ≡  🔵 status      equals      "active"                    ✕    │
+│  │   ↑              ↑            ↑                          ↑    │
+│  │  text-sky-400   text-muted   text-emerald-400       opacity-0│
+│  │  font-mono      text-sm      font-mono              group-   │
+│  │  cursor-pointer              cursor-pointer         hover:   │
+│  │  hover:bg-sky   cursor-pointer hover:bg-emerald     opacity  │
+│  │  -400/10                     -400/10                -100     │
+│  │                                                               │
+│  drag handle (slate-600, hover:slate-400)                        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Relationship path:**
+```
+🔗 through   orders  →  organization  →  members
+              ↑          ↑                ↑
+           text-sm     text-violet-400   text-violet-400
+           text-muted  font-mono         font-mono
+                       bg-violet-400/10  bg-violet-400/10
+                       px-2 py-0.5       px-2 py-0.5
+                       rounded           rounded
+```
+
+**AND/OR groups:**
+```
+Container:  border-l-2 border-l-slate-700 pl-4 space-y-2
+AND label:  text-xs uppercase tracking-wider text-slate-500 font-medium
+OR label:   text-xs uppercase tracking-wider text-amber-500 font-medium
+Switch:     cursor-pointer hover:text-primary
+```
+
+**Dynamic values ($user.*):**
+```
+Badge:      bg-amber-400/10 text-amber-300 font-mono text-sm
+            px-2 py-0.5 rounded-md border border-amber-400/20
+Icon:       Key icon (Lucide) w-3 h-3 inline mr-1
+```
+
+**Unified + palette:**
+```
+Trigger:    border border-dashed border-slate-700 rounded-lg
+            hover:border-primary hover:bg-primary/5
+            text-muted hover:text-primary text-sm
+            py-2 px-3 transition cursor-pointer
+
+Dropdown:   bg-surface border border-border rounded-lg shadow-xl
+            w-80 max-h-80 overflow-y-auto
+
+Search:     sticky top-0 bg-surface border-b border-border
+            px-3 py-2 text-sm
+
+Section:    text-xs uppercase tracking-wider text-muted
+            px-3 py-1.5 font-medium
+
+Item:       px-3 py-2 hover:bg-slate-800 cursor-pointer
+            flex items-center gap-3
+Column icon: text-sky-400
+Relation icon: text-violet-400
+Logic icon: text-slate-400
+Type hint:  text-muted text-xs font-mono ml-auto
+```
+
+**SQL preview:**
+```
+Container:  bg-slate-950 rounded-lg border border-border
+            font-mono text-sm leading-relaxed p-4
+            max-h-48 overflow-y-auto
+
+Row count:  float-right text-xs
+            bg-emerald-500/10 text-emerald-400
+            px-2 py-0.5 rounded-full
+            "~47 rows match"
+```
+
+**Natural language summary:**
+```
+Container:  bg-slate-900/50 rounded-lg p-4 border border-border
+Font:       text-sm text-secondary leading-relaxed
+Highlights: text-primary font-medium (table names, column names)
+```
+
+### Dashboard Page
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│  Dashboard                                                       │
+│                                                                  │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  │ Connections │ │ Queries/24h│ │ Denied/24h │ │ Users      │   │
+│  │  3 active   │ │  12,847    │ │  23 ⚠      │ │  48        │   │
+│  │  ~~~sparkline│ │  ~~sparkline│ │  ~sparkline │ │            │   │
+│  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
+│                                                                  │
+│  Recent denied queries                           [View all →]   │
+│  ┌────────────────────────────────────────────────────────────┐  │
+│  │  10:24  bob   main.payments  SELECT  ❌                    │  │
+│  │  10:31  eve   main.orders    UPDATE  ❌                    │  │
+│  │  11:02  bob   main.payments  SELECT  ❌                    │  │
+│  └────────────────────────────────────────────────────────────┘  │
+│                                                                  │
+│  Queries by table (24h)               Queries by role (24h)      │
+│  ┌──────────────────────┐            ┌──────────────────────┐   │
+│  │  bar chart            │            │  bar chart            │   │
+│  └──────────────────────┘            └──────────────────────┘   │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Responsive Behavior
+
+```
+Desktop (>1280px):  Full sidebar + content
+Tablet (768-1280):  Collapsed sidebar (icons) + content
+Mobile (<768):      Hidden sidebar (hamburger menu) + full-width content
+```
 
 ---
 
