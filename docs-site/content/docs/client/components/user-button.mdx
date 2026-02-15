@@ -1,0 +1,84 @@
+---
+title: UserButton
+description: Navbar dropdown component with user avatar and sign-out action.
+---
+
+`UserButton` renders a clickable avatar that opens a dropdown with the user's info and a sign-out button. Drop it into your navbar for instant user management.
+
+```tsx
+import { UserButton } from '@superapp/db/components'
+
+export function Navbar() {
+  return (
+    <nav className="flex items-center justify-between p-4">
+      <h1>My App</h1>
+      <UserButton />
+    </nav>
+  )
+}
+```
+
+## What It Renders
+
+- **Signed in** — Shows the user's avatar (or initials). Clicking it opens a dropdown with the user's name, email, and a sign-out button.
+- **Signed out** — Renders nothing (or can be hidden with conditional rendering).
+
+## Prerequisites
+
+`UserButton` requires an [`AuthProvider`](/docs/client/components/auth-provider) ancestor. It reads the current session from context.
+
+```tsx
+import { AuthProvider } from '@superapp/db/components'
+import { authClient } from '@/lib/superapp'
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider authClient={authClient}>
+      {children}
+    </AuthProvider>
+  )
+}
+```
+
+## Full Navbar Example
+
+```tsx
+import { UserButton } from '@superapp/db/components'
+import { useSession } from '@superapp/db/auth'
+import Link from 'next/link'
+
+export function Navbar() {
+  const { data: session } = useSession()
+
+  return (
+    <nav className="flex items-center justify-between border-b px-6 py-3">
+      <div className="flex items-center gap-6">
+        <Link href="/" className="text-lg font-semibold">
+          My App
+        </Link>
+        {session && (
+          <>
+            <Link href="/orders">Orders</Link>
+            <Link href="/customers">Customers</Link>
+          </>
+        )}
+      </div>
+      <div>
+        {session ? (
+          <UserButton />
+        ) : (
+          <Link href="/sign-in">Sign In</Link>
+        )}
+      </div>
+    </nav>
+  )
+}
+```
+
+## Sign-Out Behavior
+
+When the user clicks sign out in the dropdown:
+
+1. The auth client clears the stored tokens.
+2. `onSessionChange` fires on [`AuthProvider`](/docs/client/components/auth-provider).
+3. `useSession` returns `null`, triggering UI updates across the app.

@@ -1,0 +1,109 @@
+---
+title: createClient
+description: Create a type-safe query client connected to your superapp backend.
+---
+
+`createClient` returns a typed query builder that sends structured JSON to your superapp backend over HTTP.
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({
+  url: 'http://localhost:3001/data',
+  userToken: 'eyJhbG...',
+})
+```
+
+## Options
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `url` | `string` | Yes | The full URL to your superapp `/data` endpoint |
+| `userToken` | `string` | Yes | A valid JWT obtained from the auth client |
+
+## Type Parameter
+
+Pass your generated `SuperAppSchema` type to get full autocomplete for connection names, table names, column names, and return types.
+
+```typescript
+// With type parameter — full autocomplete
+const db = createClient<SuperAppSchema>({ url, userToken })
+db.main.orders.findMany({ select: ['id', 'amount'] })
+//                                   ^ autocomplete for column names
+
+// Without type parameter — no autocomplete, no type checking
+const db = createClient({ url, userToken })
+```
+
+See [Type Generation](/docs/client/type-generation) for how to generate `SuperAppSchema`.
+
+## Recommended Setup
+
+Create a shared setup file and a React hook for easy access across your app.
+
+**`lib/superapp.ts`**
+
+```typescript
+import { createClient } from '@superapp/db'
+import { createAuth } from '@superapp/db/auth'
+import type { SuperAppSchema } from '../generated/schema'
+
+const SUPERAPP_URL = process.env.NEXT_PUBLIC_SUPERAPP_URL!
+
+export const authClient = createAuth(SUPERAPP_URL)
+
+export function createDb(userToken: string) {
+  return createClient<SuperAppSchema>({
+    url: SUPERAPP_URL + '/data',
+    userToken,
+  })
+}
+```
+
+**`hooks/use-db.ts`**
+
+```tsx
+import { useMemo } from 'react'
+import { useSession } from '@superapp/db/auth'
+import { createDb } from '@/lib/superapp'
+
+export function useDb() {
+  const { data: session } = useSession()
+  return useMemo(
+    () => (session?.token ? createDb(session.token) : null),
+    [session?.token]
+  )
+}
+```
+
+**Usage in a component:**
+
+```tsx
+import { useDb } from '@/hooks/use-db'
+
+export function OrdersList() {
+  const db = useDb()
+
+  async function loadOrders() {
+    if (!db) return
+    const orders = await db.main.orders.findMany({
+      select: ['id', 'amount', 'status'],
+      orderBy: { created_at: 'desc' },
+      limit: 50,
+    })
+    // orders: { id: string; amount: number; status: string }[]
+  }
+}
+```
+
+## How It Works
+
+When you call a query method, the client:
+
+1. Builds a structured JSON request from your method call.
+2. POSTs the JSON to the `/data` endpoint with the JWT in the `Authorization` header.
+3. The server validates the token, applies row-level permissions, and executes the query.
+4. Returns the typed result.
+
+No SQL is generated on the client. The server handles all query building and execution.

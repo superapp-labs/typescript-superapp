@@ -1,0 +1,208 @@
+---
+title: Custom Providers
+description: Build a provider for any data source.
+---
+
+When your data source is not a database DuckDB can attach natively -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary systems -- build a custom provider.
+
+```typescript
+import { createEngine, CustomIntegrationProvider } from '@superapp/backend'
+
+const httpProvider: CustomIntegrationProvider = {
+  type: 'http-api',
+  capabilities: { read: true, write: false, transactions: false },
+  configSchema: {
+    baseUrl: { type: 'string', required: true },
+    apiKey: { type: 'string', required: true, secret: true },
+  },
+  async testConnection(config) {
+    const res = await fetch(`${config.baseUrl}/health`)
+    return res.ok
+  },
+  async introspect(config) {
+    const res = await fetch(`${config.baseUrl}/schema`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+    })
+    return res.json()
+  },
+  async execute(config, query) {
+    const res = await fetch(`${config.baseUrl}/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify(query),
+    })
+    return res.json()
+  },
+}
+
+const engine = createEngine({
+  integrations: [httpProvider],
+  connections: {
+    crm: { type: 'http-api', baseUrl: 'https://api.crm.com', apiKey: process.env.CRM_API_KEY! },
+  },
+})
+```
+
+## When to Use Custom Providers
+
+- **REST APIs** -- wrap a third-party API as queryable tables
+- **Edge runtimes** -- environments where DuckDB extensions cannot be loaded
+- **Proprietary databases** -- systems without a DuckDB scanner extension
+- **Data virtualization** -- combine API data with SQL databases in a single query layer
+
+## CustomIntegrationProvider Interface
+
+```typescript
+interface CustomIntegrationProvider {
+  type: string
+  capabilities: {
+    read: boolean
+    write: boolean
+    transactions: boolean
+  }
+  configSchema: Record<string, ConfigField>
+  testConnection: (config: Record<string, unknown>) => Promise<boolean>
+  introspect: (config: Record<string, unknown>) => Promise<TableSchema[]>
+  execute: (config: Record<string, unknown>, query: QueryRequest) => Promise<QueryResult>
+}
+
+interface ConfigField {
+  type: 'string' | 'number' | 'boolean'
+  required?: boolean
+  secret?: boolean       // hidden in admin UI, encrypted at rest
+  default?: unknown
+  description?: string
+}
+
+interface TableSchema {
+  name: string
+  columns: {
+    name: string
+    type: string
+    nullable: boolean
+    primaryKey?: boolean
+  }[]
+}
+```
+
+## Config Schema
+
+The `configSchema` object defines what fields appear in the admin UI when adding a connection of this type. Fields marked `secret: true` are encrypted with AES-256-GCM and never displayed after initial entry.
+
+```typescript
+configSchema: {
+  baseUrl: {
+    type: 'string',
+    required: true,
+    description: 'Base URL of the API',
+  },
+  apiKey: {
+    type: 'string',
+    required: true,
+    secret: true,
+    description: 'API key for authentication',
+  },
+  timeout: {
+    type: 'number',
+    default: 30000,
+    description: 'Request timeout in milliseconds',
+  },
+}
+```
+
+## testConnection
+
+Called when a user adds or edits a connection in the admin UI. Return `true` if the connection is valid, or throw an error with a descriptive message:
+
+```typescript
+async testConnection(config) {
+  const res = await fetch(`${config.baseUrl}/health`, {
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+    signal: AbortSignal.timeout(5000),
+  })
+  if (!res.ok) {
+    throw new Error(`API returned ${res.status}: ${res.statusText}`)
+  }
+  return true
+}
+```
+
+## introspect
+
+Returns the schema of all available tables. The engine calls this on startup and when the admin clicks "Refresh Schema":
+
+```typescript
+async introspect(config) {
+  const res = await fetch(`${config.baseUrl}/schema`, {
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+  })
+  const data = await res.json()
+
+  return data.resources.map((r: any) => ({
+    name: r.name,
+    columns: r.fields.map((f: any) => ({
+      name: f.name,
+      type: mapType(f.type),
+      nullable: f.nullable ?? true,
+      primaryKey: f.name === 'id',
+    })),
+  }))
+}
+```
+
+## execute
+
+Translates a `QueryRequest` into provider-specific calls and returns results:
+
+```typescript
+async execute(config, query) {
+  const url = new URL(`${config.baseUrl}/${query.table}`)
+
+  if (query.where) {
+    for (const [key, condition] of Object.entries(query.where)) {
+      url.searchParams.set(`filter[${key}]`, String(Object.values(condition)[0]))
+    }
+  }
+  if (query.limit) url.searchParams.set('limit', String(query.limit))
+  if (query.offset) url.searchParams.set('offset', String(query.offset))
+
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${config.apiKey}` },
+  })
+  const data = await res.json()
+
+  return {
+    rows: data.items,
+    count: data.total,
+  }
+}
+```
+
+## Registering the Provider
+
+Pass your custom provider in the `integrations` array alongside native providers:
+
+```typescript
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider, httpProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    crm: { type: 'http-api', baseUrl: 'https://api.crm.com', apiKey: process.env.CRM_API_KEY! },
+  },
+})
+```
+
+Client queries work the same regardless of provider type:
+
+```typescript
+const contacts = await db.crm.contacts.findMany({
+  select: ['id', 'name', 'email'],
+  where: { status: { $eq: 'active' } },
+  limit: 50,
+})
+```

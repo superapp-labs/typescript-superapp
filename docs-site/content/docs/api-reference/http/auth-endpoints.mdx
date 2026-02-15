@@ -1,0 +1,357 @@
+---
+title: Auth Endpoints
+description: "Authentication API routes."
+---
+
+The auth endpoints handle user authentication, session management, and account recovery. They are served under the `/auth` path when an auth provider is configured.
+
+All auth endpoints accept and return JSON. No JWT is required for authentication endpoints (they are how you obtain one).
+
+## Endpoints Overview
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/auth/sign-in` | Authenticate with email and password |
+| `POST` | `/auth/sign-up` | Create a new user account |
+| `POST` | `/auth/sign-out` | Invalidate the current session |
+| `GET` | `/auth/session` | Get the current session and user info |
+| `POST` | `/auth/forgot-password` | Request a password reset email |
+| `POST` | `/auth/reset-password` | Reset password with a token |
+| `POST` | `/auth/verify-email` | Verify an email address with a token |
+
+## POST /auth/sign-in
+
+Authenticate a user with email and password. Returns a session token (JWT) on success.
+
+### Request
+
+```json
+{
+  "email": "alice@example.com",
+  "password": "s3cure-passw0rd"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `email` | `string` | Yes | The user's email address. |
+| `password` | `string` | Yes | The user's password. |
+
+### Response (200 OK)
+
+```json
+{
+  "user": {
+    "id": "usr_42",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "emailVerified": true,
+    "createdAt": "2025-01-15T10:00:00Z"
+  },
+  "session": {
+    "token": "eyJhbGciOiJSUzI1NiIs...",
+    "expiresAt": "2025-03-23T10:00:00Z"
+  }
+}
+```
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `401` | `INVALID_CREDENTIALS` | Email or password is incorrect. |
+| `403` | `EMAIL_NOT_VERIFIED` | Email verification is required but not completed (when `emailVerification: true`). |
+| `429` | `RATE_LIMITED` | Too many sign-in attempts. |
+
+## POST /auth/sign-up
+
+Create a new user account. Returns the created user and a session token.
+
+### Request
+
+```json
+{
+  "email": "bob@example.com",
+  "password": "s3cure-passw0rd",
+  "name": "Bob"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `email` | `string` | Yes | Email address for the new account. Must be unique. |
+| `password` | `string` | Yes | Password. Minimum 8 characters. |
+| `name` | `string` | No | Display name for the user. |
+
+### Response (201 Created)
+
+```json
+{
+  "user": {
+    "id": "usr_43",
+    "email": "bob@example.com",
+    "name": "Bob",
+    "emailVerified": false,
+    "createdAt": "2025-03-16T12:00:00Z"
+  },
+  "session": {
+    "token": "eyJhbGciOiJSUzI1NiIs...",
+    "expiresAt": "2025-03-23T12:00:00Z"
+  }
+}
+```
+
+When `emailVerification` is enabled, the session token is still returned but data access may be restricted until the email is verified.
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `400` | `VALIDATION_ERROR` | Missing required fields or password too short. |
+| `409` | `EMAIL_EXISTS` | An account with this email already exists. |
+| `429` | `RATE_LIMITED` | Too many sign-up attempts. |
+
+## POST /auth/sign-out
+
+Invalidate the current session. Requires an active JWT.
+
+### Request
+
+```
+POST /auth/sign-out HTTP/1.1
+Authorization: Bearer <jwt_token>
+```
+
+No request body is needed.
+
+### Response (200 OK)
+
+```json
+{
+  "success": true
+}
+```
+
+After sign-out, the JWT is invalidated server-side. Subsequent requests using the same token receive `401 Unauthorized`.
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | No valid session token provided. |
+
+## GET /auth/session
+
+Retrieve the current session and user information. Requires an active JWT.
+
+### Request
+
+```
+GET /auth/session HTTP/1.1
+Authorization: Bearer <jwt_token>
+```
+
+### Response (200 OK)
+
+```json
+{
+  "user": {
+    "id": "usr_42",
+    "email": "alice@example.com",
+    "name": "Alice",
+    "emailVerified": true,
+    "createdAt": "2025-01-15T10:00:00Z"
+  },
+  "session": {
+    "token": "eyJhbGciOiJSUzI1NiIs...",
+    "expiresAt": "2025-03-23T10:00:00Z"
+  }
+}
+```
+
+If the session is within the `refreshWindow`, the response includes a refreshed token with an extended expiration.
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | Token is missing, invalid, or expired. |
+
+## POST /auth/forgot-password
+
+Request a password reset. Sends an email with a reset token. Always returns `200 OK` regardless of whether the email exists (to prevent email enumeration).
+
+### Request
+
+```json
+{
+  "email": "alice@example.com"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `email` | `string` | Yes | Email address of the account to reset. |
+
+### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "If an account with that email exists, a reset link has been sent."
+}
+```
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `429` | `RATE_LIMITED` | Too many reset requests. |
+
+## POST /auth/reset-password
+
+Reset a password using the token received via email.
+
+### Request
+
+```json
+{
+  "token": "rst_abc123def456",
+  "password": "new-s3cure-passw0rd"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `token` | `string` | Yes | The reset token from the email link. |
+| `password` | `string` | Yes | The new password. Minimum 8 characters. |
+
+### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Password has been reset. Please sign in with your new password."
+}
+```
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `400` | `INVALID_TOKEN` | The reset token is invalid or expired. |
+| `400` | `VALIDATION_ERROR` | New password does not meet requirements. |
+
+## POST /auth/verify-email
+
+Verify an email address using the token sent during sign-up.
+
+### Request
+
+```json
+{
+  "token": "vrf_abc123def456"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `token` | `string` | Yes | The verification token from the email link. |
+
+### Response (200 OK)
+
+```json
+{
+  "success": true,
+  "message": "Email verified successfully."
+}
+```
+
+### Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `400` | `INVALID_TOKEN` | The verification token is invalid or expired. |
+
+## Client SDK Usage
+
+The `@superapp/db` client SDK wraps these endpoints for convenience:
+
+```typescript
+import { createAuth } from '@superapp/db/auth'
+
+const auth = createAuth('http://localhost:3001')
+
+// Sign up
+const { user, session } = await auth.signUp({
+  email: 'bob@example.com',
+  password: 's3cure-passw0rd',
+  name: 'Bob',
+})
+
+// Sign in
+const { user, session } = await auth.signIn({
+  email: 'alice@example.com',
+  password: 's3cure-passw0rd',
+})
+
+// Get current session
+const { user, session } = await auth.getSession()
+
+// Sign out
+await auth.signOut()
+
+// Forgot password
+await auth.forgotPassword({ email: 'alice@example.com' })
+
+// Reset password
+await auth.resetPassword({
+  token: 'rst_abc123def456',
+  password: 'new-s3cure-passw0rd',
+})
+
+// Verify email
+await auth.verifyEmail({ token: 'vrf_abc123def456' })
+```
+
+### React Hook
+
+```typescript
+import { useSession } from '@superapp/db/auth'
+
+function MyComponent() {
+  const { data: session, isPending, error } = useSession()
+
+  if (isPending) return <p>Loading...</p>
+  if (!session) return <p>Not signed in</p>
+
+  return <p>Welcome, {session.user.name}</p>
+}
+```
+
+## cURL Examples
+
+```bash
+# Sign in
+curl -X POST http://localhost:3001/auth/sign-in \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "alice@example.com", "password": "s3cure-passw0rd" }'
+
+# Sign up
+curl -X POST http://localhost:3001/auth/sign-up \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "bob@example.com", "password": "s3cure-passw0rd", "name": "Bob" }'
+
+# Get session
+curl http://localhost:3001/auth/session \
+  -H "Authorization: Bearer $TOKEN"
+
+# Sign out
+curl -X POST http://localhost:3001/auth/sign-out \
+  -H "Authorization: Bearer $TOKEN"
+
+# Forgot password
+curl -X POST http://localhost:3001/auth/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{ "email": "alice@example.com" }'
+```

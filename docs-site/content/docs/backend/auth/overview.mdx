@@ -1,0 +1,81 @@
+---
+title: Authentication
+description: How auth providers work, the resolveSession interface, and session enrichment.
+---
+
+Auth providers handle JWT verification and session resolution. They turn a raw JWT token into an enriched user object that the permission system can reference.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+    },
+  }),
+})
+```
+
+## How It Works
+
+1. Client sends `Authorization: Bearer <jwt>` header
+2. Auth provider verifies the token signature
+3. Provider looks up the user in the configured `userTable`
+4. `resolveSession` enriches the user with additional data (roles, org memberships)
+5. The enriched user object is available as `$user.*` in permissions
+
+## The AuthProvider Interface
+
+Every auth provider must implement:
+
+```typescript
+interface AuthProvider {
+  /** Verify JWT and return decoded payload */
+  verifyToken(token: string): Promise<JWTPayload>
+
+  /** Look up user record from JWT payload */
+  findUser(payload: JWTPayload, db: QueryBuilder): Promise<User | null>
+
+  /** Enrich user with session data (roles, orgs, etc.) */
+  resolveSession?(user: User, db: QueryBuilder): Promise<EnrichedUser>
+
+  /** Auth route handlers (login, register, etc.) */
+  routes?: Record<string, RouteHandler>
+}
+```
+
+## Session Object
+
+The object returned by `resolveSession` is what `$user.*` references in permissions:
+
+```typescript
+resolveSession: async (user, db) => {
+  const memberships = await db
+    .selectFrom('main.members')
+    .select(['organization_id', 'role'])
+    .where('user_id', '=', user.id)
+    .where('status', '=', 'active')
+    .execute()
+
+  return {
+    ...user,                    // $user.id, $user.email, $user.name
+    org_ids: memberships.map(m => m.organization_id),  // $user.org_ids
+    current_org_id: memberships[0]?.organization_id ?? null,  // $user.current_org_id
+    org_roles: memberships,     // $user.org_roles
+  }
+}
+```
+
+Any property you return becomes available as a `$user.*` variable in [filters](/docs/backend/permissions/filter), [checks](/docs/backend/permissions/check), and [presets](/docs/backend/permissions/preset).
+
+## Available Providers
+
+- [better-auth](/docs/backend/auth/better-auth) — Built-in provider with session management (recommended)
+- [Custom Provider](/docs/backend/auth/custom-provider) — Implement your own auth logic

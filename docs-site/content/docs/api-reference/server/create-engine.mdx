@@ -1,0 +1,287 @@
+---
+title: createEngine Options
+description: "Complete configuration reference."
+---
+
+`createEngine` accepts a single configuration object and returns an engine instance. This page documents every available option.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const engine = createEngine({
+  mode: 'programmatic',
+  database: './superapp.db',
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+## Top-Level Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `mode` | `'programmatic' \| 'managed'` | `'programmatic'` | Engine operation mode. `programmatic` = config in code, `managed` = config in admin UI. |
+| `database` | `string` | `'./superapp.db'` | Path to the metadata database. Local file path for SQLite or a Turso URL. Stores sessions, roles, audit logs, and admin configuration. |
+| `integrations` | `Provider[]` | `[]` | Database provider modules to load. Each provider adds support for a database type (postgres, mysql, sqlite, csv). |
+| `connections` | `Record<string, ConnectionConfig>` | `{}` | Named database connections. Keys become table namespace prefixes (e.g., `main.orders`). |
+| `auth` | `AuthProvider` | `undefined` | Authentication provider. If omitted, the engine runs in open mode (no auth). |
+| `permissions` | `Record<string, Permission>` | `{}` | Permission definitions. Keys must be `snake_case` slugs. Only used in `programmatic` mode. |
+| `roles` | `Record<string, string[]>` | `{}` | Role-to-permission mappings. Each key is a role name, value is an array of permission slugs. |
+| `masterKey` | `string` | `undefined` | Master API key for admin access. Required for managed mode and admin endpoints. Set via environment variable, never hardcode. |
+| `schemaEndpoint` | `SchemaEndpointConfig \| boolean` | `false` | Enable the `GET /schema` introspection endpoint. Set `true` for defaults or pass a config object. |
+| `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. |
+| `limits` | `LimitsConfig` | See below | Query and rate limit constraints. |
+| `audit` | `AuditConfig` | See below | Audit logging configuration. |
+| `jwt` | `JWTConfig` | See below | JWT verification settings. |
+| `security` | `SecurityConfig` | See below | CORS, CSP, and network security. |
+
+## `connections`
+
+Each connection maps a name to a database configuration. The connection name becomes the namespace for all tables in that database.
+
+```typescript
+connections: {
+  main: { type: 'postgres', url: 'postgres://localhost:5432/mydb' },
+  warehouse: { type: 'mysql', url: 'mysql://localhost:3306/warehouse' },
+  legacy: { type: 'sqlite', path: './legacy.db' },
+  imports: { type: 'csv', directory: './data/imports/' },
+}
+```
+
+| Type | Config Shape |
+|---|---|
+| `postgres` | `{ type: 'postgres', url: string }` |
+| `mysql` | `{ type: 'mysql', url: string }` |
+| `sqlite` | `{ type: 'sqlite', path: string }` |
+| `csv` | `{ type: 'csv', directory: string }` |
+
+## `duckdb`
+
+Configure the DuckDB in-process engine.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `maxMemory` | `string` | `'256MB'` | Maximum memory DuckDB can use. Accepts units: `'128MB'`, `'1GB'`, etc. |
+| `threads` | `number` | `2` | Number of CPU threads DuckDB can use for query execution. |
+| `queryTimeout` | `number` | `30000` | Maximum query execution time in milliseconds. Queries exceeding this are killed. |
+| `poolSize` | `number` | `10` | Number of DuckDB connections in the pool. Each concurrent request uses one connection. |
+| `idleTimeout` | `number` | `300000` | Time in milliseconds before idle connections are reclaimed. Default is 5 minutes. |
+
+```typescript
+duckdb: {
+  maxMemory: '512MB',
+  threads: 4,
+  queryTimeout: 60_000,
+  poolSize: 20,
+  idleTimeout: 600_000,
+}
+```
+
+## `limits`
+
+Query and rate limit constraints to prevent abuse and resource exhaustion.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `maxLimit` | `number` | `10000` | Maximum number of rows a single query can return. Client `limit` values above this are capped. |
+| `maxIncludeDepth` | `number` | `3` | Maximum nesting depth for `include` (relation) joins. Prevents deeply nested relation chains. |
+| `maxFilterDepth` | `number` | `5` | Maximum nesting depth for filter conditions (`$and`, `$or`, `$not`). Prevents excessively complex filters. |
+| `maxFilterConditions` | `number` | `50` | Maximum total number of filter conditions in a single query. |
+| `maxRequestBodySize` | `string` | `'1mb'` | Maximum HTTP request body size. Accepts units: `'512kb'`, `'2mb'`, etc. |
+| `queryTimeout` | `number` | `30000` | Query-level timeout in milliseconds. Separate from DuckDB's internal timeout. |
+| `rateLimitPerUser` | `number` | `200` | Maximum requests per minute per authenticated user. |
+| `rateLimitPerIP` | `number` | `500` | Maximum requests per minute per IP address. Applies to unauthenticated requests too. |
+
+```typescript
+limits: {
+  maxLimit: 5000,
+  maxIncludeDepth: 2,
+  maxFilterDepth: 4,
+  maxFilterConditions: 30,
+  maxRequestBodySize: '2mb',
+  queryTimeout: 15_000,
+  rateLimitPerUser: 100,
+  rateLimitPerIP: 300,
+}
+```
+
+## `audit`
+
+Configure audit logging for queries, permission denials, and admin actions.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `boolean` | `false` | Enable or disable audit logging entirely. |
+| `logQuery` | `boolean` | `true` | Log the SQL statement that was executed. |
+| `logParams` | `boolean` | `false` | Log query parameters. Useful for debugging but may contain sensitive data. |
+| `logDuration` | `boolean` | `true` | Log query execution time in milliseconds. |
+| `logUser` | `boolean` | `true` | Log the authenticated user ID with each query. |
+| `logDenied` | `boolean` | `true` | Log permission denial events. Useful for detecting unauthorized access attempts. |
+| `logAdminActions` | `boolean` | `true` | Log admin UI actions (permission changes, connection edits, role assignments). |
+| `retention` | `string` | `'90d'` | Auto-delete audit logs older than this duration. Accepts `'30d'`, `'90d'`, `'1y'`, etc. |
+| `piiRedaction` | `boolean` | `false` | Redact PII (emails, phone numbers) from audit log entries. |
+
+```typescript
+audit: {
+  enabled: true,
+  logQuery: true,
+  logParams: false,       // disable in production to avoid logging sensitive data
+  logDuration: true,
+  logUser: true,
+  logDenied: true,
+  logAdminActions: true,
+  retention: '90d',
+  piiRedaction: true,
+}
+```
+
+## `jwt`
+
+JWT verification settings. These configure how the auth provider validates incoming tokens.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `algorithms` | `string[]` | `['HS256']` | Allowed JWT signing algorithms. Common values: `'HS256'`, `'RS256'`, `'ES256'`. |
+| `issuer` | `string` | `undefined` | Expected JWT issuer (`iss` claim). If set, tokens with a different issuer are rejected. |
+| `audience` | `string` | `undefined` | Expected JWT audience (`aud` claim). If set, tokens with a different audience are rejected. |
+| `clockSkewSeconds` | `number` | `5` | Allowed clock skew in seconds for expiration checks. Accounts for time differences between servers. |
+
+```typescript
+jwt: {
+  algorithms: ['RS256', 'ES256'],
+  issuer: 'https://auth.myapp.com',
+  audience: 'https://api.myapp.com',
+  clockSkewSeconds: 10,
+}
+```
+
+## `security`
+
+Network security, CORS, and access control settings.
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `cors` | `CorsConfig` | `undefined` | CORS configuration. If omitted, CORS headers are not set. |
+| `cors.origin` | `string \| string[]` | `undefined` | Allowed origins. Use an array for multiple domains. Never use `'*'` in production. |
+| `cors.credentials` | `boolean` | `false` | Whether to include `Access-Control-Allow-Credentials: true`. |
+| `cors.maxAge` | `number` | `86400` | Preflight cache duration in seconds. |
+| `csp` | `string` | `undefined` | Content-Security-Policy header value. Applied to admin UI responses. |
+| `adminIpAllowlist` | `string[]` | `undefined` | IP addresses allowed to access admin endpoints. If set, all other IPs are blocked from `/admin`. |
+
+```typescript
+security: {
+  cors: {
+    origin: ['https://myapp.com', 'https://admin.myapp.com'],
+    credentials: true,
+    maxAge: 86400,
+  },
+  csp: "default-src 'self'; script-src 'self'",
+  adminIpAllowlist: ['10.0.0.0/8', '192.168.1.0/24'],
+}
+```
+
+## `schemaEndpoint`
+
+Enable the `GET /schema` endpoint for schema introspection.
+
+```typescript
+// Boolean shorthand — enable with defaults
+schemaEndpoint: true
+
+// Object form — customize
+schemaEndpoint: {
+  enabled: true,
+  token: process.env.SCHEMA_API_TOKEN,  // require a token for access
+}
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `boolean` | `false` | Enable the `/schema` endpoint. |
+| `token` | `string` | `undefined` | If set, the endpoint requires this token in the `Authorization` header. |
+
+## Full Example
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { mysqlProvider } from '@superapp/backend/integrations/mysql'
+
+const engine = createEngine({
+  mode: 'programmatic',
+  database: process.env.TURSO_URL ?? './superapp.db',
+  integrations: [postgresProvider, mysqlProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+      columns: ['id', 'email', 'name'],
+    },
+  }),
+  duckdb: {
+    maxMemory: '512MB',
+    threads: 4,
+    queryTimeout: 30_000,
+    poolSize: 20,
+    idleTimeout: 300_000,
+  },
+  limits: {
+    maxLimit: 10_000,
+    maxIncludeDepth: 3,
+    maxFilterDepth: 5,
+    maxFilterConditions: 50,
+    maxRequestBodySize: '1mb',
+    queryTimeout: 30_000,
+    rateLimitPerUser: 200,
+    rateLimitPerIP: 500,
+  },
+  audit: {
+    enabled: true,
+    logQuery: true,
+    logParams: false,
+    logDuration: true,
+    logUser: true,
+    logDenied: true,
+    logAdminActions: true,
+    retention: '90d',
+    piiRedaction: true,
+  },
+  jwt: {
+    algorithms: ['RS256'],
+    issuer: 'https://auth.myapp.com',
+    audience: 'https://api.myapp.com',
+    clockSkewSeconds: 5,
+  },
+  security: {
+    cors: {
+      origin: ['https://myapp.com'],
+      credentials: true,
+    },
+    adminIpAllowlist: ['10.0.0.0/8'],
+  },
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  schemaEndpoint: {
+    enabled: true,
+    token: process.env.SCHEMA_API_TOKEN,
+  },
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'created_at'],
+      filter: { customer_id: { $eq: '$user.customer_id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+```

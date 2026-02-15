@@ -1,0 +1,100 @@
+---
+title: Next.js
+description: Integrate the superapp backend into a Next.js App Router project with a catch-all route handler.
+---
+
+Use the Next.js adapter to add the engine to your App Router project as a catch-all API route.
+
+```typescript
+// app/api/[...superapp]/route.ts
+import { createEngine } from '@superapp/backend'
+import { createNextHandler } from '@superapp/backend/adapters/next'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const handler = createNextHandler(engine)
+
+export const GET = handler
+export const POST = handler
+export const PUT = handler
+export const DELETE = handler
+```
+
+## With Authentication
+
+```typescript
+// app/api/[...superapp]/route.ts
+import { createEngine } from '@superapp/backend'
+import { createNextHandler } from '@superapp/backend/adapters/next'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+    },
+  }),
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: '*',
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+
+const handler = createNextHandler(engine)
+
+export const GET = handler
+export const POST = handler
+export const PUT = handler
+export const DELETE = handler
+```
+
+## Route Structure
+
+The catch-all route `[...superapp]` maps to these endpoints:
+
+| URL | Maps To |
+|---|---|
+| `/api/data` | `POST /data` — query endpoint |
+| `/api/schema` | `GET /schema` — schema introspection |
+| `/api/auth/*` | Authentication routes |
+| `/api/admin` | Admin UI |
+| `/api/admin/api/*` | Admin API |
+
+## Environment Variables
+
+Add your database and auth credentials to `.env.local`:
+
+```bash
+PG_URL=postgres://user:pass@localhost:5432/mydb
+AUTH_SECRET=your-secret-key
+SUPERAPP_MASTER_KEY=your-master-key
+```
+
+## Edge Runtime
+
+The engine supports the Next.js edge runtime:
+
+```typescript
+export const runtime = 'edge'
+```

@@ -1,0 +1,171 @@
+---
+title: Custom Auth Provider
+description: Implement a custom authentication provider using the AuthProvider interface.
+---
+
+Build your own auth provider when you need to integrate with an existing auth system, use a custom JWT library, or handle non-standard token formats.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import type { AuthProvider } from '@superapp/backend/auth'
+
+const customAuth: AuthProvider = {
+  async verifyToken(token) {
+    const payload = await myJwtLib.verify(token, process.env.JWT_PUBLIC_KEY!)
+    return payload
+  },
+
+  async findUser(payload, db) {
+    const user = await db
+      .selectFrom('main.users')
+      .selectAll()
+      .where('id', '=', payload.sub)
+      .executeTakeFirst()
+    return user ?? null
+  },
+
+  async resolveSession(user, db) {
+    return { ...user, role: user.role }
+  },
+}
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: customAuth,
+})
+```
+
+## AuthProvider Interface
+
+```typescript
+interface AuthProvider {
+  /** Verify the JWT token and return the decoded payload */
+  verifyToken(token: string): Promise<JWTPayload>
+
+  /** Look up the user record from the decoded JWT payload */
+  findUser(payload: JWTPayload, db: QueryBuilder): Promise<User | null>
+
+  /** Optional: enrich the user object with session data */
+  resolveSession?(user: User, db: QueryBuilder): Promise<EnrichedUser>
+
+  /** Optional: expose auth-related route handlers */
+  routes?: Record<string, RouteHandler>
+}
+
+interface JWTPayload {
+  sub?: string
+  [key: string]: unknown
+}
+```
+
+## Implementation Requirements
+
+### verifyToken
+
+Must throw an error if the token is invalid or expired. The engine catches this and returns `401 Unauthorized`.
+
+```typescript
+async verifyToken(token) {
+  try {
+    return await jose.jwtVerify(token, publicKey, {
+      issuer: 'https://auth.myapp.com',
+      algorithms: ['RS256'],
+    })
+  } catch {
+    throw new Error('Invalid token')
+  }
+}
+```
+
+### findUser
+
+Return `null` if the user is not found. The engine returns `401 Unauthorized` in that case.
+
+```typescript
+async findUser(payload, db) {
+  const user = await db
+    .selectFrom('main.users')
+    .select(['id', 'email', 'name', 'role'])
+    .where('id', '=', payload.sub)
+    .where('is_active', '=', true)
+    .executeTakeFirst()
+  return user ?? null
+}
+```
+
+### resolveSession (optional)
+
+Add any properties that your permissions need to reference via `$user.*`:
+
+```typescript
+async resolveSession(user, db) {
+  const orgs = await db
+    .selectFrom('main.members')
+    .select(['organization_id', 'role'])
+    .where('user_id', '=', user.id)
+    .execute()
+
+  return {
+    ...user,
+    org_ids: orgs.map(o => o.organization_id),
+    current_org_id: orgs[0]?.organization_id ?? null,
+  }
+}
+```
+
+### routes (optional)
+
+Expose custom auth endpoints under `/auth/*`:
+
+```typescript
+routes: {
+  'POST /auth/login': async (req) => {
+    const { email, password } = await req.json()
+    const token = await myAuth.login(email, password)
+    return Response.json({ token })
+  },
+  'POST /auth/logout': async (req) => {
+    await myAuth.logout(req.headers.get('authorization'))
+    return Response.json({ ok: true })
+  },
+}
+```
+
+## Example: Firebase Auth
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import type { AuthProvider } from '@superapp/backend/auth'
+import admin from 'firebase-admin'
+
+admin.initializeApp({ credential: admin.credential.applicationDefault() })
+
+const firebaseAuth: AuthProvider = {
+  async verifyToken(token) {
+    const decoded = await admin.auth().verifyIdToken(token)
+    return { sub: decoded.uid, email: decoded.email }
+  },
+
+  async findUser(payload, db) {
+    const user = await db
+      .selectFrom('main.users')
+      .selectAll()
+      .where('firebase_uid', '=', payload.sub)
+      .executeTakeFirst()
+    return user ?? null
+  },
+
+  async resolveSession(user, db) {
+    return { ...user }
+  },
+}
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: firebaseAuth,
+})
+```

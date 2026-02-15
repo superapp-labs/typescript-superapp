@@ -1,0 +1,272 @@
+---
+title: Multi-Tenant SaaS
+description: Organization-scoped permissions setup.
+---
+
+A complete multi-tenant configuration where users belong to organizations and can only access data within their org. Includes role hierarchy, session enrichment, and client-side usage.
+
+## Database Schema
+
+```sql
+CREATE TABLE organizations (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE members (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER NOT NULL REFERENCES users(id),
+  organization_id INTEGER NOT NULL REFERENCES organizations(id),
+  role TEXT NOT NULL DEFAULT 'viewer',
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(user_id, organization_id)
+);
+
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  amount DECIMAL(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  customer_id INTEGER NOT NULL,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE customers (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL,
+  organization_id INTEGER NOT NULL REFERENCES organizations(id),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+```
+
+## Server Configuration
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+      columns: ['id', 'email', 'name'],
+    },
+  }),
+  resolveSession: async (user, db) => {
+    // Fetch user's org memberships and attach to session
+    const memberships = await db.main.members.findMany({
+      select: ['organization_id', 'role'],
+      where: { user_id: { $eq: user.id } },
+    })
+    return {
+      ...user,
+      memberships,
+      organizationIds: memberships.map((m) => m.organization_id),
+    }
+  },
+  permissions: {
+    // --- Viewer permissions ---
+    view_orders: {
+      name: 'View orders in own orgs',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'customer_id', 'organization_id', 'created_at'],
+      filter: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+    },
+    view_customers: {
+      name: 'View customers in own orgs',
+      table: 'main.customers',
+      operations: { select: true },
+      columns: ['id', 'name', 'email', 'organization_id', 'created_at'],
+      filter: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+    },
+
+    // --- Editor permissions ---
+    create_orders: {
+      name: 'Create orders in own orgs',
+      table: 'main.orders',
+      operations: { insert: true },
+      columns: ['amount', 'status', 'customer_id', 'organization_id'],
+      check: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+    },
+    update_orders: {
+      name: 'Update orders in own orgs',
+      table: 'main.orders',
+      operations: { update: true },
+      columns: ['amount', 'status'],
+      filter: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+    },
+
+    // --- Admin permissions ---
+    manage_customers: {
+      name: 'Full customer access in own orgs',
+      table: 'main.customers',
+      operations: { select: true, insert: true, update: true, delete: true },
+      columns: ['id', 'name', 'email', 'organization_id', 'created_at'],
+      filter: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+      check: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+    },
+    manage_members: {
+      name: 'Manage org members',
+      table: 'main.members',
+      operations: { select: true, insert: true, update: true, delete: true },
+      columns: ['id', 'user_id', 'organization_id', 'role', 'created_at'],
+      filter: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+      check: {
+        organization_id: { $in: '$user.organizationIds' },
+      },
+    },
+
+    // --- Owner permissions ---
+    manage_organization: {
+      name: 'Manage organization settings',
+      table: 'main.organizations',
+      operations: { select: true, update: true },
+      columns: ['id', 'name', 'slug', 'created_at'],
+      filter: {
+        id: { $in: '$user.organizationIds' },
+      },
+    },
+  },
+  roles: {
+    viewer: ['view_orders', 'view_customers'],
+    editor: ['view_orders', 'view_customers', 'create_orders', 'update_orders'],
+    admin: [
+      'view_orders', 'view_customers',
+      'create_orders', 'update_orders',
+      'manage_customers', 'manage_members',
+    ],
+    owner: [
+      'view_orders', 'view_customers',
+      'create_orders', 'update_orders',
+      'manage_customers', 'manage_members',
+      'manage_organization',
+    ],
+  },
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+## Role Hierarchy
+
+Each role inherits the permissions of the roles below it:
+
+| Role | Capabilities |
+|---|---|
+| `viewer` | Read orders and customers in own orgs |
+| `editor` | Everything in viewer + create and update orders |
+| `admin` | Everything in editor + manage customers and org members |
+| `owner` | Everything in admin + manage organization settings |
+
+## How Session Enrichment Works
+
+The `resolveSession` callback runs after JWT validation but before permission checks. It queries the database for the user's org memberships and attaches them to the session:
+
+```typescript
+resolveSession: async (user, db) => {
+  const memberships = await db.main.members.findMany({
+    select: ['organization_id', 'role'],
+    where: { user_id: { $eq: user.id } },
+  })
+  return {
+    ...user,
+    memberships,
+    organizationIds: memberships.map((m) => m.organization_id),
+  }
+}
+```
+
+The `$user.organizationIds` reference in permission filters resolves to the array returned here. Every query is automatically scoped to the user's organizations.
+
+## Client Usage
+
+The frontend code is identical to any other superapp project. The org-scoping happens server-side:
+
+```tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useDb } from '@/hooks/use-db'
+import { useSession } from '@superapp/db/auth'
+
+export default function OrdersPage() {
+  const { data: session } = useSession()
+  const db = useDb()
+  const [orders, setOrders] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!db) return
+    // No org filter needed — the server injects it automatically
+    db.main.orders
+      .findMany({
+        select: ['id', 'amount', 'status', 'created_at'],
+        include: { customer: { select: ['name', 'email'] } },
+        orderBy: { created_at: 'desc' },
+        limit: 50,
+      })
+      .then(setOrders)
+  }, [db])
+
+  if (!session) return <p>Please sign in.</p>
+
+  return (
+    <ul>
+      {orders.map((o) => (
+        <li key={o.id}>
+          Order #{o.id} - ${o.amount} - {o.status} - {o.customer.name}
+        </li>
+      ))}
+    </ul>
+  )
+}
+```
+
+The client sends `findMany` with no filter on `organization_id`. The server's permission filter (`organization_id: { $in: '$user.organizationIds' }`) is injected automatically, so the user only sees orders belonging to their organizations.
+
+## Creating Org-Scoped Records
+
+Editors and above can create orders. The `check` rule ensures the `organization_id` in the insert matches one of the user's orgs:
+
+```typescript
+await db.main.orders.create({
+  data: {
+    amount: 149.99,
+    status: 'pending',
+    customer_id: 42,
+    organization_id: 1, // must be in user's organizationIds
+  },
+})
+```
+
+If the user tries to insert an order with an `organization_id` they do not belong to, the server returns `403 Forbidden`.

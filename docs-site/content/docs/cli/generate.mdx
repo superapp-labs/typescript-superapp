@@ -1,0 +1,116 @@
+---
+title: generate
+description: Generate TypeScript types from your engine.
+---
+
+Introspect your running engine and generate a fully typed schema file for the client SDK.
+
+```bash
+npx @superapp/backend generate --url http://localhost:3001 --token <schema-token>
+```
+
+## What It Generates
+
+The command connects to your engine's `/schema` endpoint, reads every connection, table, and column, and writes a `schema.ts` file:
+
+```typescript
+// generated/schema.ts — auto-generated, do not edit
+
+export interface SuperAppSchema {
+  main: {
+    orders: {
+      id: number
+      amount: number
+      status: string
+      customer_id: number
+      created_at: string
+    }
+    customers: {
+      id: number
+      name: string
+      email: string
+      organization_id: number
+      created_at: string
+    }
+    organizations: {
+      id: number
+      name: string
+      slug: string
+      created_at: string
+    }
+  }
+}
+```
+
+This type is passed to `createClient<SuperAppSchema>()` for full autocomplete on table names, column names, and query results.
+
+## Options
+
+| Flag | Default | Description |
+|---|---|---|
+| `--url` | `http://localhost:3001` | Engine URL |
+| `--token` | — | Schema token for authentication |
+| `--output` | `./generated/schema.ts` | Output file path |
+
+## Schema Tokens
+
+Schema tokens are separate from user JWTs. They grant read-only access to the `/schema` endpoint and nothing else.
+
+Create a schema token in the admin UI:
+
+1. Open `http://localhost:3001/admin`
+2. Navigate to **Settings > Schema Tokens**
+3. Click **Create Token**
+4. Copy the token -- it is displayed once and cannot be retrieved later
+
+<Callout>
+Schema tokens do not expire by default. Rotate them periodically and revoke unused tokens from the admin UI.
+</Callout>
+
+## CI/CD Usage
+
+Add the generate step to your CI pipeline so types stay in sync with your database:
+
+```bash
+# In your CI script
+npx @superapp/backend generate \
+  --url $SUPERAPP_URL \
+  --token $SCHEMA_TOKEN \
+  --output ./generated/schema.ts
+```
+
+## Committing to Git
+
+The generated file should be committed to your repository. It is a source-of-truth for your frontend types and enables type checking without a running backend:
+
+```bash
+npx @superapp/backend generate --url http://localhost:3001 --token $SCHEMA_TOKEN
+git add generated/schema.ts
+git commit -m "chore: update superapp schema types"
+```
+
+Add `generated/schema.ts` to your CI checks so pull requests that change the database schema also update the types.
+
+## Example Workflow
+
+```bash
+# 1. Start the engine
+npm run dev:backend
+
+# 2. Generate types
+npx @superapp/backend generate --url http://localhost:3001 --token sk_schema_abc123
+
+# 3. Use in your frontend
+```
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({
+  url: 'http://localhost:3001/data',
+  userToken: token,
+})
+
+// Full autocomplete: db.main.orders.findMany(...)
+```

@@ -1,0 +1,59 @@
+---
+title: count
+description: Count rows matching a filter condition.
+---
+
+`count` returns the number of rows matching the given condition.
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({ url, userToken })
+
+const total = await db.main.orders.count()
+// total: { count: number }
+```
+
+## Options
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `where` | `object` | No | Filter conditions. Omit to count all rows |
+
+## Count All Rows
+
+```typescript
+const total = await db.main.orders.count()
+// total: { count: number }
+```
+
+## Count with Filter
+
+```typescript
+const activeCount = await db.main.orders.count({
+  where: { status: { $eq: 'active' } },
+})
+// activeCount: { count: number }
+```
+
+## Count with Complex Filters
+
+```typescript
+const highValueActive = await db.main.orders.count({
+  where: {
+    status: { $eq: 'active' },
+    amount: { $gte: 1000 },
+  },
+})
+// highValueActive: { count: number }
+```
+
+## Count Customers in an Organization
+
+```typescript
+const memberCount = await db.main.customers.count({
+  where: { organization_id: { $eq: 'org_abc123' } },
+})
+// memberCount: { count: number }
+```

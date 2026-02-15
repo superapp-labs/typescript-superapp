@@ -1,0 +1,104 @@
+---
+title: Express
+description: Add the superapp backend to an existing Express application as a router middleware.
+---
+
+The Express adapter mounts the engine as a standard Express router.
+
+```typescript
+import express from 'express'
+import { createEngine } from '@superapp/backend'
+import { createExpressRouter } from '@superapp/backend/adapters/express'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const app = express()
+app.use('/', createExpressRouter(engine))
+app.listen(3001, () => console.log('Server running on port 3001'))
+```
+
+## With Authentication
+
+```typescript
+import express from 'express'
+import { createEngine } from '@superapp/backend'
+import { createExpressRouter } from '@superapp/backend/adapters/express'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+    },
+  }),
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: '*',
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+
+const app = express()
+app.use('/', createExpressRouter(engine))
+app.listen(3001)
+```
+
+## Adding Custom Routes
+
+Mix engine routes with your own Express handlers:
+
+```typescript
+const app = express()
+
+// Custom routes
+app.get('/health', (req, res) => res.json({ status: 'ok' }))
+
+// Engine routes
+app.use('/', createExpressRouter(engine))
+
+app.listen(3001)
+```
+
+## Route Prefix
+
+Mount under a custom path:
+
+```typescript
+app.use('/api/v1', createExpressRouter(engine))
+// Routes become: /api/v1/data, /api/v1/schema, /api/v1/auth/*, /api/v1/admin
+```
+
+## With CORS
+
+```typescript
+import cors from 'cors'
+
+const app = express()
+
+app.use(cors({
+  origin: ['https://myapp.com'],
+  credentials: true,
+}))
+
+app.use('/', createExpressRouter(engine))
+```

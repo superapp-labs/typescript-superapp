@@ -1,0 +1,15 @@
+{
+  "title": "Server SDK",
+  "pages": [
+    "overview",
+    "create-engine",
+    "connections",
+    "auth",
+    "permissions",
+    "roles",
+    "adapters",
+    "duckdb",
+    "audit-logging",
+    "request-pipeline"
+  ]
+}

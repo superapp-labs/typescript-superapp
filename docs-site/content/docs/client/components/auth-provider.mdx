@@ -1,0 +1,102 @@
+---
+title: AuthProvider
+description: Root layout wrapper that provides auth context to all child components.
+---
+
+`AuthProvider` wraps your application root and provides auth context (session, sign-in state) to all child components. Required for `useSession`, `AuthCard`, and `UserButton` to work.
+
+```tsx
+import { AuthProvider } from '@superapp/db/components'
+import { authClient } from '@/lib/superapp'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <AuthProvider authClient={authClient}>
+      {children}
+    </AuthProvider>
+  )
+}
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| --- | --- | --- | --- |
+| `authClient` | `AuthClient` | Yes | The auth client created by `createAuth()` |
+| `navigate` | `(url: string) => void` | No | Navigation function for client-side routing |
+| `replace` | `(url: string) => void` | No | Replace navigation function (no history entry) |
+| `Link` | `React.ComponentType` | No | Link component for framework-specific navigation |
+| `onSessionChange` | `() => void` | No | Callback fired on sign-in, sign-out, or token refresh |
+| `children` | `React.ReactNode` | Yes | Your application content |
+
+## Next.js App Router Setup
+
+```tsx
+'use client'
+
+import { AuthProvider } from '@superapp/db/components'
+import { authClient } from '@/lib/superapp'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+
+  return (
+    <AuthProvider
+      authClient={authClient}
+      navigate={router.push}
+      replace={router.replace}
+      Link={Link}
+      onSessionChange={() => router.refresh()}
+    >
+      {children}
+    </AuthProvider>
+  )
+}
+```
+
+Then use it in your root layout:
+
+```tsx
+import { Providers } from './providers'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html lang="en">
+      <body>
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  )
+}
+```
+
+## Why navigate and replace?
+
+`AuthProvider` handles redirects after sign-in and sign-out. Passing your framework's navigation functions lets it do this with client-side routing instead of full page reloads.
+
+| Prop | Used For |
+| --- | --- |
+| `navigate` | Redirect after sign-in (pushes to history) |
+| `replace` | Redirect after sign-out (replaces history entry) |
+| `Link` | Internal links in auth UI components |
+
+## onSessionChange
+
+The `onSessionChange` callback fires whenever the auth state changes. Common uses:
+
+- **`router.refresh()`** — Re-run server components to pick up the new session (Next.js App Router).
+- **Refetch queries** — Invalidate cached data when the user changes.
+- **Analytics** — Track sign-in/sign-out events.
+
+```tsx
+<AuthProvider
+  authClient={authClient}
+  onSessionChange={() => {
+    router.refresh()
+  }}
+>
+  {children}
+</AuthProvider>
+```

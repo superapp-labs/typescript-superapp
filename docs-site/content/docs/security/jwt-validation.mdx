@@ -1,0 +1,102 @@
+---
+title: JWT Validation
+description: Algorithm allowlists and claims verification.
+---
+
+Every request to `/data` must include a valid JWT in the `Authorization` header. The engine validates the token's algorithm, signature, and claims before processing the query.
+
+```typescript
+const engine = createEngine({
+  jwt: {
+    algorithms: ['RS256', 'ES256'],
+    issuer: 'https://auth.myapp.com',
+    audience: 'https://api.myapp.com',
+    clockSkewSeconds: 30,
+  },
+})
+```
+
+## Configuration Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `algorithms` | `string[]` | `['RS256', 'ES256']` | Allowed signing algorithms |
+| `issuer` | `string` | — | Expected `iss` claim value |
+| `audience` | `string` | — | Expected `aud` claim value |
+| `clockSkewSeconds` | `number` | `30` | Tolerance for `exp` and `nbf` checks |
+
+## Algorithm Allowlist
+
+Only algorithms in the `algorithms` array are accepted. Tokens signed with any other algorithm are rejected with `401 Unauthorized`.
+
+The following algorithms are blocked by default and cannot be added to the allowlist:
+
+| Algorithm | Why Blocked |
+|---|---|
+| `none` | No signature verification -- trivially forgeable |
+| `HS256` | Symmetric key -- the server secret can be brute-forced or leaked |
+| `HS384` | Same as HS256 |
+| `HS512` | Same as HS256 |
+
+Recommended algorithms:
+
+| Algorithm | Key Type | Use Case |
+|---|---|---|
+| `RS256` | RSA 2048+ | Most common, wide library support |
+| `RS384` | RSA 2048+ | Higher security RSA |
+| `RS512` | RSA 2048+ | Highest security RSA |
+| `ES256` | ECDSA P-256 | Smaller tokens, faster verification |
+| `ES384` | ECDSA P-384 | Higher security ECDSA |
+| `ES512` | ECDSA P-521 | Highest security ECDSA |
+| `EdDSA` | Ed25519 | Modern, fast, small keys |
+
+## Claims Validation
+
+Every token is checked for:
+
+| Claim | Check | Error |
+|---|---|---|
+| `exp` | Must be in the future (+ clock skew) | `401 Token expired` |
+| `nbf` | Must be in the past (- clock skew) | `401 Token not yet valid` |
+| `iss` | Must match `issuer` config (if set) | `401 Invalid issuer` |
+| `aud` | Must match `audience` config (if set) | `401 Invalid audience` |
+| `sub` | Must be present | `401 Missing subject` |
+
+## Token Format
+
+Tokens must be sent in the `Authorization` header:
+
+```
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Token Revocation
+
+The engine does not maintain a token blocklist. To revoke access:
+
+1. **Short-lived tokens** -- set `exp` to 5-15 minutes. The auth provider issues fresh tokens on each request.
+2. **Session invalidation** -- when using `betterAuthProvider`, call `authClient.signOut()` to invalidate the session server-side. The next token refresh will fail.
+3. **Key rotation** -- rotate the signing key in your auth provider. All tokens signed with the old key become invalid immediately.
+
+```typescript
+// Client-side: sign out and invalidate session
+await authClient.signOut()
+
+// Server-side: better-auth handles session invalidation
+// The user's next request will fail JWT validation
+```
+
+## Example with External Auth Provider
+
+If you use an external auth provider (Auth0, Clerk, Firebase), configure the JWT settings to match their token format:
+
+```typescript
+const engine = createEngine({
+  jwt: {
+    algorithms: ['RS256'],
+    issuer: 'https://myapp.us.auth0.com/',
+    audience: 'https://api.myapp.com',
+    clockSkewSeconds: 60,
+  },
+})
+```

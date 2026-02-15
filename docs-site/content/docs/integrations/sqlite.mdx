@@ -1,0 +1,114 @@
+---
+title: SQLite
+description: Connect to SQLite databases.
+---
+
+Attach a local SQLite file and get full CRUD through DuckDB's native `sqlite_scanner` extension. Ideal for development, testing, and embedded use cases.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
+
+const engine = createEngine({
+  integrations: [sqliteProvider],
+  connections: {
+    local: { type: 'sqlite', path: './data/app.db' },
+  },
+})
+```
+
+## Connection Config
+
+SQLite uses a file path instead of a URL:
+
+| Option | Type | Description |
+|---|---|---|
+| `type` | `'sqlite'` | Provider type |
+| `path` | `string` | Absolute or relative path to the `.db` file |
+
+The file must exist before the engine starts. To create a new database, use the `sqlite3` CLI or any SQLite tool.
+
+## What DuckDB Generates
+
+When the engine starts, the SQLite provider generates:
+
+```sql
+INSTALL sqlite;
+LOAD sqlite;
+ATTACH './data/app.db' AS local (TYPE SQLITE, READ_WRITE);
+```
+
+All tables in the SQLite file become available under the `local` schema.
+
+## Capabilities
+
+| Operation | Supported |
+|---|---|
+| `findMany` / `findOne` | Yes |
+| `create` | Yes |
+| `update` | Yes |
+| `delete` | Yes |
+| `count` / `aggregate` | Yes |
+| Transactions | Yes |
+
+## Development Setup
+
+SQLite is the fastest way to develop locally. Seed a database and point the engine at it:
+
+```bash
+sqlite3 ./data/dev.db <<'SQL'
+CREATE TABLE orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  amount DECIMAL(10,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  customer_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+INSERT INTO orders (amount, status, customer_id) VALUES
+  (99.99, 'active', 1),
+  (149.50, 'active', 2),
+  (29.00, 'pending', 1);
+SQL
+```
+
+```typescript
+const engine = createEngine({
+  integrations: [sqliteProvider],
+  connections: {
+    main: { type: 'sqlite', path: './data/dev.db' },
+  },
+})
+```
+
+## Testing with In-Memory SQLite
+
+For tests, create a temporary database before each test run:
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
+import { mkdtempSync, cpSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+
+function createTestEngine() {
+  const dir = mkdtempSync(join(tmpdir(), 'superapp-test-'))
+  cpSync('./fixtures/test.db', join(dir, 'test.db'))
+
+  return createEngine({
+    integrations: [sqliteProvider],
+    connections: {
+      main: { type: 'sqlite', path: join(dir, 'test.db') },
+    },
+  })
+}
+```
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `unable to open database file` | File not found | Check the path; it must exist before engine starts |
+| `database is locked` | Concurrent writes from another process | Use WAL mode (`PRAGMA journal_mode=WAL`) |
+| `read-only database` | File permissions | Ensure the process has write access to the file |

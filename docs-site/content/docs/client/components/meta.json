@@ -1,0 +1,4 @@
+{
+  "title": "Components",
+  "pages": ["auth-provider", "auth-card", "user-button"]
+}

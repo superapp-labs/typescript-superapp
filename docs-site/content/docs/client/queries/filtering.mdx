@@ -1,0 +1,178 @@
+---
+title: Filter Operators
+description: All available filter operators for where clauses in queries.
+---
+
+Filter operators are used in `where` clauses across all query methods. They support comparison, pattern matching, set membership, null checks, and logical combinations.
+
+```typescript
+const orders = await db.main.orders.findMany({
+  where: {
+    status: { $eq: 'active' },
+    amount: { $gte: 100 },
+  },
+})
+```
+
+## Operator Reference
+
+| Operator | Description | Example |
+| --- | --- | --- |
+| `$eq` | Equal to | `{ status: { $eq: 'active' } }` |
+| `$ne` | Not equal to | `{ status: { $ne: 'cancelled' } }` |
+| `$gt` | Greater than | `{ amount: { $gt: 100 } }` |
+| `$gte` | Greater than or equal | `{ amount: { $gte: 100 } }` |
+| `$lt` | Less than | `{ amount: { $lt: 500 } }` |
+| `$lte` | Less than or equal | `{ amount: { $lte: 500 } }` |
+| `$in` | In array | `{ status: { $in: ['active', 'pending'] } }` |
+| `$nin` | Not in array | `{ status: { $nin: ['cancelled', 'expired'] } }` |
+| `$like` | SQL LIKE (case-sensitive) | `{ name: { $like: '%acme%' } }` |
+| `$ilike` | SQL LIKE (case-insensitive) | `{ name: { $ilike: '%acme%' } }` |
+| `$is_null` | Is null / is not null | `{ deleted_at: { $is_null: true } }` |
+| `$and` | Logical AND | `{ $and: [condition1, condition2] }` |
+| `$or` | Logical OR | `{ $or: [condition1, condition2] }` |
+| `$not` | Logical NOT | `{ $not: { status: { $eq: 'cancelled' } } }` |
+
+## Comparison Operators
+
+### $eq — Equal
+
+```typescript
+const active = await db.main.orders.findMany({
+  where: { status: { $eq: 'active' } },
+})
+```
+
+### $ne — Not Equal
+
+```typescript
+const notCancelled = await db.main.orders.findMany({
+  where: { status: { $ne: 'cancelled' } },
+})
+```
+
+### $gt, $gte, $lt, $lte — Range
+
+```typescript
+const highValue = await db.main.orders.findMany({
+  where: {
+    amount: { $gte: 100 },
+    amount: { $lt: 1000 },
+  },
+})
+```
+
+## Set Operators
+
+### $in — In Array
+
+```typescript
+const selected = await db.main.orders.findMany({
+  where: { status: { $in: ['active', 'pending', 'shipped'] } },
+})
+```
+
+### $nin — Not In Array
+
+```typescript
+const excluded = await db.main.orders.findMany({
+  where: { status: { $nin: ['cancelled', 'expired'] } },
+})
+```
+
+## Pattern Matching
+
+### $like — Case-Sensitive
+
+Uses SQL `LIKE` syntax. `%` matches any sequence of characters, `_` matches a single character.
+
+```typescript
+const matched = await db.main.customers.findMany({
+  where: { name: { $like: 'Acme%' } },
+})
+```
+
+### $ilike — Case-Insensitive
+
+```typescript
+const matched = await db.main.customers.findMany({
+  where: { email: { $ilike: '%@acme.com' } },
+})
+```
+
+## Null Check
+
+### $is_null
+
+```typescript
+// Find rows where deleted_at is null
+const active = await db.main.orders.findMany({
+  where: { deleted_at: { $is_null: true } },
+})
+
+// Find rows where deleted_at is not null
+const deleted = await db.main.orders.findMany({
+  where: { deleted_at: { $is_null: false } },
+})
+```
+
+## Logical Operators
+
+### $and — All Conditions Must Match
+
+Implicit when you list multiple fields at the top level. Use `$and` explicitly when you need multiple conditions on the same field.
+
+```typescript
+const result = await db.main.orders.findMany({
+  where: {
+    $and: [
+      { amount: { $gte: 100 } },
+      { amount: { $lte: 500 } },
+    ],
+  },
+})
+```
+
+### $or — Any Condition Must Match
+
+```typescript
+const result = await db.main.orders.findMany({
+  where: {
+    $or: [
+      { status: { $eq: 'active' } },
+      { status: { $eq: 'pending' } },
+    ],
+  },
+})
+```
+
+### $not — Negate a Condition
+
+```typescript
+const result = await db.main.orders.findMany({
+  where: {
+    $not: { status: { $in: ['cancelled', 'expired'] } },
+  },
+})
+```
+
+## Combining Operators
+
+Nest logical operators for complex queries.
+
+```typescript
+const result = await db.main.orders.findMany({
+  where: {
+    $and: [
+      {
+        $or: [
+          { status: { $eq: 'active' } },
+          { status: { $eq: 'shipped' } },
+        ],
+      },
+      { amount: { $gte: 100 } },
+      { deleted_at: { $is_null: true } },
+    ],
+  },
+})
+```

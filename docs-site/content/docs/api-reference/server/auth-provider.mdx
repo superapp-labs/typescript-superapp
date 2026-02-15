@@ -1,0 +1,284 @@
+---
+title: AuthProvider Interface
+description: "Build custom auth providers."
+---
+
+An auth provider handles JWT verification, user lookup, and session enrichment. superapp ships with `betterAuthProvider` for most use cases, but you can implement the `AuthProvider` interface for custom authentication.
+
+## TypeScript Interface
+
+```typescript
+interface AuthProvider {
+  /**
+   * Verify a JWT token and return the decoded payload.
+   * Throw an error if the token is invalid or expired.
+   */
+  verifyToken(token: string): Promise<JWTPayload>
+
+  /**
+   * Look up a user record from the decoded JWT payload.
+   * Return null if the user is not found (results in 401).
+   */
+  findUser(payload: JWTPayload, db: QueryBuilder): Promise<User | null>
+
+  /**
+   * Enrich the user with session data (roles, orgs, etc.).
+   * The returned object becomes $user.* in permissions.
+   * Optional — if omitted, the User object is used directly.
+   */
+  resolveSession?(user: User, db: QueryBuilder): Promise<EnrichedUser>
+
+  /**
+   * HTTP route handlers for auth endpoints (/auth/*).
+   * Optional — if omitted, no auth routes are registered.
+   */
+  routes?: Record<string, RouteHandler>
+}
+
+interface JWTPayload {
+  sub?: string
+  iss?: string
+  aud?: string
+  exp?: number
+  iat?: number
+  [key: string]: any
+}
+
+interface User {
+  id: string
+  email?: string
+  name?: string
+  [key: string]: any
+}
+
+interface EnrichedUser extends User {
+  roles?: string[]
+  [key: string]: any
+}
+
+type RouteHandler = (ctx: RequestContext) => Promise<Response>
+
+interface QueryBuilder {
+  selectFrom(table: string): SelectQueryBuilder
+  insertInto(table: string): InsertQueryBuilder
+  updateTable(table: string): UpdateQueryBuilder
+  deleteFrom(table: string): DeleteQueryBuilder
+}
+```
+
+## `betterAuthProvider`
+
+The built-in provider using [better-auth](https://www.better-auth.com). Handles JWT signing/verification, session management, and auth routes automatically.
+
+```typescript
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const auth = betterAuthProvider({
+  secret: process.env.AUTH_SECRET!,
+  userTable: {
+    table: 'main.users',
+    matchOn: { column: 'id', jwtField: 'id' },
+    columns: ['id', 'email', 'name'],
+  },
+  session: {
+    expiresIn: '7d',
+    refreshWindow: '1d',
+  },
+  resolveSession: async (user, db) => {
+    const memberships = await db
+      .selectFrom('main.members')
+      .select(['organization_id', 'role'])
+      .where('user_id', '=', user.id)
+      .where('status', '=', 'active')
+      .execute()
+
+    return {
+      ...user,
+      org_ids: memberships.map(m => m.organization_id),
+      current_org_id: memberships[0]?.organization_id ?? null,
+      roles: memberships.map(m => m.role),
+    }
+  },
+})
+```
+
+### Options
+
+| Option | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `secret` | `string` | Yes | -- | Secret key for JWT signing and verification. Must be at least 32 characters. |
+| `userTable` | `UserTableConfig` | Yes | -- | Configuration for the user table lookup. |
+| `userTable.table` | `string` | Yes | -- | Fully qualified table name (e.g., `'main.users'`). |
+| `userTable.matchOn` | `{ column: string; jwtField: string }` | Yes | -- | How to match a JWT payload to a user row. `column` is the database column, `jwtField` is the JWT claim. |
+| `userTable.columns` | `string[]` | No | All columns | Which columns to select from the user table. |
+| `session` | `SessionConfig` | No | See below | Session duration and refresh settings. |
+| `session.expiresIn` | `string` | No | `'7d'` | Session duration. Accepts `'1h'`, `'7d'`, `'30d'`, etc. |
+| `session.refreshWindow` | `string` | No | `'1d'` | Time before expiry when the session is automatically refreshed. |
+| `resolveSession` | `(user: User, db: QueryBuilder) => Promise<EnrichedUser>` | No | Identity function | Enrich the user with additional data. The returned object becomes `$user.*` in permissions. |
+| `emailVerification` | `boolean` | No | `false` | Require email verification before allowing sign-in. |
+| `forgotPassword` | `boolean` | No | `true` | Enable the forgot password flow. |
+
+## Custom Auth Provider
+
+Implement the `AuthProvider` interface to integrate with any authentication system.
+
+### Example: Firebase Auth
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import type { AuthProvider } from '@superapp/backend/auth'
+import admin from 'firebase-admin'
+
+const firebaseAuth: AuthProvider = {
+  async verifyToken(token: string) {
+    const decoded = await admin.auth().verifyIdToken(token)
+    return {
+      sub: decoded.uid,
+      email: decoded.email,
+      name: decoded.name,
+    }
+  },
+
+  async findUser(payload, db) {
+    const users = await db
+      .selectFrom('main.users')
+      .selectAll()
+      .where('firebase_uid', '=', payload.sub)
+      .execute()
+
+    return users[0] ?? null
+  },
+
+  async resolveSession(user, db) {
+    const memberships = await db
+      .selectFrom('main.org_members')
+      .select(['org_id', 'role'])
+      .where('user_id', '=', user.id)
+      .execute()
+
+    return {
+      ...user,
+      org_ids: memberships.map(m => m.org_id),
+      roles: memberships.map(m => m.role),
+    }
+  },
+}
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: firebaseAuth,
+  permissions: { /* ... */ },
+  roles: { /* ... */ },
+})
+```
+
+### Example: Auth0
+
+```typescript
+import type { AuthProvider } from '@superapp/backend/auth'
+import jwt from 'jsonwebtoken'
+import jwksClient from 'jwks-rsa'
+
+const client = jwksClient({
+  jwksUri: 'https://your-tenant.auth0.com/.well-known/jwks.json',
+})
+
+const auth0Provider: AuthProvider = {
+  async verifyToken(token: string) {
+    const decoded = jwt.decode(token, { complete: true })
+    if (!decoded) throw new Error('Invalid token')
+
+    const key = await client.getSigningKey(decoded.header.kid)
+    const verified = jwt.verify(token, key.getPublicKey(), {
+      algorithms: ['RS256'],
+      audience: 'https://api.myapp.com',
+      issuer: 'https://your-tenant.auth0.com/',
+    })
+
+    return verified as Record<string, any>
+  },
+
+  async findUser(payload, db) {
+    const users = await db
+      .selectFrom('main.users')
+      .selectAll()
+      .where('auth0_id', '=', payload.sub)
+      .execute()
+
+    return users[0] ?? null
+  },
+
+  async resolveSession(user, db) {
+    const roles = await db
+      .selectFrom('main.user_roles')
+      .select(['role'])
+      .where('user_id', '=', user.id)
+      .execute()
+
+    return {
+      ...user,
+      roles: roles.map(r => r.role),
+    }
+  },
+}
+```
+
+### Example: Simple API Key Auth
+
+```typescript
+import type { AuthProvider } from '@superapp/backend/auth'
+
+const apiKeyProvider: AuthProvider = {
+  async verifyToken(token: string) {
+    // Token is an API key, not a JWT
+    // Return a payload-like object with the key
+    return { sub: token, type: 'api_key' }
+  },
+
+  async findUser(payload, db) {
+    const keys = await db
+      .selectFrom('main.api_keys')
+      .select(['user_id', 'key_hash', 'scopes'])
+      .where('key_hash', '=', hashApiKey(payload.sub))
+      .where('revoked', '=', false)
+      .execute()
+
+    if (!keys[0]) return null
+
+    const users = await db
+      .selectFrom('main.users')
+      .selectAll()
+      .where('id', '=', keys[0].user_id)
+      .execute()
+
+    return users[0] ?? null
+  },
+}
+```
+
+## The `resolveSession` Return Value
+
+Whatever you return from `resolveSession` becomes available as `$user.*` in permission definitions. Design this object to include everything your permissions need.
+
+```typescript
+// resolveSession returns:
+{
+  id: 'usr_42',
+  email: 'alice@example.com',
+  name: 'Alice',
+  customer_id: 'cust_002',
+  org_ids: ['org_1', 'org_2'],
+  current_org_id: 'org_1',
+  team_ids: ['team_a', 'team_b'],
+  roles: ['editor', 'team_lead'],
+}
+
+// Available in permissions as:
+filter: { customer_id: { $eq: '$user.customer_id' } }           // 'cust_002'
+filter: { organization_id: { $in: '$user.org_ids' } }           // ['org_1', 'org_2']
+filter: { team_id: { $in: '$user.team_ids' } }                  // ['team_a', 'team_b']
+preset: { created_by: '$user.id' }                               // 'usr_42'
+preset: { organization_id: '$user.current_org_id' }              // 'org_1'
+```

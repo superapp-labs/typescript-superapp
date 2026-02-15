@@ -1,0 +1,329 @@
+---
+title: "POST /data"
+description: "Query endpoint request and response format."
+---
+
+The `/data` endpoint is the single entry point for all data operations. It accepts structured JSON and returns query results. Every request must include a valid JWT.
+
+## Request Format
+
+```
+POST /data HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer <jwt_token>
+
+{
+  "action": "findMany",
+  "table": "main.orders",
+  "select": ["id", "amount", "status"],
+  "where": { "status": { "$eq": "active" } },
+  "orderBy": { "created_at": "desc" },
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Request Body Fields
+
+| Field | Type | Required | Applies To | Description |
+|---|---|---|---|---|
+| `action` | `string` | Yes | All | The operation to perform. One of: `findMany`, `findOne`, `create`, `update`, `delete`, `count`, `aggregate`. |
+| `table` | `string` | Yes | All | Fully qualified table name in `connection.table` format (e.g., `main.orders`). |
+| `select` | `string[]` | No | `findMany`, `findOne`, `create`, `update` | Columns to return. If omitted, returns all permitted columns. |
+| `where` | `object` | Conditional | `findMany`, `findOne`, `update`, `delete`, `count`, `aggregate` | Filter conditions using [filter operators](/docs/api-reference/client/filter-operators). Required for `findOne`, `update`, and `delete`. |
+| `include` | `object` | No | `findMany`, `findOne` | Related tables to load in the same request. |
+| `orderBy` | `object` | No | `findMany` | Sort order. Keys are column names, values are `"asc"` or `"desc"`. |
+| `limit` | `number` | No | `findMany` | Maximum number of rows to return. Capped by server's `limits.maxLimit`. |
+| `offset` | `number` | No | `findMany` | Number of rows to skip for pagination. |
+| `data` | `object` | Conditional | `create`, `update` | The row data for write operations. Required for `create` and `update`. |
+| `operations` | `object[]` | Conditional | `aggregate` | Aggregate operations to perform. Required for `aggregate`. |
+| `groupBy` | `string[]` | No | `aggregate` | Columns to group by for aggregation. |
+
+## Request Examples
+
+### findMany
+
+```json
+{
+  "action": "findMany",
+  "table": "main.orders",
+  "select": ["id", "amount", "status", "created_at"],
+  "where": {
+    "status": { "$eq": "active" },
+    "amount": { "$gte": 100 }
+  },
+  "include": {
+    "customer": {
+      "select": ["id", "name", "email"]
+    }
+  },
+  "orderBy": { "created_at": "desc" },
+  "limit": 20,
+  "offset": 0
+}
+```
+
+### findOne
+
+```json
+{
+  "action": "findOne",
+  "table": "main.orders",
+  "where": { "id": { "$eq": "ord_abc123" } },
+  "select": ["id", "amount", "status"],
+  "include": {
+    "customer": {
+      "select": ["name", "email"]
+    }
+  }
+}
+```
+
+### create
+
+```json
+{
+  "action": "create",
+  "table": "main.orders",
+  "data": {
+    "amount": 250,
+    "status": "draft",
+    "notes": "New order"
+  },
+  "select": ["id", "amount", "status", "created_at"]
+}
+```
+
+### update
+
+```json
+{
+  "action": "update",
+  "table": "main.orders",
+  "where": { "id": { "$eq": "ord_abc123" } },
+  "data": {
+    "status": "active",
+    "notes": "Approved"
+  },
+  "select": ["id", "status", "updated_at"]
+}
+```
+
+### delete
+
+```json
+{
+  "action": "delete",
+  "table": "main.orders",
+  "where": { "id": { "$eq": "ord_abc123" } }
+}
+```
+
+### count
+
+```json
+{
+  "action": "count",
+  "table": "main.orders",
+  "where": { "status": { "$eq": "active" } }
+}
+```
+
+### aggregate
+
+```json
+{
+  "action": "aggregate",
+  "table": "main.orders",
+  "where": { "status": { "$eq": "active" } },
+  "operations": [
+    { "fn": "sum", "column": "amount", "alias": "total" },
+    { "fn": "count", "column": "*", "alias": "count" },
+    { "fn": "avg", "column": "amount", "alias": "average" }
+  ],
+  "groupBy": ["status"]
+}
+```
+
+## Response Format
+
+### Success Responses
+
+**findMany** -- Returns an array of rows:
+
+```json
+{
+  "data": [
+    { "id": "ord_001", "amount": 250, "status": "active", "created_at": "2025-03-15T10:00:00Z" },
+    { "id": "ord_002", "amount": 100, "status": "active", "created_at": "2025-03-14T09:00:00Z" }
+  ]
+}
+```
+
+**findOne** -- Returns a single row or `null`:
+
+```json
+{
+  "data": { "id": "ord_001", "amount": 250, "status": "active" }
+}
+```
+
+```json
+{
+  "data": null
+}
+```
+
+**create** -- Returns the created row:
+
+```json
+{
+  "data": { "id": "ord_003", "amount": 250, "status": "draft", "created_at": "2025-03-16T12:00:00Z" }
+}
+```
+
+**update** -- Returns the updated rows:
+
+```json
+{
+  "data": [
+    { "id": "ord_001", "status": "active", "updated_at": "2025-03-16T12:05:00Z" }
+  ]
+}
+```
+
+**delete** -- Returns the count of deleted rows:
+
+```json
+{
+  "data": { "count": 1 }
+}
+```
+
+**count** -- Returns the count:
+
+```json
+{
+  "data": { "count": 42 }
+}
+```
+
+**aggregate** -- Returns the aggregation result:
+
+```json
+{
+  "data": [
+    { "status": "active", "total": 15000, "count": 42, "average": 357.14 }
+  ]
+}
+```
+
+## Authentication
+
+Every request to `/data` must include a valid JWT in the `Authorization` header:
+
+```
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+If the token is missing, invalid, or expired, the server responds with `401 Unauthorized`:
+
+```json
+{
+  "error": "UNAUTHORIZED",
+  "message": "Invalid or expired token.",
+  "correlation_id": "req_xyz789"
+}
+```
+
+## Error Format
+
+All errors follow the same shape:
+
+```typescript
+interface ErrorResponse {
+  /** Error code for programmatic handling */
+  error: string
+  /** Human-readable error message */
+  message: string
+  /** Unique request ID for log correlation */
+  correlation_id: string
+  /** Additional details (development mode only) */
+  details?: Record<string, any>
+}
+```
+
+### Error Codes
+
+| HTTP Status | Error Code | Description |
+|---|---|---|
+| `400` | `BAD_REQUEST` | Invalid request body, missing required fields, or malformed filter. |
+| `401` | `UNAUTHORIZED` | Missing, invalid, or expired JWT token. |
+| `403` | `PERMISSION_DENIED` | The user does not have permission for this table/operation. |
+| `404` | `TABLE_NOT_FOUND` | The specified table does not exist in any connection. |
+| `408` | `QUERY_TIMEOUT` | The query exceeded the configured timeout. |
+| `413` | `PAYLOAD_TOO_LARGE` | The request body exceeds `limits.maxRequestBodySize`. |
+| `422` | `VALIDATION_ERROR` | Write data failed the permission's `check` validation. |
+| `429` | `RATE_LIMITED` | The user or IP has exceeded the rate limit. |
+| `500` | `INTERNAL_ERROR` | An unexpected server error occurred. |
+
+### Error Example
+
+```json
+{
+  "error": "PERMISSION_DENIED",
+  "message": "You do not have permission to perform this action.",
+  "correlation_id": "req_abc123"
+}
+```
+
+In development mode (`NODE_ENV !== 'production'`), the response includes additional details:
+
+```json
+{
+  "error": "PERMISSION_DENIED",
+  "message": "No SELECT permission on table 'main.orders' for role 'viewer'.",
+  "correlation_id": "req_abc123",
+  "details": {
+    "table": "main.orders",
+    "operation": "select",
+    "role": "viewer",
+    "evaluated_permissions": ["view_own_orders"]
+  }
+}
+```
+
+## cURL Examples
+
+```bash
+# findMany
+curl -X POST http://localhost:3001/data \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "action": "findMany",
+    "table": "main.orders",
+    "select": ["id", "amount", "status"],
+    "limit": 10
+  }'
+
+# create
+curl -X POST http://localhost:3001/data \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "action": "create",
+    "table": "main.orders",
+    "data": { "amount": 250, "status": "draft" }
+  }'
+
+# count
+curl -X POST http://localhost:3001/data \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{
+    "action": "count",
+    "table": "main.orders",
+    "where": { "status": { "$eq": "active" } }
+  }'
+```

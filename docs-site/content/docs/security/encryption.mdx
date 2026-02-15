@@ -1,0 +1,137 @@
+---
+title: Encryption
+description: Connection secret encryption with AES-256-GCM.
+---
+
+Connection secrets -- database URLs, API keys, passwords -- are encrypted at rest using AES-256-GCM with per-project derived keys. Secrets are displayed once at creation time and never again.
+
+```typescript
+const engine = createEngine({
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+## Master Key
+
+The `masterKey` is the root secret for all encryption operations. It is never stored in the database -- only in your environment variables or secret manager.
+
+Generate a master key:
+
+```bash
+openssl rand -hex 32
+```
+
+This produces a 256-bit (64-character hex) key. Store it as an environment variable:
+
+```bash
+SUPERAPP_MASTER_KEY=a1b2c3d4e5f6...your-64-char-hex-key
+```
+
+<Callout>
+If the master key is lost, all encrypted connection secrets become unrecoverable. Store it in a secret manager (AWS Secrets Manager, HashiCorp Vault, Doppler) and back it up securely.
+</Callout>
+
+## Key Derivation
+
+The engine never uses the master key directly for encryption. Instead, it derives a unique encryption key for each project using HKDF (HMAC-based Key Derivation Function):
+
+```
+Master Key
+  │
+  └─ HKDF-SHA256(masterKey, salt=projectId, info="superapp-encryption")
+       │
+       └─ Per-Project Key (256-bit)
+            │
+            ├─ Encrypt connection "main" URL
+            ├─ Encrypt connection "warehouse" URL
+            └─ Encrypt custom provider API keys
+```
+
+This ensures that even if one project's derived key is compromised, other projects remain secure.
+
+## Encryption Details
+
+| Property | Value |
+|---|---|
+| Algorithm | AES-256-GCM |
+| Key size | 256 bits |
+| IV size | 96 bits (random per encryption) |
+| Auth tag | 128 bits |
+| KDF | HKDF-SHA256 |
+
+Each encryption operation uses a random 96-bit initialization vector (IV). The IV and authentication tag are stored alongside the ciphertext. The auth tag provides tamper detection -- if the ciphertext or IV is modified, decryption fails.
+
+## Display-Once Flow
+
+When a connection is added through the admin UI or API, the secret (database URL, API key) follows a display-once flow:
+
+1. User submits the connection config with the plaintext secret
+2. Engine encrypts the secret with the per-project derived key
+3. Ciphertext, IV, and auth tag are stored in the engine database
+4. The plaintext secret is returned to the user **once** in the response
+5. All subsequent reads return a masked value (`postgres://****:****@host:5432/db`)
+
+```
+POST /admin/api/connections
+{
+  "name": "main",
+  "type": "postgres",
+  "url": "postgres://user:secret@host:5432/db"
+}
+
+→ 201 Created
+{
+  "name": "main",
+  "type": "postgres",
+  "url": "postgres://user:secret@host:5432/db"   ← shown once
+}
+
+GET /admin/api/connections/main
+{
+  "name": "main",
+  "type": "postgres",
+  "url": "postgres://****:****@host:5432/db"     ← masked forever
+}
+```
+
+## Key Rotation
+
+To rotate the master key:
+
+1. Set the new master key and old master key in environment variables
+2. Run the rotation command
+3. Remove the old master key
+
+```bash
+SUPERAPP_MASTER_KEY=new-key-here \
+SUPERAPP_MASTER_KEY_OLD=old-key-here \
+npx @superapp/backend rotate-keys
+```
+
+The rotation command:
+
+1. Decrypts all secrets using the old derived keys
+2. Re-encrypts all secrets using new derived keys
+3. Updates the stored ciphertext
+4. Verifies all secrets decrypt correctly with the new key
+
+<Callout>
+Key rotation is atomic -- if any step fails, all changes are rolled back and the old key remains active.
+</Callout>
+
+## Programmatic Connections
+
+When connections are defined in code (not through the admin UI), the URL comes from environment variables and is never stored in the engine database:
+
+```typescript
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+In this case, encryption applies only to connections added at runtime through the admin API. The `masterKey` is still required for admin API authentication and schema token signing.

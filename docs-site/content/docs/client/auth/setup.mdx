@@ -1,0 +1,101 @@
+---
+title: Auth Setup
+description: Configure the auth client for session management and authentication in your frontend.
+---
+
+`createAuth` initializes the auth client that handles sign-in, sign-up, session management, and token refresh.
+
+```typescript
+import { createAuth } from '@superapp/db/auth'
+
+const authClient = createAuth('http://localhost:3001')
+```
+
+## Setup
+
+Create a shared auth client in a setup file so it can be used across your app.
+
+**`lib/superapp.ts`**
+
+```typescript
+import { createClient } from '@superapp/db'
+import { createAuth } from '@superapp/db/auth'
+import type { SuperAppSchema } from '../generated/schema'
+
+const SUPERAPP_URL = process.env.NEXT_PUBLIC_SUPERAPP_URL!
+
+export const authClient = createAuth(SUPERAPP_URL)
+
+export function createDb(userToken: string) {
+  return createClient<SuperAppSchema>({
+    url: SUPERAPP_URL + '/data',
+    userToken,
+  })
+}
+```
+
+## createAuth Options
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `url` | `string` | Yes | Base URL of your superapp backend (without `/data`) |
+
+## useSession Hook
+
+The `useSession` hook provides the current user's session in any React component. It must be used within an [`AuthProvider`](/docs/client/components/auth-provider).
+
+```tsx
+import { useSession } from '@superapp/db/auth'
+
+export function ProfilePage() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return <div>Loading...</div>
+  if (!session) return <div>Not signed in</div>
+
+  return (
+    <div>
+      <p>Email: {session.user.email}</p>
+      <p>Name: {session.user.name}</p>
+    </div>
+  )
+}
+```
+
+### Return Value
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `data` | `Session \| null` | The current session, or `null` if not authenticated |
+| `isPending` | `boolean` | `true` while the session is being loaded |
+
+### Session Object
+
+| Property | Type | Description |
+| --- | --- | --- |
+| `token` | `string` | JWT for authenticating queries |
+| `user.id` | `string` | User ID |
+| `user.email` | `string` | User email |
+| `user.name` | `string` | User display name |
+
+## useDb Hook
+
+Combine `useSession` with `createDb` to create a reusable hook for database access.
+
+**`hooks/use-db.ts`**
+
+```tsx
+import { useMemo } from 'react'
+import { useSession } from '@superapp/db/auth'
+import { createDb } from '@/lib/superapp'
+
+export function useDb() {
+  const { data: session } = useSession()
+  return useMemo(
+    () => (session?.token ? createDb(session.token) : null),
+    [session?.token]
+  )
+}
+```
+
+This returns `null` when the user is not authenticated and a typed `db` client when they are.

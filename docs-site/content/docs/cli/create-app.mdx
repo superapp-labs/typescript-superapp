@@ -1,0 +1,136 @@
+---
+title: create-app
+description: Scaffold a new project.
+---
+
+Generate a complete project with a configured backend, Next.js frontend, and example permissions in one command.
+
+```bash
+npx @superapp/backend create-app my-app
+```
+
+## What It Creates
+
+```
+my-app/
+├── apps/
+│   ├── backend/
+│   │   ├── src/
+│   │   │   └── server.ts          # Engine config with example connections
+│   │   ├── package.json
+│   │   └── tsconfig.json
+│   └── web/
+│       ├── app/
+│       │   ├── layout.tsx         # AuthProvider wrapper
+│       │   ├── page.tsx           # Landing page
+│       │   ├── auth/
+│       │   │   └── [[...slug]]/
+│       │   │       └── page.tsx   # Sign in / sign up
+│       │   └── dashboard/
+│       │       └── page.tsx       # Example data page
+│       ├── hooks/
+│       │   └── use-db.ts          # Typed database hook
+│       ├── lib/
+│       │   └── superapp.ts        # Client SDK setup
+│       ├── generated/
+│       │   └── schema.ts          # Auto-generated types
+│       ├── package.json
+│       └── tsconfig.json
+├── .env.example                   # Environment variables template
+├── package.json                   # Workspace root
+└── turbo.json                     # Turborepo config
+```
+
+## Generated Backend
+
+The scaffolded `server.ts` includes a working engine with SQLite for local development:
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
+
+const engine = createEngine({
+  integrations: [sqliteProvider],
+  connections: {
+    main: { type: 'sqlite', path: './data/dev.db' },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+      columns: ['id', 'email', 'name'],
+    },
+  }),
+  permissions: {
+    read_orders: {
+      name: 'Read orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+    },
+  },
+  roles: {
+    viewer: ['read_orders'],
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+## Running the Project
+
+```bash
+cd my-app
+cp .env.example .env
+npm install
+npm run dev
+```
+
+This starts both the backend (port 3001) and the Next.js frontend (port 3000) via Turborepo.
+
+Open `http://localhost:3000` to see the app. Sign up, sign in, and the dashboard page queries your database immediately.
+
+## Switching to Postgres
+
+When you are ready to move off SQLite, update the backend config:
+
+```typescript
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  // ... rest of config
+})
+```
+
+Add `PG_URL` to your `.env` file and regenerate types:
+
+```bash
+npx @superapp/backend generate --url http://localhost:3001 --token $SCHEMA_TOKEN
+```
+
+## Environment Variables
+
+The `.env.example` file includes all required variables:
+
+```bash
+# Backend
+AUTH_SECRET=your-auth-secret-here
+SUPERAPP_MASTER_KEY=your-master-key-here
+
+# Frontend
+NEXT_PUBLIC_SUPERAPP_URL=http://localhost:3001
+
+# Database (uncomment when switching to Postgres)
+# PG_URL=postgres://user:password@localhost:5432/mydb
+```

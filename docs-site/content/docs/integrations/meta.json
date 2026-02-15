@@ -1,0 +1,4 @@
+{
+  "title": "Integrations",
+  "pages": ["overview", "postgres", "mysql", "sqlite", "csv", "custom-provider"]
+}

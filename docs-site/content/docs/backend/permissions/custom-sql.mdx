@@ -1,0 +1,121 @@
+---
+title: Custom SQL
+description: Write advanced WHERE clauses with raw SQL for cases that standard operators cannot express.
+---
+
+When MongoDB-style operators are not enough, you can use custom SQL expressions in filters. This is an escape hatch for complex access control logic.
+
+```typescript
+permissions: {
+  view_recent_orders: {
+    name: 'View recent orders',
+    table: 'main.orders',
+    operations: { select: true },
+    columns: '*',
+    filter: {
+      $sql: "created_at > NOW() - INTERVAL '30 days'",
+    },
+  },
+}
+```
+
+## Syntax
+
+Use `$sql` as a filter key with a SQL string value:
+
+```typescript
+filter: {
+  $sql: "your_sql_expression",
+}
+```
+
+The expression is injected directly into the WHERE clause.
+
+## Examples
+
+### Date Range
+
+```typescript
+filter: {
+  $sql: "created_at > NOW() - INTERVAL '90 days'",
+}
+```
+
+```sql
+SELECT * FROM main.orders
+WHERE created_at > NOW() - INTERVAL '90 days'
+```
+
+### Computed Conditions
+
+```typescript
+filter: {
+  $sql: "amount * quantity <= 10000",
+}
+```
+
+```sql
+SELECT * FROM main.orders
+WHERE amount * quantity <= 10000
+```
+
+### Combining with Standard Filters
+
+Custom SQL can be combined with standard operator-based filters:
+
+```typescript
+filter: {
+  organization_id: { $in: '$user.org_ids' },
+  status: { $ne: 'deleted' },
+  $sql: "created_at > NOW() - INTERVAL '30 days'",
+}
+```
+
+```sql
+SELECT * FROM main.orders
+WHERE organization_id IN ('org_1', 'org_2')
+  AND status != 'deleted'
+  AND created_at > NOW() - INTERVAL '30 days'
+```
+
+### Using Session Variables in SQL
+
+Reference session variables with the `$user.` prefix inside the SQL string:
+
+```typescript
+filter: {
+  $sql: "created_by = '$user.id' OR assigned_to = '$user.id'",
+}
+```
+
+The engine replaces `$user.*` tokens with their actual values before executing.
+
+## Safety Rules
+
+Custom SQL is powerful but comes with constraints to prevent abuse:
+
+1. **Read-only** — Only expressions valid in a WHERE clause are allowed. No subqueries with `INSERT`, `UPDATE`, `DELETE`, or `DROP`.
+
+2. **No semicolons** — The engine rejects any SQL containing `;` to prevent statement injection.
+
+3. **No comments** — SQL comments (`--` and `/* */`) are stripped.
+
+4. **Parameterized session variables** — `$user.*` references are parameterized, not string-interpolated, to prevent SQL injection.
+
+5. **Schema-scoped** — You can only reference columns from the permission's table and its known relationships.
+
+6. **Allowlisted functions** — Only safe SQL functions are permitted (e.g., `NOW()`, `COALESCE`, `LOWER`, `UPPER`, `LENGTH`). System functions and file access functions are blocked.
+
+## When to Use Custom SQL
+
+| Use Case | Recommendation |
+|---|---|
+| Simple equality | Use `$eq` operator |
+| IN / NOT IN | Use `$in` / `$nin` |
+| Range checks | Use `$gt`, `$gte`, `$lt`, `$lte` |
+| Date math | Use `$sql` |
+| Computed columns | Use `$sql` |
+| Cross-column logic | Use `$sql` |
+| String patterns | Use `$sql` with `LIKE` |
+
+Prefer standard operators when possible. Use `$sql` only when the built-in operators cannot express your access rule.

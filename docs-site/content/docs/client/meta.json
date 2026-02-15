@@ -1,0 +1,11 @@
+{
+  "title": "Client SDK",
+  "pages": [
+    "overview",
+    "create-client",
+    "queries",
+    "auth",
+    "components",
+    "type-generation"
+  ]
+}

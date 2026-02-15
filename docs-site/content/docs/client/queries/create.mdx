@@ -1,0 +1,69 @@
+---
+title: create
+description: Insert a new row into a table with type-safe data.
+---
+
+`create` inserts a single row and returns the created record.
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({ url, userToken })
+
+const order = await db.main.orders.create({
+  data: {
+    amount: 250,
+    status: 'pending',
+    customer_id: 'cust_abc123',
+  },
+})
+// order: { id: string; amount: number; status: string; customer_id: string; created_at: string }
+```
+
+## Options
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `data` | `object` | Yes | Column-value pairs for the new row |
+
+## Column Presets
+
+If your server configuration defines column presets (e.g., automatically setting `organization_id` or `created_by` from the current user's session), those columns are injected server-side. You do not need to include them in your `data` object.
+
+```typescript
+// If the server has a preset: organization_id = $user.organization_id
+// You only need to provide the non-preset columns:
+const order = await db.main.orders.create({
+  data: {
+    amount: 250,
+    status: 'pending',
+    customer_id: 'cust_abc123',
+  },
+})
+// organization_id is automatically set by the server
+```
+
+## Creating a Customer
+
+```typescript
+const customer = await db.main.customers.create({
+  data: {
+    name: 'Acme Corp',
+    email: 'billing@acme.com',
+  },
+})
+// customer: { id: string; name: string; email: string; created_at: string }
+```
+
+## Creating an Organization
+
+```typescript
+const org = await db.main.organizations.create({
+  data: {
+    name: 'Acme Corp',
+    plan: 'enterprise',
+  },
+})
+// org: { id: string; name: string; plan: string; created_at: string }
+```

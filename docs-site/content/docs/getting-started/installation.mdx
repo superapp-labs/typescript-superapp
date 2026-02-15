@@ -1,0 +1,62 @@
+---
+title: Installation
+description: Install the server engine and client SDK.
+---
+
+Two packages, two `npm install` commands, and you're ready.
+
+## Prerequisites
+
+- **Node.js 18+** (LTS recommended)
+- **A database** — Postgres, MySQL, SQLite, or a directory of CSV files
+
+## Install the Server Engine
+
+In your backend project:
+
+```bash
+npm install @superapp/backend
+```
+
+This gives you the query engine, permission system, auth integration, admin UI, and all database adapters.
+
+## Install the Client SDK
+
+In your frontend project:
+
+```bash
+npm install @superapp/db
+```
+
+This gives you the type-safe query builder, auth client, and pre-built auth UI components. Zero server dependencies.
+
+<Callout>
+If your frontend and backend are in the same monorepo, install both. If they live in separate repos, install each in their respective project.
+</Callout>
+
+## Environment Variables
+
+Create a `.env` file in your backend project with at minimum:
+
+```bash
+# Required
+AUTH_SECRET=your-auth-secret-min-32-chars
+SUPERAPP_MASTER_KEY=your-256-bit-master-key-hex
+
+# At least one database connection
+PG_URL=postgres://user:pass@localhost:5432/mydb
+```
+
+| Variable | Purpose |
+|----------|---------|
+| `AUTH_SECRET` | Signs and verifies JWT tokens. Must be at least 32 characters. |
+| `SUPERAPP_MASTER_KEY` | Encrypts connection URLs at rest (AES-256-GCM). |
+| `PG_URL` | Postgres connection string. Replace with `MYSQL_URL` or a SQLite path depending on your database. |
+
+<Callout type="warn">
+Never commit `.env` files to version control. Add `.env` to your `.gitignore`.
+</Callout>
+
+## What's Next
+
+- [Quick Start](/docs/getting-started/quick-start) — Set up your server and client in 5 minutes.

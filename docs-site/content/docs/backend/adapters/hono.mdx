@@ -1,0 +1,109 @@
+---
+title: Hono
+description: Deploy the superapp backend with Hono, the recommended adapter for Node.js and edge runtimes.
+---
+
+Hono is the recommended adapter. It works on Node.js, Bun, Deno, and Cloudflare Workers with zero config changes.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { serve } from '@hono/node-server'
+import { Hono } from 'hono'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+## With Authentication and Permissions
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { serve } from '@hono/node-server'
+import { Hono } from 'hono'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+    },
+  }),
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: '*',
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+
+serve({ fetch: app.fetch, port: 3001 }, (info) => {
+  console.log(`Server running at http://localhost:${info.port}`)
+})
+```
+
+## Adding Custom Routes
+
+Mount the engine middleware alongside your own Hono routes:
+
+```typescript
+const app = new Hono()
+
+// Custom routes
+app.get('/health', (c) => c.json({ status: 'ok' }))
+
+// Engine routes (/data, /schema, /auth/*, /admin)
+app.route('/', createHonoMiddleware(engine))
+
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+## With CORS
+
+```typescript
+import { cors } from 'hono/cors'
+
+const app = new Hono()
+
+app.use('*', cors({
+  origin: ['https://myapp.com'],
+  credentials: true,
+}))
+
+app.route('/', createHonoMiddleware(engine))
+```
+
+## Route Prefix
+
+Mount the engine under a custom path prefix:
+
+```typescript
+app.route('/api/v1', createHonoMiddleware(engine))
+// Routes become: /api/v1/data, /api/v1/schema, /api/v1/auth/*, /api/v1/admin
+```

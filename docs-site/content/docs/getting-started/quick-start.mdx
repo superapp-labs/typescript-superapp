@@ -1,0 +1,241 @@
+---
+title: Quick Start
+description: Get running in 5 minutes.
+---
+
+From zero to querying your database with auth and permissions in five steps.
+
+## The Fastest Way
+
+Scaffold a complete project with one command:
+
+```bash
+npx @superapp/backend create-app my-app
+```
+
+This creates a monorepo with a configured backend, a Next.js frontend, environment files, and example permissions. Run `npm run dev` and you're live.
+
+If you prefer to set things up manually, follow the steps below.
+
+## Manual Setup
+
+### Step 1: Create the Engine Config
+
+Create `server.ts` in your backend project:
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const auth = betterAuthProvider({
+  secret: process.env.AUTH_SECRET!,
+  userTable: {
+    table: 'main.users',
+    matchOn: { column: 'id', jwtField: 'id' },
+    columns: ['id', 'email', 'name'],
+  },
+})
+
+export const engine = createEngine({
+  database: './superapp.db',
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth,
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      filter: {
+        organization: {
+          members: { user_id: { $eq: '$user.id' } },
+        },
+      },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+```
+
+### Step 2: Start the Server
+
+Add the HTTP adapter below your engine config in the same file, or import the engine into a separate entry point:
+
+```typescript
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+
+serve({ fetch: app.fetch, port: 3001 }, (info) => {
+  console.log(`@superapp/backend running on http://localhost:${info.port}`)
+})
+```
+
+<Callout>
+Not using Hono? superapp ships adapters for [Next.js](/docs/backend/adapters), [Express](/docs/backend/adapters), and a [generic handler](/docs/backend/adapters) for Cloudflare Workers, Deno, and Bun.
+</Callout>
+
+### Step 3: Set Up the Client SDK
+
+In your frontend project, create `lib/superapp.ts`:
+
+```typescript
+import { createClient } from '@superapp/db'
+import { createAuth } from '@superapp/db/auth'
+import type { SuperAppSchema } from '../generated/schema'
+
+const SUPERAPP_URL = process.env.NEXT_PUBLIC_SUPERAPP_URL!
+// e.g. 'http://localhost:3001'
+
+export const authClient = createAuth(SUPERAPP_URL)
+
+export function createDb(token: string) {
+  return createClient<SuperAppSchema>({
+    url: SUPERAPP_URL + '/data',
+    userToken: token,
+  })
+}
+```
+
+<Callout>
+Generate your `SuperAppSchema` types by running `npx @superapp/backend generate` against your running server. This introspects your database and outputs a TypeScript schema file.
+</Callout>
+
+### Step 4: Add Auth
+
+Wrap your app with `AuthProvider` and drop in `AuthCard` for sign-in/sign-up:
+
+```tsx
+// app/layout.tsx
+import { AuthProvider } from '@superapp/db/components'
+import { authClient } from '@/lib/superapp'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+
+  return (
+    <html lang="en">
+      <body>
+        <AuthProvider
+          authClient={authClient}
+          navigate={router.push}
+          replace={router.replace}
+          Link={Link}
+          onSessionChange={() => router.refresh()}
+        >
+          {children}
+        </AuthProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+```tsx
+// app/auth/[[...slug]]/page.tsx
+import { AuthCard } from '@superapp/db/components'
+
+export default function AuthPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <AuthCard />
+    </div>
+  )
+}
+```
+
+This gives you `/auth/sign-in`, `/auth/sign-up`, and `/auth/forgot-password` — fully functional, no form code.
+
+### Step 5: Query Data
+
+Create a hook to get a typed database client, then query:
+
+```tsx
+// hooks/use-db.ts
+import { useMemo } from 'react'
+import { useSession } from '@superapp/db/auth'
+import { createDb } from '@/lib/superapp'
+
+export function useDb() {
+  const { data: session } = useSession()
+  return useMemo(
+    () => session?.token ? createDb(session.token) : null,
+    [session?.token],
+  )
+}
+```
+
+```tsx
+// app/dashboard/page.tsx
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useDb } from '@/hooks/use-db'
+
+export default function DashboardPage() {
+  const db = useDb()
+  const [orders, setOrders] = useState<any[]>([])
+
+  useEffect(() => {
+    if (!db) return
+    db.main.orders.findMany({
+      select: ['id', 'amount', 'status', 'created_at'],
+      where: { status: { $eq: 'active' } },
+      orderBy: { created_at: 'desc' },
+      limit: 50,
+    }).then(setOrders)
+  }, [db])
+
+  if (!db) return <p>Please sign in.</p>
+
+  return (
+    <ul>
+      {orders.map((o) => (
+        <li key={o.id}>Order #{o.id} - ${o.amount} - {o.status}</li>
+      ))}
+    </ul>
+  )
+}
+```
+
+## What You Just Built
+
+```
+Browser                                      Server
+──────                                       ──────
+AuthCard (sign in)
+  │
+  ├─ POST /auth/sign-in ──────────────────→  better-auth verifies credentials
+  ← JWT token ────────────────────────────   returns session + JWT
+  │
+db.main.orders.findMany(...)
+  │
+  ├─ POST /data ──────────────────────────→  1. JWT verified
+  │  Authorization: Bearer <jwt>             2. resolveSession() → $user
+  │  Body: { action, table, where, ... }     3. Permission check:
+  │                                             - table: main.orders ✓
+  │                                             - operation: select ✓
+  │                                             - columns: stripped to allowed
+  │                                             - WHERE: org filter injected
+  │                                          4. JSON → Kysely → SQL
+  │                                          5. DuckDB → Postgres
+  ← [{ id, amount, status, created_at }]     6. Results returned
+```
+
+## What's Next
+
+- [Backend Configuration](/docs/backend) — Full reference for `createEngine` options, connections, DuckDB tuning, and security settings.
+- [Client Queries](/docs/client/queries) — All query methods: `findMany`, `findOne`, `create`, `update`, `delete`, `count`, `aggregate`.
+- [Permissions](/docs/backend/permissions) — Row-level filters, column restrictions, write checks, and preset values.

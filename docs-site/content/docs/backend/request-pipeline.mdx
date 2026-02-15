@@ -1,0 +1,208 @@
+---
+title: Request Pipeline
+description: The complete 10-step request pipeline from incoming request to JSON response.
+---
+
+Every `POST /data` request passes through a 10-step pipeline. Understanding this pipeline helps you debug permission issues, optimize queries, and reason about security.
+
+```
+  ┌─────────────────────────────────────────────┐
+  │              Incoming Request                │
+  │          POST /data + Bearer JWT             │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  1. Rate Limiting                           │
+  │     Per-user (200/min) and per-IP (500/min)  │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  2. Body Validation                         │
+  │     Parse JSON, validate structure           │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  3. JWT Extraction                          │
+  │     Decode token from Authorization header   │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  4. Session Resolution                      │
+  │     resolveSession(user, db) → enriched user │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  5. Role Injection                          │
+  │     Map user.role → permission slugs         │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  6. Permission Check                        │
+  │     Table → Operation → Columns → Filter     │
+  │     → FK traversal → Check → Preset          │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  7. Query Builder                           │
+  │     JSON request → Kysely → SQL              │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  8. DuckDB Execution                        │
+  │     Run SQL against attached databases       │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  9. Audit Log                               │
+  │     Record query, params, duration, user     │
+  └──────────────────┬──────────────────────────┘
+                     │
+  ┌──────────────────▼──────────────────────────┐
+  │  10. Response                               │
+  │      Return JSON result to client            │
+  └─────────────────────────────────────────────┘
+```
+
+## Step-by-Step
+
+### 1. Rate Limiting
+
+The engine enforces rate limits before processing any request logic:
+
+```typescript
+limits: {
+  rateLimitPerUser: 200,  // 200 requests per minute per authenticated user
+  rateLimitPerIP: 500,    // 500 requests per minute per IP address
+}
+```
+
+If exceeded, returns `429 Too Many Requests`.
+
+### 2. Body Validation
+
+The JSON request body is parsed and validated against the expected schema:
+
+```json
+{
+  "table": "main.orders",
+  "operation": "select",
+  "columns": ["id", "amount", "status"],
+  "filter": { "status": "active" },
+  "limit": 100
+}
+```
+
+Invalid structure returns `400 Bad Request`.
+
+### 3. JWT Extraction
+
+The `Authorization: Bearer <token>` header is extracted and passed to the auth provider's `verifyToken` method. Invalid or expired tokens return `401 Unauthorized`.
+
+### 4. Session Resolution
+
+The auth provider's `findUser` locates the user record, then `resolveSession` enriches it with additional data:
+
+```typescript
+// Input: decoded JWT payload
+// Output: enriched session object
+{
+  id: 'usr_123',
+  email: 'alice@example.com',
+  org_ids: ['org_1', 'org_2'],
+  current_org_id: 'org_1',
+  role: 'editor',
+}
+```
+
+User not found returns `401 Unauthorized`.
+
+### 5. Role Injection
+
+The engine looks up `user.role` in the `roles` config and resolves the list of active permission slugs:
+
+```typescript
+// user.role = 'editor'
+// roles.editor = ['view_own_orders', 'edit_org_orders', 'create_orders']
+// → Active permissions: view_own_orders, edit_org_orders, create_orders
+```
+
+### 6. Permission Check
+
+The engine evaluates each active permission against the request in order:
+
+1. **Table match** — Does any permission cover the requested table?
+2. **Operation match** — Does that permission allow the requested operation (select/insert/update/delete)?
+3. **Column match** — Are the requested columns in the allowed list?
+4. **Filter injection** — Add WHERE clauses from the permission's `filter`
+5. **FK traversal** — Resolve relationship paths in filters to subqueries
+6. **Check validation** — For writes, validate request values against `check` rules
+7. **Preset injection** — For writes, inject `preset` values into the request body
+
+If any check fails, returns `403 Forbidden`.
+
+### 7. Query Builder
+
+The validated request is converted to SQL through Kysely:
+
+```
+JSON request + permission filters + presets
+  → Kysely query builder
+  → Parameterized SQL
+```
+
+Query limits are enforced at this stage:
+
+```typescript
+limits: {
+  maxLimit: 10_000,       // Maximum rows per query
+  maxIncludeDepth: 3,     // Maximum JOIN depth
+  maxFilterDepth: 5,      // Maximum nested filter depth
+}
+```
+
+### 8. DuckDB Execution
+
+The parameterized SQL is executed against DuckDB, which routes the query to the appropriate attached database (Postgres, MySQL, etc.):
+
+```typescript
+duckdb: {
+  queryTimeout: 30_000,  // Kill after 30 seconds
+}
+```
+
+Timeout returns `408 Request Timeout`.
+
+### 9. Audit Log
+
+If audit logging is enabled, the engine records:
+
+- User ID, role, IP address
+- Table, operation
+- SQL query and parameters (if configured)
+- Execution duration
+- Success or error status
+
+### 10. Response
+
+The query results are returned as JSON:
+
+```json
+{
+  "data": [
+    { "id": 1, "amount": 500, "status": "active" },
+    { "id": 2, "amount": 1200, "status": "draft" }
+  ],
+  "count": 2
+}
+```
+
+## Error Responses
+
+| Status | Step | Cause |
+|---|---|---|
+| `400` | Body Validation | Invalid JSON or request structure |
+| `401` | JWT / Session | Invalid token or user not found |
+| `403` | Permission Check | No permission for table, operation, or column |
+| `408` | DuckDB Execution | Query timeout exceeded |
+| `429` | Rate Limiting | Rate limit exceeded |
+| `500` | Any | Internal server error |

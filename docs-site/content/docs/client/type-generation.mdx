@@ -1,0 +1,112 @@
+---
+title: Type Generation
+description: Generate TypeScript types from your database schema for fully type-safe queries.
+---
+
+The superapp CLI generates a `SuperAppSchema` type from your live database, giving you full autocomplete for connection names, table names, column names, and return types.
+
+```bash
+npx superapp generate
+```
+
+## Setup
+
+Run the `generate` command pointing at your running superapp backend.
+
+```bash
+npx superapp generate --url http://localhost:3001 --output ./generated/schema.ts
+```
+
+This connects to your backend, introspects all configured database connections, and writes a TypeScript file with the full schema.
+
+## Options
+
+| Flag | Description | Default |
+| --- | --- | --- |
+| `--url` | URL of your superapp backend | `http://localhost:3001` |
+| `--output` | Output file path | `./generated/schema.ts` |
+
+## Generated Schema Structure
+
+The generated file exports a `SuperAppSchema` type that maps your database structure.
+
+```typescript
+// generated/schema.ts (auto-generated, do not edit)
+
+export type SuperAppSchema = {
+  main: {
+    orders: {
+      id: string
+      amount: number
+      status: string
+      customer_id: string
+      created_at: string
+      updated_at: string
+    }
+    customers: {
+      id: string
+      name: string
+      email: string
+      organization_id: string
+      created_at: string
+    }
+    organizations: {
+      id: string
+      name: string
+      plan: string
+      created_at: string
+    }
+  }
+}
+```
+
+The top-level keys are connection names (e.g., `main`), and each connection contains table names with their column types.
+
+## Using the Schema
+
+Pass the generated type to `createClient` for type-safe queries.
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({
+  url: 'http://localhost:3001/data',
+  userToken,
+})
+
+// Full autocomplete for connections, tables, columns
+const orders = await db.main.orders.findMany({
+  select: ['id', 'amount', 'status'],
+  //        ^ autocomplete shows: id, amount, status, customer_id, created_at, updated_at
+  where: { status: { $eq: 'active' } },
+})
+// orders: { id: string; amount: number; status: string }[]
+```
+
+## Regenerating
+
+Run the `generate` command again whenever your database schema changes (new tables, columns, or connections).
+
+```bash
+npx superapp generate --url http://localhost:3001 --output ./generated/schema.ts
+```
+
+Add it to your `package.json` scripts for convenience.
+
+```json
+{
+  "scripts": {
+    "generate": "superapp generate --url http://localhost:3001 --output ./generated/schema.ts"
+  }
+}
+```
+
+## Adding to .gitignore
+
+The generated file is derived from your database and can be regenerated at any time. You may choose to either commit it for CI convenience or add it to `.gitignore`.
+
+```
+# .gitignore
+generated/
+```

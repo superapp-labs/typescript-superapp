@@ -1,0 +1,82 @@
+---
+title: Security Overview
+description: Defense-in-depth security architecture.
+---
+
+`@superapp/backend` is built on the principle that no raw SQL ever reaches the server from the client, and no query executes without passing through a permission check. There is no god mode.
+
+```
+Client Request
+  │
+  ├─ 1. Rate Limiting ─────── per-user and per-IP throttle
+  ├─ 2. JWT Validation ────── algorithm allowlist, issuer, audience, expiry
+  ├─ 3. Permission Check ──── table, operation, columns, row-level filters
+  ├─ 4. Query Builder ─────── JSON → Kysely → SQL (no raw SQL accepted)
+  ├─ 5. DuckDB Isolation ──── ephemeral per-session instance, sandboxed
+  └─ 6. Audit Log ─────────── query, params, duration, user, IP
+```
+
+## Defense Layers
+
+### No Raw SQL
+
+Clients send JSON query objects, never SQL strings. The engine translates JSON into SQL through Kysely, a type-safe query builder. SQL injection is structurally impossible because user input never interpolates into query strings.
+
+### No God Mode
+
+Every query must match at least one permission. If no permission grants access to a table, the request is rejected with `403 Forbidden`. There is no superuser bypass in the data path -- even admin operations go through the admin API with master key authentication.
+
+### JWT Validation
+
+Tokens are validated against an algorithm allowlist. Weak algorithms (`HS256`, `none`) are rejected by default. Claims are verified for issuer, audience, and expiry with configurable clock skew tolerance.
+
+### Permission Enforcement
+
+Permissions define which tables, operations, and columns a role can access. Row-level filters are injected into every query automatically -- users cannot see or modify rows they are not authorized to access.
+
+### DuckDB Session Isolation
+
+Each user session gets an ephemeral DuckDB instance with restricted capabilities. Filesystem access, `COPY` statements, and dangerous functions are blocked. Sessions are pooled and recycled with resource limits.
+
+### Encryption at Rest
+
+Connection secrets (database URLs, API keys) are encrypted with AES-256-GCM using per-project keys derived from your master key via HKDF. Secrets are displayed once at creation time and never again.
+
+## Security Configuration
+
+All security settings are configured through `createEngine`:
+
+```typescript
+const engine = createEngine({
+  connections: { /* ... */ },
+  jwt: {
+    algorithms: ['RS256', 'ES256'],
+    issuer: 'https://auth.myapp.com',
+    audience: 'https://api.myapp.com',
+    clockSkewSeconds: 30,
+  },
+  limits: {
+    maxLimit: 10_000,
+    maxIncludeDepth: 3,
+    maxFilterDepth: 5,
+    maxFilterConditions: 20,
+    maxRequestBodySize: '1mb',
+    queryTimeout: 30_000,
+    rateLimitPerUser: 200,
+    rateLimitPerIP: 500,
+  },
+  duckdb: {
+    maxMemory: '256MB',
+    threads: 2,
+    queryTimeout: 30_000,
+  },
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+})
+```
+
+## Next Steps
+
+- [Session Isolation](/docs/security/session-isolation) -- DuckDB sandboxing and instance pooling
+- [JWT Validation](/docs/security/jwt-validation) -- Algorithm allowlists and claims verification
+- [Request Limits](/docs/security/request-limits) -- Rate limiting and query constraints
+- [Encryption](/docs/security/encryption) -- Connection secret encryption and key management

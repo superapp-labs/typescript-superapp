@@ -1,0 +1,153 @@
+---
+title: Engine Modes
+description: "Programmatic vs Admin UI mode."
+---
+
+superapp supports two engine modes that control how permissions and connections are managed. Choose the mode that matches your team's workflow.
+
+## Side-by-Side Comparison
+
+| Feature | `programmatic` | `managed` |
+|---|---|---|
+| **Permissions defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
+| **Connections defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
+| **Roles defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
+| **Version control** | Git-tracked, PR-reviewed | Database-stored, audit-logged |
+| **Admin UI** | Read-only dashboard | Full editing capabilities |
+| **Deployment** | Config changes require redeploy | Changes take effect immediately |
+| **Default** | Yes | No |
+| **Best for** | Engineering teams, CI/CD pipelines | Non-technical admins, rapid iteration |
+
+## Programmatic Mode
+
+In programmatic mode, permissions, connections, and roles are defined entirely in your `createEngine` configuration. The source code is the single source of truth.
+
+```typescript
+const engine = createEngine({
+  mode: 'programmatic',  // this is the default
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'created_at'],
+      filter: { customer_id: { $eq: '$user.customer_id' } },
+    },
+    edit_own_orders: {
+      name: 'Edit own orders',
+      table: 'main.orders',
+      operations: { update: true },
+      columns: ['amount', 'status', 'notes'],
+      filter: { customer_id: { $eq: '$user.customer_id' } },
+      check: { status: { $in: ['draft', 'active'] } },
+      preset: { updated_by: '$user.id' },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+    editor: ['view_own_orders', 'edit_own_orders'],
+  },
+})
+```
+
+### How It Works
+
+1. You define permissions and roles in TypeScript.
+2. Changes go through your normal code review process (PR, CI, tests).
+3. The admin UI (if accessed) shows permissions in read-only mode for visibility.
+4. The engine reads the config once at startup. Changes require a restart or redeploy.
+
+### When to Use Programmatic Mode
+
+- Your team uses git-based workflows and wants permissions in version control.
+- You want PR reviews on permission changes.
+- You need reproducible deployments where the same code always produces the same behavior.
+- You have a CI/CD pipeline that deploys config changes.
+- Security is paramount and you want to audit permission changes in git history.
+
+## Managed Mode
+
+In managed mode, the admin UI becomes the primary interface for managing permissions, connections, and roles. Changes are stored in the metadata database and take effect immediately.
+
+```typescript
+const engine = createEngine({
+  mode: 'managed',
+  database: process.env.TURSO_URL ?? './superapp.db',
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  auth: betterAuthProvider({ /* ... */ }),
+  // No permissions or roles here — they live in the admin UI
+})
+```
+
+### How It Works
+
+1. Start the engine with `mode: 'managed'` and a `masterKey`.
+2. Access the admin UI (served by the engine on the `/admin` route).
+3. Add connections, define permissions, and assign roles visually.
+4. Changes are persisted to the metadata database and applied immediately.
+5. All admin actions are audit-logged.
+
+### Admin UI Capabilities
+
+In managed mode, the admin UI provides:
+
+- **Connection management** -- Add, edit, and test database connections.
+- **Permission editor** -- Visual builder for filter, columns, check, and preset rules.
+- **Role management** -- Create roles and assign permissions with one click.
+- **User management** -- View users, assign roles, manage sessions.
+- **Audit log viewer** -- Browse query and admin action logs.
+- **Schema browser** -- Explore attached database tables and columns.
+
+### When to Use Managed Mode
+
+- Non-technical team members need to manage access rules.
+- You want to iterate on permissions without redeploying.
+- You are building a multi-tenant platform where customers configure their own access rules.
+- Rapid prototyping where you are still figuring out the permission model.
+
+## Switching Between Modes
+
+You can switch from programmatic to managed mode at any time. When switching to managed mode, any permissions defined in code are imported into the metadata database as a starting point.
+
+Switching from managed back to programmatic requires exporting your current permissions from the admin UI and adding them to your `createEngine` config.
+
+```typescript
+// Start in programmatic mode during development
+const engine = createEngine({
+  mode: 'programmatic',
+  permissions: { /* ... */ },
+  roles: { /* ... */ },
+})
+
+// Later, switch to managed mode for production
+const engine = createEngine({
+  mode: 'managed',
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  // permissions from code are imported into the metadata DB on first run
+})
+```
+
+## Hybrid Approach
+
+Some teams use programmatic mode in production with managed mode in staging. This lets you:
+
+1. Prototype permission changes in the staging admin UI.
+2. Export the tested configuration.
+3. Add it to your codebase and deploy through CI/CD.
+
+```typescript
+const engine = createEngine({
+  mode: process.env.NODE_ENV === 'production' ? 'programmatic' : 'managed',
+  permissions: {
+    // These are always available as a baseline
+    view_own_orders: { /* ... */ },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+})
+```

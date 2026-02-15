@@ -1,0 +1,308 @@
+---
+title: "GET /schema"
+description: "Schema introspection endpoint."
+---
+
+The `/schema` endpoint returns a complete description of all connected databases, tables, columns, and relationships. It is used by the CLI to generate TypeScript types and can be consumed by any tool that needs schema information.
+
+## Enabling the Endpoint
+
+The schema endpoint is disabled by default. Enable it in your `createEngine` configuration:
+
+```typescript
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  schemaEndpoint: true,  // enable with defaults
+})
+```
+
+To require authentication:
+
+```typescript
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  schemaEndpoint: {
+    enabled: true,
+    token: process.env.SCHEMA_API_TOKEN,  // require this token for access
+  },
+})
+```
+
+### Configuration Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `boolean` | `false` | Enable the `/schema` endpoint. |
+| `token` | `string` | `undefined` | If set, requests must include this token in the `Authorization` header. |
+
+## Authentication
+
+When a `token` is configured, the request must include it as a Bearer token:
+
+```
+GET /schema HTTP/1.1
+Authorization: Bearer <schema_api_token>
+```
+
+This token is separate from user JWTs. It is a static secret used for schema introspection only. Store it as an environment variable.
+
+When no `token` is configured, the endpoint is publicly accessible. This is acceptable for development but not recommended for production.
+
+## Request
+
+```bash
+curl http://localhost:3001/schema \
+  -H "Authorization: Bearer $SCHEMA_API_TOKEN"
+```
+
+No request body or query parameters are needed.
+
+## Response Format
+
+The response is a JSON object describing all connections, their tables, columns, and relationships.
+
+```typescript
+interface SchemaResponse {
+  /** All configured database connections */
+  connections: {
+    [connectionName: string]: {
+      /** Database type */
+      type: 'postgres' | 'mysql' | 'sqlite' | 'csv'
+      /** Tables in this connection */
+      tables: {
+        [tableName: string]: {
+          /** Table columns */
+          columns: {
+            [columnName: string]: {
+              /** Column data type */
+              type: string
+              /** Whether the column is nullable */
+              nullable: boolean
+              /** Whether the column has a default value */
+              hasDefault: boolean
+              /** Whether the column is a primary key */
+              primaryKey: boolean
+            }
+          }
+          /** Relationships to other tables */
+          relationships: {
+            [relationName: string]: {
+              /** Related table in connection.table format */
+              table: string
+              /** Relationship type */
+              type: 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many'
+              /** Local column(s) for the join */
+              from: string | string[]
+              /** Remote column(s) for the join */
+              to: string | string[]
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### Example Response
+
+```json
+{
+  "connections": {
+    "main": {
+      "type": "postgres",
+      "tables": {
+        "users": {
+          "columns": {
+            "id": {
+              "type": "text",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": true
+            },
+            "email": {
+              "type": "text",
+              "nullable": false,
+              "hasDefault": false,
+              "primaryKey": false
+            },
+            "name": {
+              "type": "text",
+              "nullable": true,
+              "hasDefault": false,
+              "primaryKey": false
+            },
+            "created_at": {
+              "type": "timestamp",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": false
+            }
+          },
+          "relationships": {}
+        },
+        "orders": {
+          "columns": {
+            "id": {
+              "type": "text",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": true
+            },
+            "amount": {
+              "type": "numeric",
+              "nullable": false,
+              "hasDefault": false,
+              "primaryKey": false
+            },
+            "status": {
+              "type": "text",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": false
+            },
+            "customer_id": {
+              "type": "text",
+              "nullable": false,
+              "hasDefault": false,
+              "primaryKey": false
+            },
+            "created_at": {
+              "type": "timestamp",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": false
+            }
+          },
+          "relationships": {
+            "customer": {
+              "table": "main.users",
+              "type": "many-to-one",
+              "from": "customer_id",
+              "to": "id"
+            }
+          }
+        }
+      }
+    },
+    "warehouse": {
+      "type": "mysql",
+      "tables": {
+        "events": {
+          "columns": {
+            "id": {
+              "type": "bigint",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": true
+            },
+            "event_type": {
+              "type": "varchar",
+              "nullable": false,
+              "hasDefault": false,
+              "primaryKey": false
+            },
+            "order_id": {
+              "type": "varchar",
+              "nullable": true,
+              "hasDefault": false,
+              "primaryKey": false
+            },
+            "created_at": {
+              "type": "datetime",
+              "nullable": false,
+              "hasDefault": true,
+              "primaryKey": false
+            }
+          },
+          "relationships": {
+            "order": {
+              "table": "main.orders",
+              "type": "many-to-one",
+              "from": "order_id",
+              "to": "id"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+## Type Generation
+
+The primary use case for `/schema` is generating TypeScript types for the client SDK:
+
+```bash
+npx @superapp/backend generate \
+  --url http://localhost:3001 \
+  --output ./generated/schema.ts
+```
+
+This command:
+
+1. Sends a `GET /schema` request to your running server.
+2. Parses the response into a TypeScript type definition.
+3. Writes the type file to the specified output path.
+
+The generated file looks like:
+
+```typescript
+// generated/schema.ts — auto-generated, do not edit
+
+export interface SuperAppSchema {
+  main: {
+    users: {
+      id: string
+      email: string
+      name: string | null
+      created_at: string
+    }
+    orders: {
+      id: string
+      amount: number
+      status: string
+      customer_id: string
+      created_at: string
+    }
+  }
+  warehouse: {
+    events: {
+      id: number
+      event_type: string
+      order_id: string | null
+      created_at: string
+    }
+  }
+}
+```
+
+Pass this type to `createClient` for full autocomplete:
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from './generated/schema'
+
+const db = createClient<SuperAppSchema>({ url, userToken })
+db.main.orders.findMany({ select: ['id', 'amount'] })
+//                                  ^ autocomplete
+```
+
+## Errors
+
+| Status | Error Code | Condition |
+|---|---|---|
+| `401` | `UNAUTHORIZED` | A `token` is configured but the request does not include it or the token is wrong. |
+| `404` | `NOT_FOUND` | The schema endpoint is not enabled (`schemaEndpoint: false` or omitted). |
+
+## Security Considerations
+
+- In production, always set a `token` to prevent unauthorized schema introspection.
+- The schema endpoint exposes table names, column names, and column types. This is useful for tooling but should not be public.
+- The schema endpoint does not expose data -- only structure. But column names alone can reveal sensitive information about your data model.
+- Consider restricting access to CI/CD environments and developer machines only.

@@ -1,0 +1,120 @@
+---
+title: Preset (Auto-Set Values)
+description: Automatically inject values like created_by and organization_id on insert and update.
+---
+
+Presets automatically set column values on write operations. The user cannot override preset values — they are injected by the engine after permission checks.
+
+```typescript
+permissions: {
+  create_orders: {
+    name: 'Create orders',
+    table: 'main.orders',
+    operations: { insert: true },
+    columns: ['amount', 'status', 'customer_id'],
+    preset: {
+      created_by: '$user.id',
+      organization_id: '$user.current_org_id',
+    },
+  },
+}
+```
+
+When a user inserts an order, `created_by` and `organization_id` are automatically set from the session — even if the user sends different values in the request body.
+
+## How Presets Work
+
+1. User sends request body: `{ amount: 500, status: 'draft' }`
+2. Engine resolves preset variables: `$user.id` becomes `'usr_123'`
+3. Preset values are merged into the request body, overriding any user-provided values
+4. Final insert: `{ amount: 500, status: 'draft', created_by: 'usr_123', organization_id: 'org_456' }`
+
+## $user.* Variables
+
+Presets reference the session object returned by `resolveSession`. Any property on the session object is available:
+
+| Variable | Example Value | Description |
+|---|---|---|
+| `$user.id` | `'usr_123'` | User ID from the user table |
+| `$user.email` | `'alice@example.com'` | User email |
+| `$user.name` | `'Alice'` | User name |
+| `$user.current_org_id` | `'org_456'` | Current organization (from resolveSession) |
+| `$user.org_ids` | `['org_1', 'org_2']` | All organization IDs (from resolveSession) |
+
+The available variables depend on what your `resolveSession` function returns.
+
+## Common Patterns
+
+### Audit Columns on Insert
+
+```typescript
+preset: {
+  created_by: '$user.id',
+  created_at: '$now',
+}
+```
+
+### Audit Columns on Update
+
+```typescript
+preset: {
+  updated_by: '$user.id',
+  updated_at: '$now',
+}
+```
+
+### Organization Scoping
+
+Ensure records always belong to the user's current organization:
+
+```typescript
+preset: {
+  organization_id: '$user.current_org_id',
+}
+```
+
+### Combined Insert Permission
+
+```typescript
+permissions: {
+  create_orders: {
+    name: 'Create orders',
+    table: 'main.orders',
+    operations: { insert: true },
+    columns: ['amount', 'status', 'customer_id'],
+    check: {
+      amount: { $gte: 0 },
+      status: { $in: ['draft'] },
+    },
+    preset: {
+      created_by: '$user.id',
+      organization_id: '$user.current_org_id',
+    },
+  },
+}
+```
+
+This permission:
+- Allows inserting `amount`, `status`, and `customer_id`
+- Validates that `amount >= 0` and `status` is `'draft'`
+- Automatically sets `created_by` and `organization_id`
+
+## Preset vs. Check
+
+| | Preset | Check |
+|---|---|---|
+| **Purpose** | Auto-set values | Validate values |
+| **User control** | Cannot override | Must provide valid value |
+| **Timing** | After validation, before query | Before query |
+| **Failure** | Never fails | Returns 403 on invalid data |
+
+## Static Values
+
+Presets can also use static values instead of session variables:
+
+```typescript
+preset: {
+  source: 'api',
+  version: 2,
+}
+```

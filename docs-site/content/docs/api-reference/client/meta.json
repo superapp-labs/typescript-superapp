@@ -1,0 +1,4 @@
+{
+  "title": "Client",
+  "pages": ["create-client", "query-methods", "filter-operators"]
+}

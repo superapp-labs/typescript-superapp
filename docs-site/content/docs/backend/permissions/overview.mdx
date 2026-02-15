@@ -1,0 +1,127 @@
+---
+title: Permissions
+description: Row-level security with filters, checks, and presets — the core permission model.
+---
+
+Permissions define what data users can access and modify. Each permission is a named rule that controls a specific table and set of operations.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+```
+
+## Permission Anatomy
+
+Every permission has five parts:
+
+| Part | Purpose | Applies To |
+|---|---|---|
+| `table` | Which table this permission governs | All operations |
+| `operations` | Which CRUD operations are allowed | All |
+| `columns` | Which columns can be read/written | `select`, `insert`, `update` |
+| `filter` | Row-level WHERE clause (read + write) | `select`, `update`, `delete` |
+| `check` | Validate values before write | `insert`, `update` |
+| `preset` | Auto-set values on write | `insert`, `update` |
+
+## How They Map to SQL
+
+```
+filter  →  WHERE clause     (row-level security)
+check   →  validation       (reject if values don't match)
+preset  →  auto-set columns (inject values like created_by)
+columns →  column allowlist  (strip disallowed columns)
+```
+
+## Permission Structure
+
+```typescript
+permissions: {
+  // slug must be snake_case
+  edit_org_orders: {
+    name: 'Edit organization orders',   // Human-readable label
+    table: 'main.orders',               // connection.table
+    operations: {
+      select: true,
+      insert: true,
+      update: true,
+      // delete: true,
+    },
+    columns: '*',                        // '*' or array of column names
+    filter: {                            // Row-level security
+      organization_id: { $eq: '$user.current_org_id' },
+    },
+    check: {                             // Write validation
+      amount: { $gte: 0, $lte: 100_000 },
+      status: { $in: ['draft', 'active', 'closed'] },
+    },
+    preset: {                            // Auto-set values
+      updated_by: '$user.id',
+    },
+  },
+}
+```
+
+## Permission Slugs
+
+Permission slugs must use **snake_case**:
+
+```typescript
+// Good
+view_own_orders: { /* ... */ }
+edit_org_orders: { /* ... */ }
+delete_draft_orders: { /* ... */ }
+
+// Bad — will be rejected
+'view-own-orders': { /* ... */ }
+'viewOwnOrders': { /* ... */ }
+```
+
+## Multiple Permissions Per Table
+
+Users can have multiple permissions for the same table. The engine merges them with OR logic for filters and UNION logic for columns:
+
+```typescript
+permissions: {
+  view_own_orders: {
+    table: 'main.orders',
+    operations: { select: true },
+    columns: ['id', 'amount', 'status'],
+    filter: { customer_id: { $eq: '$user.id' } },
+  },
+  view_org_orders: {
+    table: 'main.orders',
+    operations: { select: true },
+    columns: '*',
+    filter: { organization_id: { $in: '$user.org_ids' } },
+  },
+}
+// User with both permissions can see:
+// - Their own orders (limited columns) OR
+// - All orders in their organizations (all columns)
+```
+
+## Deep Dive
+
+- [Filter (Row-Level Security)](/docs/backend/permissions/filter)
+- [Check (Write Validation)](/docs/backend/permissions/check)
+- [Preset (Auto-Set Values)](/docs/backend/permissions/preset)
+- [Relationship Traversal](/docs/backend/permissions/relationship-traversal)
+- [Custom SQL](/docs/backend/permissions/custom-sql)
+- [Permission Operators](/docs/backend/permissions/operators)

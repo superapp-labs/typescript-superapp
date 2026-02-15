@@ -1,0 +1,137 @@
+---
+title: Permission Operators
+description: Complete reference of MongoDB-style operators available in filters, checks, and presets.
+---
+
+Permissions use MongoDB-style operators to define conditions. These operators work in both `filter` (WHERE clauses) and `check` (write validation) contexts.
+
+```typescript
+filter: {
+  amount: { $gte: 0, $lte: 100_000 },
+  status: { $in: ['active', 'pending'] },
+  customer_id: { $eq: '$user.id' },
+}
+```
+
+## Comparison Operators
+
+| Operator | Description | SQL Equivalent | Example |
+|---|---|---|---|
+| `$eq` | Equal to | `=` | `{ status: { $eq: 'active' } }` |
+| `$ne` | Not equal to | `!=` | `{ status: { $ne: 'deleted' } }` |
+| `$gt` | Greater than | `>` | `{ amount: { $gt: 100 } }` |
+| `$gte` | Greater than or equal | `>=` | `{ amount: { $gte: 0 } }` |
+| `$lt` | Less than | `<` | `{ amount: { $lt: 50_000 } }` |
+| `$lte` | Less than or equal | `<=` | `{ amount: { $lte: 100_000 } }` |
+| `$in` | In array | `IN (...)` | `{ status: { $in: ['active', 'pending'] } }` |
+| `$nin` | Not in array | `NOT IN (...)` | `{ status: { $nin: ['deleted', 'archived'] } }` |
+
+## Logical Operators
+
+| Operator | Description | SQL Equivalent | Example |
+|---|---|---|---|
+| `$and` | All conditions must match | `AND` | `{ $and: [{ a: { $gt: 0 } }, { b: { $lt: 100 } }] }` |
+| `$or` | Any condition must match | `OR` | `{ $or: [{ status: { $eq: 'active' } }, { status: { $eq: 'pending' } }] }` |
+| `$not` | Negate a condition | `NOT` | `{ $not: { status: { $eq: 'deleted' } } }` |
+
+## Special Values
+
+| Value | Description | Resolves To |
+|---|---|---|
+| `'$user.id'` | Current user ID | `'usr_123'` |
+| `'$user.email'` | Current user email | `'alice@example.com'` |
+| `'$user.current_org_id'` | Current organization | `'org_456'` |
+| `'$user.org_ids'` | User's organization IDs | `['org_1', 'org_2']` |
+| `'$user.*'` | Any session property | Value from `resolveSession` |
+| `'$now'` | Current timestamp | `'2025-01-15T10:30:00Z'` |
+
+## Usage in Filters
+
+Filters add WHERE clauses. Multiple conditions at the same level are combined with AND:
+
+```typescript
+filter: {
+  organization_id: { $eq: '$user.current_org_id' },  // AND
+  status: { $ne: 'deleted' },                         // AND
+  amount: { $gte: 0 },
+}
+```
+
+```sql
+WHERE organization_id = 'org_456'
+  AND status != 'deleted'
+  AND amount >= 0
+```
+
+### OR Logic
+
+```typescript
+filter: {
+  $or: [
+    { customer_id: { $eq: '$user.id' } },
+    { assigned_to: { $eq: '$user.id' } },
+  ],
+}
+```
+
+```sql
+WHERE (customer_id = 'usr_123' OR assigned_to = 'usr_123')
+```
+
+### Nested Logic
+
+```typescript
+filter: {
+  $and: [
+    { status: { $in: ['active', 'pending'] } },
+    {
+      $or: [
+        { customer_id: { $eq: '$user.id' } },
+        { organization_id: { $in: '$user.org_ids' } },
+      ],
+    },
+  ],
+}
+```
+
+```sql
+WHERE status IN ('active', 'pending')
+  AND (customer_id = 'usr_123' OR organization_id IN ('org_1', 'org_2'))
+```
+
+## Usage in Checks
+
+Checks validate request body values. The same operators apply, but they validate data rather than generating SQL:
+
+```typescript
+check: {
+  amount: { $gte: 0, $lte: 100_000 },
+  status: { $in: ['draft', 'active', 'closed'] },
+}
+```
+
+A request with `{ amount: -5 }` is rejected because `$gte: 0` fails.
+
+## Combining Multiple Operators
+
+You can combine multiple operators on the same field:
+
+```typescript
+// Range: 0 <= amount <= 100,000
+{ amount: { $gte: 0, $lte: 100_000 } }
+
+// Not in a set
+{ status: { $nin: ['deleted', 'archived'] } }
+```
+
+## Array Values with $in / $nin
+
+When using `$in` or `$nin`, provide an array of allowed/disallowed values:
+
+```typescript
+// Static array
+{ role: { $in: ['admin', 'editor'] } }
+
+// Session variable (resolves to array)
+{ organization_id: { $in: '$user.org_ids' } }
+```

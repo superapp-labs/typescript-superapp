@@ -1,0 +1,110 @@
+---
+title: CSV
+description: Query CSV files as tables.
+---
+
+Point at a directory of CSV files and query them as read-only tables. Useful for reports, data imports, and static datasets.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { csvProvider } from '@superapp/backend/integrations/csv'
+
+const engine = createEngine({
+  integrations: [csvProvider],
+  connections: {
+    reports: { type: 'csv', path: './data/reports' },
+  },
+})
+```
+
+## Connection Config
+
+| Option | Type | Description |
+|---|---|---|
+| `type` | `'csv'` | Provider type |
+| `path` | `string` | Directory containing `.csv` files |
+
+Each `.csv` file in the directory becomes a table. The file name (without extension) is the table name: `orders.csv` becomes `reports.orders`.
+
+## What DuckDB Generates
+
+For each CSV file in the directory, the provider creates a view:
+
+```sql
+CREATE VIEW reports.orders AS SELECT * FROM read_csv_auto('./data/reports/orders.csv');
+CREATE VIEW reports.customers AS SELECT * FROM read_csv_auto('./data/reports/customers.csv');
+```
+
+DuckDB's `read_csv_auto` automatically detects column types, delimiters, and headers.
+
+## Capabilities
+
+| Operation | Supported |
+|---|---|
+| `findMany` / `findOne` | Yes |
+| `create` | No |
+| `update` | No |
+| `delete` | No |
+| `count` / `aggregate` | Yes |
+| Transactions | No |
+
+<Callout>
+CSV connections are read-only. Write operations return a `405 Method Not Allowed` error.
+</Callout>
+
+## Directory Layout
+
+```
+data/reports/
+├── orders.csv
+├── customers.csv
+└── organizations.csv
+```
+
+Each file should have a header row:
+
+```csv
+id,amount,status,customer_id,created_at
+1,99.99,active,1,2024-01-15
+2,149.50,active,2,2024-01-16
+3,29.00,pending,1,2024-01-17
+```
+
+## Querying CSV Data
+
+Once connected, CSV tables work like any other table in the client SDK:
+
+```typescript
+const orders = await db.reports.orders.findMany({
+  select: ['id', 'amount', 'status'],
+  where: { status: { $eq: 'active' } },
+  orderBy: { amount: 'desc' },
+  limit: 100,
+})
+```
+
+## Combining with Other Sources
+
+A common pattern is a primary Postgres database alongside CSV files for imported data:
+
+```typescript
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { csvProvider } from '@superapp/backend/integrations/csv'
+
+const engine = createEngine({
+  integrations: [postgresProvider, csvProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    imports: { type: 'csv', path: './data/imports' },
+  },
+})
+```
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `No such file or directory` | Path does not exist | Verify the directory path |
+| `Could not parse CSV` | Malformed file | Check for consistent delimiters and quoting |
+| Empty results | No header row | Add a header row to the CSV file |
+| Wrong column types | Auto-detection mismatch | Ensure consistent formatting (dates, numbers) across all rows |

@@ -1,0 +1,112 @@
+---
+title: better-auth Provider
+description: Set up the default authentication provider with better-auth, user table config, and session enrichment.
+---
+
+The `betterAuthProvider` is the recommended auth provider. It wraps [better-auth](https://www.better-auth.com) and handles JWT verification, user lookup, and session management out of the box.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const auth = betterAuthProvider({
+  secret: process.env.AUTH_SECRET!,
+  userTable: {
+    table: 'main.users',
+    matchOn: { column: 'id', jwtField: 'id' },
+  },
+})
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth,
+})
+```
+
+## Full Configuration
+
+```typescript
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const auth = betterAuthProvider({
+  secret: process.env.AUTH_SECRET!,
+  userTable: {
+    table: 'main.users',
+    matchOn: { column: 'id', jwtField: 'id' },
+    activeCheck: { column: 'is_active', value: true },
+    columns: ['id', 'email', 'name'],
+  },
+  resolveSession: async (user, db) => {
+    const memberships = await db
+      .selectFrom('main.members')
+      .select(['organization_id', 'role'])
+      .where('user_id', '=', user.id)
+      .where('status', '=', 'active')
+      .execute()
+
+    return {
+      ...user,
+      org_ids: memberships.map(m => m.organization_id),
+      org_roles: memberships,
+      current_org_id: memberships[0]?.organization_id ?? null,
+    }
+  },
+})
+```
+
+## Options
+
+| Option | Type | Required | Description |
+|---|---|---|---|
+| `secret` | `string` | Yes | Secret key for JWT signing and verification |
+| `userTable.table` | `string` | Yes | Fully qualified table name (e.g., `main.users`) |
+| `userTable.matchOn` | `{ column, jwtField }` | Yes | Map JWT field to user table column |
+| `userTable.activeCheck` | `{ column, value }` | No | Only allow active users |
+| `userTable.columns` | `string[]` | No | Columns to select from user table |
+| `resolveSession` | `(user, db) => Promise<object>` | No | Enrich user with session data |
+
+## User Table Matching
+
+The `matchOn` config tells the provider how to find the user record from the JWT payload:
+
+```typescript
+// JWT contains { id: 'usr_123', email: 'alice@example.com' }
+matchOn: { column: 'id', jwtField: 'id' }
+// → SELECT * FROM main.users WHERE id = 'usr_123'
+```
+
+## Active Check
+
+Block inactive or suspended users from making requests:
+
+```typescript
+activeCheck: { column: 'is_active', value: true }
+// → AND is_active = true
+```
+
+If the user record exists but fails the active check, the request returns `403 Forbidden`.
+
+## Session Enrichment
+
+The `resolveSession` callback runs after user lookup. Use it to attach organization memberships, roles, or any data your permissions reference:
+
+```typescript
+resolveSession: async (user, db) => {
+  const memberships = await db
+    .selectFrom('main.members')
+    .select(['organization_id', 'role'])
+    .where('user_id', '=', user.id)
+    .where('status', '=', 'active')
+    .execute()
+
+  return {
+    ...user,
+    org_ids: memberships.map(m => m.organization_id),
+    current_org_id: memberships[0]?.organization_id ?? null,
+  }
+}
+```
+
+The returned object is available as `$user.*` in permissions. For example, `$user.current_org_id` references the `current_org_id` property.

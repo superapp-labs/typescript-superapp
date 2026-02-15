@@ -1,0 +1,99 @@
+---
+title: Generic (Workers/Deno/Bun)
+description: Use the generic adapter for Cloudflare Workers, Deno, Bun, or any runtime with the Web Fetch API.
+---
+
+The generic adapter works with any runtime that supports the standard `Request`/`Response` Web API. Use it for Cloudflare Workers, Deno, Bun, or custom servers.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHandler } from '@superapp/backend/adapters/generic'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const handler = createHandler(engine)
+
+export default {
+  fetch: (req: Request) => handler(req),
+}
+```
+
+## Cloudflare Workers
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHandler } from '@superapp/backend/adapters/generic'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const handler = createHandler(engine)
+
+export default {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    return handler(request)
+  },
+}
+```
+
+## Deno
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHandler } from '@superapp/backend/adapters/generic'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: Deno.env.get('PG_URL')! },
+  },
+})
+
+const handler = createHandler(engine)
+
+Deno.serve({ port: 3001 }, (req) => handler(req))
+```
+
+## Bun
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHandler } from '@superapp/backend/adapters/generic'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const handler = createHandler(engine)
+
+Bun.serve({
+  port: 3001,
+  fetch: (req) => handler(req),
+})
+```
+
+## Handler Signature
+
+The generic handler accepts a standard `Request` and returns a `Promise<Response>`:
+
+```typescript
+type GenericHandler = (request: Request) => Promise<Response>
+```
+
+This makes it compatible with any runtime or framework that uses the Web Fetch API standard.

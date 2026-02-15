@@ -1,0 +1,125 @@
+---
+title: PostgreSQL
+description: Connect to PostgreSQL databases.
+---
+
+Attach a PostgreSQL database and get full CRUD through DuckDB's native `postgres_scanner` extension.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+## Connection URL Format
+
+Standard PostgreSQL connection string:
+
+```
+postgres://user:password@host:5432/database?sslmode=require
+```
+
+| Parameter | Description |
+|---|---|
+| `user` | Database user |
+| `password` | Database password |
+| `host` | Server hostname or IP |
+| `5432` | Port (default: 5432) |
+| `database` | Database name |
+| `sslmode` | `disable`, `require`, `verify-ca`, `verify-full` |
+
+## What DuckDB Generates
+
+When the engine starts, the Postgres provider generates:
+
+```sql
+INSTALL postgres;
+LOAD postgres;
+ATTACH 'postgres://user:password@host:5432/database' AS main (TYPE POSTGRES, READ_WRITE);
+```
+
+All tables in the target database become available under the `main` schema. DuckDB pushes filters, joins, and aggregations down to Postgres whenever possible.
+
+## Capabilities
+
+| Operation | Supported |
+|---|---|
+| `findMany` / `findOne` | Yes |
+| `create` | Yes |
+| `update` | Yes |
+| `delete` | Yes |
+| `count` / `aggregate` | Yes |
+| Transactions | Yes |
+
+## Full Example
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+      columns: ['id', 'email', 'name'],
+    },
+  }),
+  permissions: {
+    read_orders: {
+      name: 'Read orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+    },
+  },
+  roles: {
+    viewer: ['read_orders'],
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+## Multiple Postgres Connections
+
+Attach several Postgres databases under different names:
+
+```typescript
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    analytics: { type: 'postgres', url: process.env.ANALYTICS_PG_URL! },
+  },
+})
+```
+
+Tables are namespaced: `main.orders`, `analytics.events`.
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `Connection refused` | Postgres not reachable | Check host, port, and firewall rules |
+| `password authentication failed` | Wrong credentials | Verify user/password in connection URL |
+| `SSL connection required` | Server requires SSL | Add `?sslmode=require` to the URL |
+| `relation does not exist` | Table not in target database | Check database name in the URL |
+| `too many connections` | Pool exhausted on Postgres side | Increase `max_connections` or use a connection pooler like PgBouncer |

@@ -1,0 +1,99 @@
+---
+title: aggregate
+description: Compute sum, avg, min, max over columns with optional groupBy.
+---
+
+`aggregate` computes numeric aggregations over table columns with optional filtering and grouping.
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({ url, userToken })
+
+const result = await db.main.orders.aggregate({
+  sum: ['amount'],
+})
+// result: { sum_amount: number }
+```
+
+## Options
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `where` | `object` | No | Filter conditions |
+| `sum` | `string[]` | No | Columns to sum |
+| `avg` | `string[]` | No | Columns to average |
+| `min` | `string[]` | No | Columns to find minimum |
+| `max` | `string[]` | No | Columns to find maximum |
+| `groupBy` | `string[]` | No | Columns to group results by |
+
+At least one aggregation (`sum`, `avg`, `min`, or `max`) is required.
+
+## Sum
+
+```typescript
+const totals = await db.main.orders.aggregate({
+  sum: ['amount'],
+  where: { status: { $eq: 'active' } },
+})
+// totals: { sum_amount: number }
+```
+
+## Average
+
+```typescript
+const averages = await db.main.orders.aggregate({
+  avg: ['amount'],
+})
+// averages: { avg_amount: number }
+```
+
+## Min and Max
+
+```typescript
+const range = await db.main.orders.aggregate({
+  min: ['amount'],
+  max: ['amount'],
+})
+// range: { min_amount: number; max_amount: number }
+```
+
+## Multiple Aggregations
+
+Combine multiple aggregation functions in a single query.
+
+```typescript
+const stats = await db.main.orders.aggregate({
+  sum: ['amount'],
+  avg: ['amount'],
+  min: ['amount'],
+  max: ['amount'],
+  where: { status: { $eq: 'active' } },
+})
+// stats: { sum_amount: number; avg_amount: number; min_amount: number; max_amount: number }
+```
+
+## Group By
+
+Group results by one or more columns.
+
+```typescript
+const byStatus = await db.main.orders.aggregate({
+  sum: ['amount'],
+  avg: ['amount'],
+  groupBy: ['status'],
+})
+// byStatus: { status: string; sum_amount: number; avg_amount: number }[]
+```
+
+## Group By with Filter
+
+```typescript
+const byCustomer = await db.main.orders.aggregate({
+  sum: ['amount'],
+  groupBy: ['customer_id'],
+  where: { status: { $in: ['active', 'shipped'] } },
+})
+// byCustomer: { customer_id: string; sum_amount: number }[]
+```

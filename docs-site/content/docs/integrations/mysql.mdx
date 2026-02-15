@@ -1,0 +1,118 @@
+---
+title: MySQL
+description: Connect to MySQL databases.
+---
+
+Attach a MySQL database and get full CRUD through DuckDB's native `mysql_scanner` extension.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { mysqlProvider } from '@superapp/backend/integrations/mysql'
+
+const engine = createEngine({
+  integrations: [mysqlProvider],
+  connections: {
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+})
+```
+
+## Connection URL Format
+
+Standard MySQL connection string:
+
+```
+mysql://user:password@host:3306/database
+```
+
+| Parameter | Description |
+|---|---|
+| `user` | Database user |
+| `password` | Database password |
+| `host` | Server hostname or IP |
+| `3306` | Port (default: 3306) |
+| `database` | Database name |
+
+## What DuckDB Generates
+
+When the engine starts, the MySQL provider generates:
+
+```sql
+INSTALL mysql;
+LOAD mysql;
+ATTACH 'host=host user=user password=password port=3306 database=database' AS warehouse (TYPE MYSQL, READ_WRITE);
+```
+
+All tables in the target database become available under the `warehouse` schema. DuckDB pushes filters and aggregations down to MySQL whenever possible.
+
+## Capabilities
+
+| Operation | Supported |
+|---|---|
+| `findMany` / `findOne` | Yes |
+| `create` | Yes |
+| `update` | Yes |
+| `delete` | Yes |
+| `count` / `aggregate` | Yes |
+| Transactions | Yes |
+
+## Full Example
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { mysqlProvider } from '@superapp/backend/integrations/mysql'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
+
+const engine = createEngine({
+  integrations: [mysqlProvider],
+  connections: {
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+  permissions: {
+    read_customers: {
+      name: 'Read customers',
+      table: 'warehouse.customers',
+      operations: { select: true },
+      columns: ['id', 'name', 'email', 'created_at'],
+    },
+  },
+  roles: {
+    viewer: ['read_customers'],
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+## Combining with Other Providers
+
+MySQL works alongside any other provider. A common pattern is Postgres for your primary database and MySQL for a legacy warehouse:
+
+```typescript
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { mysqlProvider } from '@superapp/backend/integrations/mysql'
+
+const engine = createEngine({
+  integrations: [postgresProvider, mysqlProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+})
+```
+
+Tables are namespaced: `main.orders`, `warehouse.customers`.
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---|---|---|
+| `Connection refused` | MySQL not reachable | Check host, port, and firewall rules |
+| `Access denied` | Wrong credentials | Verify user/password in connection URL |
+| `Unknown database` | Database does not exist | Check database name in the URL |
+| `Too many connections` | Pool exhausted on MySQL side | Increase `max_connections` in MySQL config |
+| `SSL required` | Server enforces SSL | Add `?ssl-mode=REQUIRED` to the URL |

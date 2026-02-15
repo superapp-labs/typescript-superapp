@@ -1,0 +1,96 @@
+---
+title: AuthCard
+description: Pre-built sign-in, sign-up, and forgot-password UI component.
+---
+
+`AuthCard` renders a complete authentication form that automatically switches between sign-in, sign-up, and forgot-password views based on the current URL.
+
+```tsx
+import { AuthCard } from '@superapp/db/components'
+
+export default function AuthPage() {
+  return <AuthCard />
+}
+```
+
+## How It Works
+
+`AuthCard` reads the current URL path to decide which view to render:
+
+| URL Path | View |
+| --- | --- |
+| `/sign-in` | Sign-in form |
+| `/sign-up` | Sign-up form |
+| `/forgot-password` | Forgot password form |
+
+Navigation between views (e.g., "Don't have an account? Sign up") is handled automatically using the `navigate` and `Link` props from [`AuthProvider`](/docs/client/components/auth-provider).
+
+## Next.js App Router Example
+
+Create a catch-all route to handle all auth paths.
+
+**`app/(auth)/sign-in/page.tsx`**
+
+```tsx
+import { AuthCard } from '@superapp/db/components'
+
+export default function SignInPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <AuthCard />
+    </div>
+  )
+}
+```
+
+**`app/(auth)/sign-up/page.tsx`**
+
+```tsx
+import { AuthCard } from '@superapp/db/components'
+
+export default function SignUpPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <AuthCard />
+    </div>
+  )
+}
+```
+
+**`app/(auth)/forgot-password/page.tsx`**
+
+```tsx
+import { AuthCard } from '@superapp/db/components'
+
+export default function ForgotPasswordPage() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <AuthCard />
+    </div>
+  )
+}
+```
+
+## Prerequisites
+
+`AuthCard` requires an [`AuthProvider`](/docs/client/components/auth-provider) ancestor with `navigate`, `replace`, and `Link` configured for routing to work correctly.
+
+```tsx
+<AuthProvider
+  authClient={authClient}
+  navigate={router.push}
+  replace={router.replace}
+  Link={Link}
+  onSessionChange={() => router.refresh()}
+>
+  <AuthCard />
+</AuthProvider>
+```
+
+## After Sign-In
+
+On successful sign-in, `AuthProvider` automatically:
+
+1. Stores the JWT and refresh token.
+2. Fires `onSessionChange`.
+3. Navigates to the previous page or the app root.

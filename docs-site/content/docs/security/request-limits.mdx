@@ -1,0 +1,130 @@
+---
+title: Request Limits
+description: Rate limiting and query constraints.
+---
+
+The engine enforces limits on query complexity, request size, and request frequency to prevent abuse and protect downstream databases.
+
+```typescript
+const engine = createEngine({
+  limits: {
+    maxLimit: 10_000,
+    maxIncludeDepth: 3,
+    maxFilterDepth: 5,
+    maxFilterConditions: 20,
+    maxRequestBodySize: '1mb',
+    queryTimeout: 30_000,
+    rateLimitPerUser: 200,
+    rateLimitPerIP: 500,
+  },
+})
+```
+
+## All Limits
+
+| Limit | Default | Error | Description |
+|---|---|---|---|
+| `maxLimit` | `10_000` | `400 Limit exceeds maximum of 10000` | Maximum rows returned per query |
+| `maxIncludeDepth` | `3` | `400 Include depth exceeds maximum of 3` | Maximum nesting depth for `include` (joins) |
+| `maxFilterDepth` | `5` | `400 Filter depth exceeds maximum of 5` | Maximum nesting of `$and` / `$or` conditions |
+| `maxFilterConditions` | `20` | `400 Filter has too many conditions (max 20)` | Maximum total filter conditions per query |
+| `maxRequestBodySize` | `'1mb'` | `413 Request body too large` | Maximum JSON body size |
+| `queryTimeout` | `30_000` | `408 Query timed out after 30000ms` | Maximum query execution time in milliseconds |
+| `rateLimitPerUser` | `200` | `429 Rate limit exceeded, retry after {n}s` | Maximum requests per minute per authenticated user |
+| `rateLimitPerIP` | `500` | `429 Rate limit exceeded, retry after {n}s` | Maximum requests per minute per IP address |
+
+## Query Complexity Limits
+
+### maxLimit
+
+Caps the `limit` parameter on `findMany` queries. If a client requests more rows than allowed, the engine returns an error instead of silently truncating:
+
+```typescript
+// Client request
+db.main.orders.findMany({ limit: 50_000 })
+// → 400 Limit exceeds maximum of 10000
+```
+
+### maxIncludeDepth
+
+Prevents deeply nested joins that could generate expensive multi-table queries:
+
+```typescript
+// Depth 1: orders → customers
+// Depth 2: orders → customers → organizations
+// Depth 3: orders → customers → organizations → members (max)
+db.main.orders.findMany({
+  include: {
+    customer: {
+      include: {
+        organization: {
+          include: {
+            members: true, // depth 3 — allowed
+          },
+        },
+      },
+    },
+  },
+})
+```
+
+### maxFilterDepth
+
+Limits nesting of `$and` and `$or` conditions:
+
+```typescript
+// Depth 1
+{ $or: [
+  // Depth 2
+  { $and: [
+    { status: { $eq: 'active' } },
+    { amount: { $gt: 100 } },
+  ]},
+  { status: { $eq: 'pending' } },
+]}
+```
+
+### maxFilterConditions
+
+Caps the total number of filter conditions across all nesting levels. This prevents clients from constructing queries with hundreds of `$or` branches.
+
+## Request Size Limits
+
+### maxRequestBodySize
+
+Rejects requests with JSON bodies larger than the configured size. Accepts string values like `'1mb'`, `'500kb'`, or `'2mb'`.
+
+## Timeout
+
+### queryTimeout
+
+Kills queries that run longer than the specified duration. The DuckDB instance is terminated and the client receives a `408` error. This protects against unoptimized queries or unexpected table scans.
+
+## Rate Limiting
+
+Rate limits use a sliding window counter. When a client exceeds the limit, subsequent requests receive a `429` response with a `Retry-After` header.
+
+### rateLimitPerUser
+
+Tracks requests by the `sub` claim in the JWT. Authenticated users share no state with other users.
+
+### rateLimitPerIP
+
+Tracks requests by client IP address. This catches unauthenticated abuse and limits the blast radius of a compromised user token.
+
+Both limits are applied independently. A request must pass both checks.
+
+## Overriding Per-Environment
+
+Use different limits for development and production:
+
+```typescript
+const engine = createEngine({
+  limits: {
+    maxLimit: process.env.NODE_ENV === 'production' ? 10_000 : 100_000,
+    rateLimitPerUser: process.env.NODE_ENV === 'production' ? 200 : 10_000,
+    rateLimitPerIP: process.env.NODE_ENV === 'production' ? 500 : 10_000,
+    queryTimeout: process.env.NODE_ENV === 'production' ? 30_000 : 120_000,
+  },
+})
+```

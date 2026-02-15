@@ -1,0 +1,70 @@
+---
+title: findOne
+description: Fetch a single row by condition with optional relation includes.
+---
+
+`findOne` retrieves a single row matching the given condition. Returns `null` if no row matches.
+
+```typescript
+import { createClient } from '@superapp/db'
+import type { SuperAppSchema } from '../generated/schema'
+
+const db = createClient<SuperAppSchema>({ url, userToken })
+
+const order = await db.main.orders.findOne({
+  where: { id: { $eq: 'ord_abc123' } },
+})
+// order: { id: string; amount: number; status: string; ... } | null
+```
+
+## Options
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `where` | `object` | Yes | Filter conditions to match a single row |
+| `select` | `string[]` | No | Columns to return. Omit to return all permitted columns |
+| `include` | `object` | No | Related tables to include |
+
+## With Select
+
+```typescript
+const order = await db.main.orders.findOne({
+  where: { id: { $eq: 'ord_abc123' } },
+  select: ['id', 'amount', 'status'],
+})
+// order: { id: string; amount: number; status: string } | null
+```
+
+## With Includes
+
+```typescript
+const order = await db.main.orders.findOne({
+  where: { id: { $eq: 'ord_abc123' } },
+  include: {
+    customer: {
+      select: ['id', 'name', 'email'],
+    },
+  },
+})
+// order: {
+//   id: string; amount: number; status: string;
+//   customer: { id: string; name: string; email: string }
+// } | null
+```
+
+## Handling Null Results
+
+Always check the result before using it, since `findOne` returns `null` when no row matches.
+
+```typescript
+const order = await db.main.orders.findOne({
+  where: { id: { $eq: 'ord_abc123' } },
+})
+
+if (!order) {
+  console.log('Order not found')
+  return
+}
+
+console.log(order.amount)
+```

@@ -1,0 +1,335 @@
+---
+title: Permission Object
+description: "Complete permission shape reference."
+---
+
+A permission object defines what a user can do with a specific table. Permissions are identified by `snake_case` slugs and assigned to users through roles.
+
+## TypeScript Interface
+
+```typescript
+interface Permission {
+  /** Human-readable name for display in admin UI */
+  name: string
+
+  /** Optional description explaining the permission's purpose */
+  description?: string
+
+  /** Target table in connection.table format */
+  table: string
+
+  /** Which CRUD operations this permission grants */
+  operations: {
+    select?: boolean
+    insert?: boolean
+    update?: boolean
+    delete?: boolean
+  }
+
+  /** Allowed columns (allowlist). Omit to allow all columns. */
+  columns?: string[]
+
+  /** Row-level filter injected into WHERE clauses (SELECT, UPDATE, DELETE) */
+  filter?: Record<string, any>
+
+  /** Validation condition for incoming data (INSERT, UPDATE) */
+  check?: Record<string, any>
+
+  /** Server-injected values that override client data (INSERT, UPDATE) */
+  preset?: Record<string, any>
+
+  /** Maximum number of rows this permission can return per query */
+  limit?: number
+
+  /** Custom SQL fragment for advanced filtering (use with caution) */
+  customSql?: string
+}
+```
+
+## Field Reference
+
+### `name`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | Yes |
+| **Used in** | Admin UI display, audit logs |
+
+Human-readable label for the permission. Shown in the admin UI and audit logs.
+
+```typescript
+name: 'View own orders'
+```
+
+### `description`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | No |
+| **Used in** | Admin UI tooltip, documentation |
+
+Explains what this permission does and why it exists.
+
+```typescript
+description: 'Allows users to read orders belonging to their organization. Restricted to non-financial columns.'
+```
+
+### `table`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | Yes |
+| **Format** | `connection_name.table_name` |
+
+The fully qualified table name this permission applies to. Must match a table in one of your configured connections.
+
+```typescript
+table: 'main.orders'
+table: 'warehouse.events'
+table: 'imports.products'
+```
+
+### `operations`
+
+| | |
+|---|---|
+| **Type** | `{ select?: boolean; insert?: boolean; update?: boolean; delete?: boolean }` |
+| **Required** | Yes |
+| **Default per key** | `false` |
+
+Which CRUD operations this permission grants. At least one must be `true`.
+
+```typescript
+// Read-only
+operations: { select: true }
+
+// Full CRUD
+operations: { select: true, insert: true, update: true, delete: true }
+
+// Write-only (insert and update, no read)
+operations: { insert: true, update: true }
+```
+
+### `columns`
+
+| | |
+|---|---|
+| **Type** | `string[]` |
+| **Required** | No |
+| **Default** | All columns (no restriction) |
+| **Applies to** | SELECT (returned columns), INSERT/UPDATE (writable columns) |
+
+An allowlist of column names. For SELECT, only these columns are returned. For INSERT/UPDATE, only these columns can be set by the client. Omit to allow all columns.
+
+```typescript
+// Only these columns are visible/writable
+columns: ['id', 'amount', 'status', 'created_at']
+
+// All columns allowed (omit the field)
+// columns: undefined
+```
+
+### `filter`
+
+| | |
+|---|---|
+| **Type** | `Record<string, any>` |
+| **Required** | No |
+| **Applies to** | SELECT (WHERE), UPDATE (WHERE), DELETE (WHERE) |
+| **Supports** | `$user.*` substitution, all filter operators |
+
+A condition injected into the query's WHERE clause. The user cannot see, modify, or remove this filter. Supports all [filter operators](/docs/api-reference/client/filter-operators) and `$user.*` variable substitution.
+
+```typescript
+// Simple equality
+filter: { customer_id: { $eq: '$user.customer_id' } }
+
+// Array membership
+filter: { organization_id: { $in: '$user.org_ids' } }
+
+// Multiple conditions (AND)
+filter: {
+  organization_id: { $eq: '$user.current_org_id' },
+  status: { $ne: 'archived' },
+}
+
+// Nested relationship filter
+filter: {
+  organization: {
+    members: { user_id: { $eq: '$user.id' } },
+  },
+}
+```
+
+### `check`
+
+| | |
+|---|---|
+| **Type** | `Record<string, any>` |
+| **Required** | No |
+| **Applies to** | INSERT (validates data), UPDATE (validates new values) |
+| **Supports** | All filter operators (applied to the incoming data, not existing rows) |
+
+A validation condition that the incoming data must satisfy. If the data fails the check, the operation is rejected with a permission error. Unlike `filter`, `check` validates the *new* data, not existing rows.
+
+```typescript
+// Ensure amount is non-negative
+check: { amount: { $gte: 0 } }
+
+// Ensure status is one of the allowed values
+check: { status: { $in: ['draft', 'active', 'cancelled'] } }
+
+// Multiple validations
+check: {
+  amount: { $gte: 0, $lte: 1_000_000 },
+  status: { $in: ['draft', 'active', 'cancelled'] },
+  priority: { $in: ['low', 'medium', 'high'] },
+}
+```
+
+### `preset`
+
+| | |
+|---|---|
+| **Type** | `Record<string, any>` |
+| **Required** | No |
+| **Applies to** | INSERT (injects values), UPDATE (injects values) |
+| **Supports** | `$user.*` substitution, literal values |
+
+Key-value pairs injected into the data before writing. Preset values override anything the client sends for those columns. Use this for server-controlled fields like `created_by`, `organization_id`, or `updated_at`.
+
+```typescript
+// Inject the current user's ID
+preset: { created_by: '$user.id' }
+
+// Inject organization and timestamp
+preset: {
+  organization_id: '$user.current_org_id',
+  updated_by: '$user.id',
+  updated_at: '$now',
+}
+
+// Literal value
+preset: { source: 'api' }
+```
+
+### `limit`
+
+| | |
+|---|---|
+| **Type** | `number` |
+| **Required** | No |
+| **Default** | Uses global `limits.maxLimit` |
+| **Applies to** | SELECT |
+
+Maximum number of rows this permission can return in a single query. Overrides the global `maxLimit` for this specific permission. The client's `limit` is capped to whichever is lower: the permission limit or the global limit.
+
+```typescript
+// Cap to 100 rows per query
+limit: 100
+
+// Allow up to 50,000 rows (for export-type permissions)
+limit: 50_000
+```
+
+### `customSql`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | No |
+| **Applies to** | SELECT (appended to WHERE clause) |
+
+A raw SQL fragment appended to the WHERE clause. Use this for advanced filtering that cannot be expressed with the standard filter operators. The fragment is parameterized with `$user.*` substitution.
+
+```typescript
+// Spatial query
+customSql: "ST_Distance(location, ST_Point($user.longitude, $user.latitude)) < 10000"
+
+// Date range
+customSql: "created_at >= CURRENT_DATE - INTERVAL '30 days'"
+```
+
+<Callout type="warn">
+`customSql` bypasses the filter operator validation. Use it sparingly and ensure the SQL is safe. Never interpolate user input directly.
+</Callout>
+
+## Complete Examples
+
+### Read-Only Permission
+
+```typescript
+view_own_orders: {
+  name: 'View own orders',
+  description: 'Read orders belonging to the user\'s organization',
+  table: 'main.orders',
+  operations: { select: true },
+  columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+  filter: {
+    organization_id: { $eq: '$user.current_org_id' },
+  },
+  limit: 1000,
+}
+```
+
+### Full CRUD Permission
+
+```typescript
+manage_team_tasks: {
+  name: 'Manage team tasks',
+  description: 'Full CRUD on tasks for the user\'s team',
+  table: 'main.tasks',
+  operations: { select: true, insert: true, update: true, delete: true },
+  columns: ['id', 'title', 'description', 'status', 'priority', 'assigned_to', 'due_date'],
+  filter: {
+    team_id: { $in: '$user.team_ids' },
+  },
+  check: {
+    status: { $in: ['todo', 'in_progress', 'done', 'cancelled'] },
+    priority: { $in: ['low', 'medium', 'high', 'critical'] },
+  },
+  preset: {
+    organization_id: '$user.current_org_id',
+    updated_by: '$user.id',
+  },
+}
+```
+
+### Insert-Only Permission
+
+```typescript
+submit_feedback: {
+  name: 'Submit feedback',
+  description: 'Users can submit feedback but cannot read or modify existing entries',
+  table: 'main.feedback',
+  operations: { insert: true },
+  columns: ['message', 'category', 'rating'],
+  check: {
+    rating: { $gte: 1, $lte: 5 },
+    category: { $in: ['bug', 'feature', 'general'] },
+  },
+  preset: {
+    user_id: '$user.id',
+    submitted_at: '$now',
+    status: 'pending',
+  },
+}
+```
+
+### Delete with Restrictions
+
+```typescript
+delete_draft_orders: {
+  name: 'Delete draft orders',
+  description: 'Users can only delete their own orders that are still in draft status',
+  table: 'main.orders',
+  operations: { delete: true },
+  filter: {
+    customer_id: { $eq: '$user.customer_id' },
+    status: { $eq: 'draft' },
+  },
+}
+```

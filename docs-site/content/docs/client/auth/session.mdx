@@ -1,0 +1,127 @@
+---
+title: Session Management
+description: How sessions, tokens, and automatic refresh work in the client SDK.
+---
+
+The auth client manages JWT sessions automatically — storing tokens, refreshing them before expiry, and clearing them on sign out.
+
+```tsx
+import { useSession } from '@superapp/db/auth'
+
+export function Dashboard() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return <div>Loading...</div>
+  if (!session) return <div>Please sign in</div>
+
+  return <div>Welcome, {session.user.name}</div>
+}
+```
+
+## How Sessions Work
+
+1. The user signs in through [`AuthCard`](/docs/client/components/auth-card) or the auth client API.
+2. The server returns a JWT and a refresh token.
+3. The auth client stores the tokens and provides them via `useSession`.
+4. When you create a `db` client with `createDb(session.token)`, the JWT is sent with every query.
+5. The server validates the JWT, extracts the user identity, and applies permissions.
+
+## Token Lifecycle
+
+| Event | What Happens |
+| --- | --- |
+| Sign in | JWT + refresh token stored |
+| Query | JWT sent in `Authorization` header |
+| Token expiry approaching | Auth client refreshes automatically |
+| Refresh token expired | Session cleared, user must sign in again |
+| Sign out | Both tokens cleared |
+
+## Accessing the Session
+
+### In React Components
+
+Use the `useSession` hook inside an [`AuthProvider`](/docs/client/components/auth-provider).
+
+```tsx
+import { useSession } from '@superapp/db/auth'
+
+export function UserGreeting() {
+  const { data: session, isPending } = useSession()
+
+  if (isPending) return <span>Loading...</span>
+  if (!session) return <span>Guest</span>
+
+  return <span>Hello, {session.user.name}</span>
+}
+```
+
+### For Database Queries
+
+Use the `useDb` hook to get a typed client that is automatically `null` when no session exists.
+
+```tsx
+import { useDb } from '@/hooks/use-db'
+
+export function OrdersList() {
+  const db = useDb()
+
+  async function loadOrders() {
+    if (!db) return // Not authenticated
+    const orders = await db.main.orders.findMany({
+      select: ['id', 'amount', 'status'],
+    })
+    // orders: { id: string; amount: number; status: string }[]
+  }
+}
+```
+
+## Reacting to Session Changes
+
+Use the `onSessionChange` callback on [`AuthProvider`](/docs/client/components/auth-provider) to run side effects when the session changes (sign in, sign out, token refresh).
+
+```tsx
+import { AuthProvider } from '@superapp/db/components'
+import { authClient } from '@/lib/superapp'
+import { useRouter } from 'next/navigation'
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  const router = useRouter()
+
+  return (
+    <AuthProvider
+      authClient={authClient}
+      navigate={router.push}
+      replace={router.replace}
+      onSessionChange={() => router.refresh()}
+    >
+      {children}
+    </AuthProvider>
+  )
+}
+```
+
+## Protected Routes
+
+Check the session to gate access to authenticated pages.
+
+```tsx
+import { useSession } from '@superapp/db/auth'
+import { useRouter } from 'next/navigation'
+import { useEffect } from 'react'
+
+export function ProtectedPage({ children }: { children: React.ReactNode }) {
+  const { data: session, isPending } = useSession()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.replace('/sign-in')
+    }
+  }, [session, isPending, router])
+
+  if (isPending) return <div>Loading...</div>
+  if (!session) return null
+
+  return <>{children}</>
+}
+```

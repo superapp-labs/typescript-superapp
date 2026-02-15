@@ -1,0 +1,109 @@
+---
+title: DuckDB Settings
+description: Configure DuckDB memory limits, thread count, connection pooling, and query isolation.
+---
+
+The engine uses DuckDB as its query execution layer. All connected databases (Postgres, MySQL, SQLite, CSV) are attached to DuckDB, which handles cross-database joins and query execution.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  duckdb: {
+    maxMemory: '256MB',
+    threads: 2,
+  },
+})
+```
+
+## Full Configuration
+
+```typescript
+duckdb: {
+  maxMemory: '256MB',      // Maximum memory DuckDB can use
+  threads: 2,              // Number of CPU threads for query execution
+  queryTimeout: 30_000,    // Maximum query execution time in milliseconds
+  poolSize: 10,            // Number of DuckDB connections in the pool
+  idleTimeout: 300_000,    // Close idle connections after this many milliseconds
+}
+```
+
+## Options Reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `maxMemory` | `string` | `'256MB'` | Maximum memory allocation (e.g., `'128MB'`, `'1GB'`, `'4GB'`) |
+| `threads` | `number` | `2` | CPU threads for parallel query execution |
+| `queryTimeout` | `number` | `30000` | Query timeout in milliseconds. Queries exceeding this are killed |
+| `poolSize` | `number` | `10` | Number of DuckDB connections to maintain in the pool |
+| `idleTimeout` | `number` | `300000` | Time in milliseconds before idle connections are closed |
+
+## Memory
+
+DuckDB processes queries in-memory. Set `maxMemory` based on your workload:
+
+```typescript
+// Light workloads — small tables, simple queries
+duckdb: { maxMemory: '128MB' }
+
+// Standard workloads — medium tables, joins
+duckdb: { maxMemory: '256MB' }
+
+// Heavy workloads — large tables, aggregations, cross-DB joins
+duckdb: { maxMemory: '1GB' }
+```
+
+If a query exceeds the memory limit, DuckDB spills to disk automatically.
+
+## Threads
+
+Controls parallel query execution. Match this to your available CPU cores:
+
+```typescript
+// Single-core / serverless
+duckdb: { threads: 1 }
+
+// Standard server
+duckdb: { threads: 2 }
+
+// Dedicated query server
+duckdb: { threads: 4 }
+```
+
+## Connection Pooling
+
+The engine maintains a pool of DuckDB connections to handle concurrent requests:
+
+```typescript
+duckdb: {
+  poolSize: 10,         // Keep 10 connections ready
+  idleTimeout: 300_000, // Close idle connections after 5 minutes
+}
+```
+
+- Each incoming request acquires a connection from the pool
+- After the query completes, the connection is returned to the pool
+- If all connections are busy, new requests wait until one is available
+
+## Query Timeout
+
+Prevent runaway queries from consuming resources:
+
+```typescript
+duckdb: {
+  queryTimeout: 30_000, // Kill queries after 30 seconds
+}
+```
+
+When a query exceeds the timeout, it is terminated and the request returns `408 Request Timeout`.
+
+## Query Isolation
+
+Each request gets its own DuckDB connection from the pool, providing isolation:
+
+- Queries from different users do not interfere with each other
+- A slow query does not block other users (up to `poolSize` concurrent queries)
+- Failed queries do not affect the connection pool

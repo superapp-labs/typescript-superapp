@@ -1,0 +1,122 @@
+---
+title: Audit Logging
+description: Track every query with user context, parameters, duration, and automatic retention policies.
+---
+
+Audit logging records every data request with the user, query, parameters, and execution time. Enable it for compliance, debugging, and security monitoring.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  audit: {
+    enabled: true,
+  },
+})
+```
+
+## Full Configuration
+
+```typescript
+audit: {
+  enabled: true,        // Enable audit logging
+  logQuery: true,       // Log the SQL query text
+  logParams: true,      // Log query parameters
+  logDuration: true,    // Log execution time in milliseconds
+  retention: '90d',     // Auto-delete logs older than 90 days
+}
+```
+
+## Options Reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | `boolean` | `false` | Enable or disable audit logging |
+| `logQuery` | `boolean` | `true` | Include the SQL query text in the log |
+| `logParams` | `boolean` | `true` | Include query parameters in the log |
+| `logDuration` | `boolean` | `true` | Include execution duration in the log |
+| `retention` | `string` | `'90d'` | Auto-delete logs after this period (e.g., `'30d'`, `'1y'`) |
+
+## What Gets Logged
+
+Each audit log entry contains:
+
+| Field | Description |
+|---|---|
+| `timestamp` | When the request was made |
+| `user_id` | Authenticated user ID |
+| `table` | Target table (e.g., `main.orders`) |
+| `operation` | `select`, `insert`, `update`, `delete` |
+| `query` | Generated SQL (if `logQuery: true`) |
+| `params` | Query parameters (if `logParams: true`) |
+| `duration_ms` | Execution time in milliseconds (if `logDuration: true`) |
+| `ip_address` | Client IP address |
+| `role` | User's role at the time of the request |
+| `status` | `success` or `error` |
+
+## Retention
+
+The `retention` option automatically purges old audit logs:
+
+```typescript
+audit: {
+  enabled: true,
+  retention: '90d',  // Keep logs for 90 days
+}
+```
+
+Supported formats:
+- `'30d'` — 30 days
+- `'90d'` — 90 days
+- `'1y'` — 1 year
+- `'365d'` — 365 days
+
+## PII Considerations
+
+When `logParams: true`, query parameters are stored in plain text. If your queries include personally identifiable information (PII), consider:
+
+```typescript
+// Option 1: Disable parameter logging
+audit: {
+  enabled: true,
+  logParams: false,
+}
+
+// Option 2: Keep params but reduce retention
+audit: {
+  enabled: true,
+  logParams: true,
+  retention: '30d',
+}
+```
+
+## Querying Audit Logs
+
+Audit logs are stored in the engine's internal database and accessible through the admin API:
+
+```bash
+# Get recent audit logs
+curl -H "Authorization: Bearer $MASTER_KEY" \
+  https://myapp.com/admin/api/audit?limit=100
+
+# Filter by user
+curl -H "Authorization: Bearer $MASTER_KEY" \
+  https://myapp.com/admin/api/audit?user_id=usr_123
+
+# Filter by table and operation
+curl -H "Authorization: Bearer $MASTER_KEY" \
+  https://myapp.com/admin/api/audit?table=main.orders&operation=delete
+```
+
+## Disabling for Development
+
+Turn off audit logging in development to reduce noise:
+
+```typescript
+audit: {
+  enabled: process.env.NODE_ENV === 'production',
+}
+```
