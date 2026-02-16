@@ -8,12 +8,6 @@
     "auth",
     "adapters",
     "roles",
-    "---Permissions---",
-    "permissions-overview",
-    "filters",
-    "checks",
-    "presets",
-    "operators",
-    "custom-sql"
+    "permissions"
   ]
 }

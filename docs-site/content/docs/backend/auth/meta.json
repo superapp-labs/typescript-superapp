@@ -1,5 +1,5 @@
 {
   "title": "Authentication",
   "icon": "KeyRound",
-  "pages": ["overview", "better-auth", "custom-provider"]
+  "pages": ["better-auth", "custom-provider"]
 }

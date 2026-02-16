@@ -22,14 +22,14 @@ const engine = createEngine({
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `mode` | `'programmatic' \| 'managed'` | `'programmatic'` | Engine operation mode. `programmatic` = config in code, `managed` = config in admin UI. |
-| `database` | `string` | `'./superapp.db'` | Path to the metadata database. Local file path for SQLite or a Turso URL. Stores sessions, roles, audit logs, and admin configuration. |
+| `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode. `programmatic` = config in code, `admin_ui` = config in admin UI. |
+| `database` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables (sessions, roles, audit logs, admin configuration). Local file path for SQLite or a Turso URL. |
 | `integrations` | `Provider[]` | `[]` | Database provider modules to load. Each provider adds support for a database type (postgres, mysql, sqlite, csv). |
 | `connections` | `Record<string, ConnectionConfig>` | `{}` | Named database connections. Keys become table namespace prefixes (e.g., `main.orders`). |
 | `auth` | `AuthProvider` | `undefined` | Authentication provider. If omitted, the engine runs in open mode (no auth). |
 | `permissions` | `Record<string, Permission>` | `{}` | Permission definitions. Keys must be `snake_case` slugs. Only used in `programmatic` mode. |
 | `roles` | `Record<string, string[]>` | `{}` | Role-to-permission mappings. Each key is a role name, value is an array of permission slugs. |
-| `masterKey` | `string` | `undefined` | Master API key for admin access. Required for managed mode and admin endpoints. Set via environment variable, never hardcode. |
+| `masterKey` | `string` | `undefined` | Master API key for admin access. Required for `admin_ui` mode and admin endpoints. Set via environment variable, never hardcode. |
 | `schemaEndpoint` | `SchemaEndpointConfig \| boolean` | `false` | Enable the `GET /schema` introspection endpoint. Set `true` for defaults or pass a config object. |
 | `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. |
 | `limits` | `LimitsConfig` | See below | Query and rate limit constraints. |

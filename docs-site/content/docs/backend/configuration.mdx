@@ -76,8 +76,8 @@ const engine = createEngine({
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `mode` | `'programmatic' \| 'managed'` | `'programmatic'` | Engine operation mode |
-| `database` | `string` | `'./superapp.db'` | DuckDB database path or Turso URL |
+| `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode |
+| `database` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables. Local file path for SQLite or a Turso URL. |
 | `integrations` | `Provider[]` | `[]` | Database integration providers to load |
 | `connections` | `Record<string, Connection>` | `{}` | Named database connections |
 | `auth` | `AuthProvider` | — | Authentication provider |

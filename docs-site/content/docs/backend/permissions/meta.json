@@ -1,0 +1,6 @@
+{
+  "title": "Permissions",
+  "icon": "Lock",
+  "defaultOpen": true,
+  "pages": ["filters", "checks", "presets", "operators", "custom-sql"]
+}

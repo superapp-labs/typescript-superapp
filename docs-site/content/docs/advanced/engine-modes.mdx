@@ -8,13 +8,13 @@ superapp supports two engine modes that control how permissions and connections 
 
 ## Side-by-Side Comparison
 
-| Feature | `programmatic` | `managed` |
+| Feature | `programmatic` | `admin_ui` |
 |---|---|---|
 | **Permissions defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
 | **Connections defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
 | **Roles defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
 | **Version control** | Git-tracked, PR-reviewed | Database-stored, audit-logged |
-| **Admin UI** | Read-only dashboard | Full editing capabilities |
+| **Admin UI** | Read-only dashboard (view-only access to config defined in code) | Full editing capabilities (create, edit, and delete permissions, connections, and roles) |
 | **Deployment** | Config changes require redeploy | Changes take effect immediately |
 | **Default** | Yes | No |
 | **Best for** | Engineering teams, CI/CD pipelines | Non-technical admins, rapid iteration |
@@ -69,13 +69,13 @@ const engine = createEngine({
 - You have a CI/CD pipeline that deploys config changes.
 - Security is paramount and you want to audit permission changes in git history.
 
-## Managed Mode
+## Admin UI Mode
 
-In managed mode, the admin UI becomes the primary interface for managing permissions, connections, and roles. Changes are stored in the metadata database and take effect immediately.
+In `admin_ui` mode, the admin UI becomes the primary interface for managing permissions, connections, and roles. Changes are stored in the metadata database and take effect immediately — no code changes or redeployments needed.
 
 ```typescript
 const engine = createEngine({
-  mode: 'managed',
+  mode: 'admin_ui',
   database: process.env.TURSO_URL ?? './superapp.db',
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   auth: betterAuthProvider({ /* ... */ }),
@@ -85,7 +85,7 @@ const engine = createEngine({
 
 ### How It Works
 
-1. Start the engine with `mode: 'managed'` and a `masterKey`.
+1. Start the engine with `mode: 'admin_ui'` and a `masterKey`.
 2. Access the admin UI (served by the engine on the `/admin` route).
 3. Add connections, define permissions, and assign roles visually.
 4. Changes are persisted to the metadata database and applied immediately.
@@ -93,7 +93,7 @@ const engine = createEngine({
 
 ### Admin UI Capabilities
 
-In managed mode, the admin UI provides:
+In `admin_ui` mode, the admin UI provides:
 
 - **Connection management** -- Add, edit, and test database connections.
 - **Permission editor** -- Visual builder for filter, columns, check, and preset rules.
@@ -102,7 +102,7 @@ In managed mode, the admin UI provides:
 - **Audit log viewer** -- Browse query and admin action logs.
 - **Schema browser** -- Explore attached database tables and columns.
 
-### When to Use Managed Mode
+### When to Use Admin UI Mode
 
 - Non-technical team members need to manage access rules.
 - You want to iterate on permissions without redeploying.
@@ -111,9 +111,9 @@ In managed mode, the admin UI provides:
 
 ## Switching Between Modes
 
-You can switch from programmatic to managed mode at any time. When switching to managed mode, any permissions defined in code are imported into the metadata database as a starting point.
+You can switch from programmatic to `admin_ui` mode at any time. When switching to `admin_ui` mode, any permissions defined in code are imported into the metadata database as a starting point.
 
-Switching from managed back to programmatic requires exporting your current permissions from the admin UI and adding them to your `createEngine` config.
+Switching from `admin_ui` back to programmatic requires exporting your current permissions from the admin UI and adding them to your `createEngine` config.
 
 ```typescript
 // Start in programmatic mode during development
@@ -123,9 +123,9 @@ const engine = createEngine({
   roles: { /* ... */ },
 })
 
-// Later, switch to managed mode for production
+// Later, switch to admin_ui mode for production
 const engine = createEngine({
-  mode: 'managed',
+  mode: 'admin_ui',
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   // permissions from code are imported into the metadata DB on first run
 })
@@ -133,7 +133,7 @@ const engine = createEngine({
 
 ## Hybrid Approach
 
-Some teams use programmatic mode in production with managed mode in staging. This lets you:
+Some teams use programmatic mode in production with `admin_ui` mode in staging. This lets you:
 
 1. Prototype permission changes in the staging admin UI.
 2. Export the tested configuration.
@@ -141,7 +141,7 @@ Some teams use programmatic mode in production with managed mode in staging. Thi
 
 ```typescript
 const engine = createEngine({
-  mode: process.env.NODE_ENV === 'production' ? 'programmatic' : 'managed',
+  mode: process.env.NODE_ENV === 'production' ? 'programmatic' : 'admin_ui',
   permissions: {
     // These are always available as a baseline
     view_own_orders: { /* ... */ },

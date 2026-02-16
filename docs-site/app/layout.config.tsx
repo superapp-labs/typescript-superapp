@@ -12,7 +12,7 @@ export const baseOptions: BaseLayoutProps = {
     },
     {
       text: 'GitHub',
-      url: 'https://github.com/user/superapp-backend',
+      url: 'https://github.com/superapp-labs/typescript-superapp',
       external: true,
     },
   ],
