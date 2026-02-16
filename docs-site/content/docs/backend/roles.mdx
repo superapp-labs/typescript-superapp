@@ -6,6 +6,10 @@ icon: Users
 
 Roles group permissions into named sets. Each user gets a role, and the engine resolves which permissions apply based on that role.
 
+## Example
+
+A blog app with three roles — `reader`, `author`, and `admin`:
+
 ```typescript
 import { createEngine } from '@superapp/backend'
 
@@ -14,91 +18,29 @@ const engine = createEngine({
     main: { type: 'postgres', url: process.env.PG_URL! },
   },
   permissions: {
-    view_own_orders: { /* ... */ },
-    edit_org_orders: { /* ... */ },
-    create_orders: { /* ... */ },
-    delete_draft_orders: { /* ... */ },
+    read_posts: { /* ... */ },
+    write_posts: { /* ... */ },
+    delete_posts: { /* ... */ },
   },
   roles: {
-    viewer: ['view_own_orders'],
-    editor: ['view_own_orders', 'edit_org_orders', 'create_orders'],
-    admin: ['view_own_orders', 'edit_org_orders', 'create_orders', 'delete_draft_orders'],
+    reader: ['read_posts'],
+    author: ['read_posts', 'write_posts'],
+    admin: ['read_posts', 'write_posts', 'delete_posts'],
   },
 })
 ```
 
-## How Roles Work
+Each role is an array of permission slugs. Higher roles include lower-role permissions — `admin` can do everything `author` can, plus delete posts.
 
-1. User authenticates and `resolveSession` returns a role (e.g., from `members.role`)
+## How It Works
+
+1. User authenticates and `resolveSession` returns their role
 2. Engine looks up the role in the `roles` config
-3. Each permission slug in the array is activated for the request
-4. Filters, checks, and presets from all active permissions are applied
-
-## Role Definition
-
-Each role is a key-value pair where the key is the role name and the value is an array of permission slugs:
-
-```typescript
-roles: {
-  viewer: ['view_own_orders'],
-  editor: ['view_own_orders', 'edit_org_orders', 'create_orders'],
-  admin: ['view_own_orders', 'edit_org_orders', 'create_orders', 'delete_draft_orders'],
-}
-```
-
-## Hierarchy Pattern
-
-Build role hierarchies by including lower-level permissions in higher-level roles:
-
-```typescript
-const viewerPerms = ['view_own_orders', 'view_own_profile']
-
-const editorPerms = [
-  ...viewerPerms,
-  'edit_org_orders',
-  'create_orders',
-]
-
-const adminPerms = [
-  ...editorPerms,
-  'delete_draft_orders',
-  'manage_members',
-  'view_audit_log',
-]
-
-const engine = createEngine({
-  // ...
-  roles: {
-    viewer: viewerPerms,
-    editor: editorPerms,
-    admin: adminPerms,
-  },
-})
-```
-
-## Multi-Table Roles
-
-Roles can span permissions across different tables:
-
-```typescript
-roles: {
-  sales_rep: [
-    'view_own_orders',       // main.orders (select)
-    'create_orders',         // main.orders (insert)
-    'view_own_customers',    // main.customers (select)
-    'edit_own_customers',    // main.customers (update)
-  ],
-  finance: [
-    'view_all_orders',       // main.orders (select, all rows)
-    'view_all_invoices',     // main.invoices (select)
-    'create_invoices',       // main.invoices (insert)
-  ],
-}
-```
+3. All permissions in that role's array are activated for the request
 
 ## Role Resolution
 
-The role is resolved from the user's session. Set it up in `resolveSession`:
+The role comes from the user's session. Set it up in `resolveSession`:
 
 ```typescript
 const auth = betterAuthProvider({
@@ -117,7 +59,7 @@ const auth = betterAuthProvider({
 
     return {
       ...user,
-      role: membership?.role ?? 'viewer',  // Used by engine to resolve permissions
+      role: membership?.role ?? 'reader',
       current_org_id: membership?.organization_id ?? null,
     }
   },
