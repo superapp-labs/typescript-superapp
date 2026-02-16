@@ -50,6 +50,12 @@ interface Permission {
     params: { user, db, table, operation, columns, query, input?, filter? },
     next: (overrides?) => Promise<any[]>,
   ) => Promise<any[]>
+
+  /** Named server-side functions callable by the client */
+  actions?: Record<string, (
+    context: { user: UserSession, db: DrizzleInstance },
+    input: any,
+  ) => Promise<any>>
 }
 ```
 
@@ -297,6 +303,35 @@ middleware: async ({ user, db, operation, input }, next) => {
 ```
 
 See [Middleware](/docs/backend/permissions/middleware) for full documentation and examples.
+
+### `actions`
+
+| | |
+|---|---|
+| **Type** | `Record<string, (context, input) => Promise<any>>` |
+| **Required** | No |
+| **Applies to** | Custom operations called by name |
+
+Named server-side functions that the client calls via `POST /actions/{actionName}`. Each action receives `{ user, db }` and the client's input. Actions inherit role-based access control from the permission but do not auto-apply `filter`, `check`, or `preset` — you scope queries yourself.
+
+```typescript
+actions: {
+  incrementStock: async ({ user, db }, { productId, amount }) => {
+    return db
+      .update(products)
+      .set({ stock: sql`stock + ${amount}` })
+      .where(
+        and(
+          eq(products.id, productId),
+          eq(products.organizationId, user.current_org_id),
+        ),
+      )
+      .returning()
+  },
+}
+```
+
+See [Actions](/docs/backend/permissions/actions) for full documentation and examples.
 
 ## Complete Examples
 

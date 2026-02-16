@@ -185,6 +185,34 @@ The query results are returned as JSON:
 }
 ```
 
+## Actions Pipeline
+
+Requests to `POST /actions/{actionName}` follow a shorter pipeline — no SQL parsing or permission filtering, just authentication and role checks:
+
+```text
+  POST /actions/incrementStock + Bearer JWT + { productId, amount }
+    │
+    ▼
+  1. Rate Limiting
+    │
+    ▼
+  2. JWT Extraction + Session Resolution
+    │
+    ▼
+  3. Permission lookup — find which permission defines this action
+    │
+    ▼
+  4. Role check — does the user's role include that permission?
+    │
+    ▼
+  5. Execute action function — your TypeScript runs with { user, db } and input
+    │
+    ▼
+  6. Audit Log + Response
+```
+
+See [Actions](/docs/backend/permissions/actions) for details.
+
 ## Error Responses
 
 | Status | Step | Cause |
