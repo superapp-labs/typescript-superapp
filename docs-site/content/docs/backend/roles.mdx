@@ -8,7 +8,7 @@ Roles group permissions into named sets. Each user gets a role, and the engine r
 
 ## Example
 
-A blog app with three roles — `reader`, `author`, and `admin`:
+An orders dashboard with three roles — `viewer`, `editor`, and `admin`:
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -18,19 +18,19 @@ const engine = createEngine({
     main: { type: 'postgres', url: process.env.PG_URL! },
   },
   permissions: {
-    read_posts: { /* ... */ },
-    write_posts: { /* ... */ },
-    delete_posts: { /* ... */ },
+    view_orders: { /* ... */ },
+    edit_orders: { /* ... */ },
+    delete_orders: { /* ... */ },
   },
   roles: {
-    reader: ['read_posts'],
-    author: ['read_posts', 'write_posts'],
-    admin: ['read_posts', 'write_posts', 'delete_posts'],
+    viewer: ['view_orders'],
+    editor: ['view_orders', 'edit_orders'],
+    admin: ['view_orders', 'edit_orders', 'delete_orders'],
   },
 })
 ```
 
-Each role is an array of permission slugs. Higher roles include lower-role permissions — `admin` can do everything `author` can, plus delete posts.
+Each role is an array of permission slugs. Higher roles include lower-role permissions — `admin` can do everything `editor` can, plus delete orders.
 
 ## How It Works
 
@@ -59,7 +59,7 @@ const auth = betterAuthProvider({
 
     return {
       ...user,
-      role: membership?.role ?? 'reader',
+      role: membership?.role ?? 'viewer',
       current_org_id: membership?.organization_id ?? null,
     }
   },
