@@ -1,6 +1,7 @@
 ---
 title: How Permissions Work
 description: "Filter, check, and preset in depth."
+icon: Workflow
 ---
 
 Permissions are the core security primitive in superapp. Think of each permission as a **lens** -- it defines what a user can see and do with a specific table. The lens narrows the view: which rows are visible, which columns are accessible, what data can be written, and what values are automatically injected.
@@ -51,6 +52,29 @@ Each CRUD operation uses a different combination of permission fields.
 **`check`** -- A validation condition applied to the incoming data. Used for INSERT and UPDATE. If the data does not satisfy the check, the operation is rejected with a permission error.
 
 **`preset`** -- Key-value pairs that the server injects into the data before writing. Used for INSERT and UPDATE. Preset values override anything the client sends for those columns.
+
+```mermaid
+flowchart LR
+    REQ["Query Request"]
+    ROLE["User Role"]
+    PERMS["Active Permissions"]
+    FILTER["filter → WHERE clause"]
+    COLS["columns → SELECT restriction"]
+    CHECK["check → Write validation"]
+    PRESET["preset → Auto-set values"]
+    SQL["Final SQL"]
+
+    REQ --> ROLE
+    ROLE --> PERMS
+    PERMS --> FILTER
+    PERMS --> COLS
+    PERMS --> CHECK
+    PERMS --> PRESET
+    FILTER --> SQL
+    COLS --> SQL
+    CHECK --> SQL
+    PRESET --> SQL
+```
 
 ## Permission Definition
 

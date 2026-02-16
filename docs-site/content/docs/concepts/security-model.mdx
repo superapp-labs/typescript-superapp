@@ -1,41 +1,25 @@
 ---
 title: Security Model
 description: "Defense-in-depth security architecture."
+icon: Shield
 ---
 
 superapp uses a four-layer defense-in-depth model. Every query must pass through all four layers. There is no shortcut, no bypass flag, and no god mode.
 
 ## The Four Layers
 
-```
-Request from client
-  │
-  ▼
-┌──────────────────────────────────────┐
-│  Layer 1: JWT Authentication         │
-│  Verify token signature and expiry   │
-│  Resolve user session                │
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│  Layer 2: Permission Enforcement     │
-│  Filter rows, restrict columns       │
-│  Validate writes, inject presets     │
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│  Layer 3: DuckDB Isolation           │
-│  No raw SQL, blocked functions       │
-│  Memory and time limits              │
-└──────────────────┬───────────────────┘
-                   │
-                   ▼
-┌──────────────────────────────────────┐
-│  Layer 4: Audit Trail                │
-│  Log query, user, duration, denied   │
-└──────────────────────────────────────┘
+```mermaid
+flowchart TD
+    REQ["Request from client"]
+    L1["Layer 1: JWT Authentication — Verify token, resolve session"]
+    L2["Layer 2: Permission Enforcement — Filter rows, restrict columns, validate writes"]
+    L3["Layer 3: DuckDB Isolation — No raw SQL, blocked functions, memory/time limits"]
+    L4["Layer 4: Audit Trail — Log query, user, duration, denied actions"]
+
+    REQ --> L1
+    L1 --> L2
+    L2 --> L3
+    L3 --> L4
 ```
 
 ## Layer 1: JWT Authentication

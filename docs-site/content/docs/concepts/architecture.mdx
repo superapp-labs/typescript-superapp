@@ -1,58 +1,46 @@
 ---
 title: Architecture
 description: "How the pieces fit together."
+icon: Building
 ---
 
 superapp is two npm packages: `@superapp/backend` (server) and `@superapp/db` (client). The server owns all data access, auth, and permissions. The client is a thin typed HTTP layer that never generates SQL.
 
 ## System Diagram
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│  Browser / Frontend                                                     │
-│                                                                         │
-│  ┌──────────────┐   ┌──────────────────────────────────────────────┐   │
-│  │  AuthCard     │   │  createClient<SuperAppSchema>()              │   │
-│  │  (sign-in,    │   │                                              │   │
-│  │   sign-up)    │   │  db.main.orders.findMany({ ... })            │   │
-│  └──────┬───────┘   └──────────────────┬───────────────────────────┘   │
-│         │                               │                               │
-└─────────┼───────────────────────────────┼───────────────────────────────┘
-          │ POST /auth/*                  │ POST /data
-          │ (credentials)                 │ Authorization: Bearer <jwt>
-          │                               │ Body: { action, table, ... }
-          ▼                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│  @superapp/backend                                                      │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  HTTP Adapter (Hono / Express / Next.js / generic)              │   │
-│  └──────────────────────────┬──────────────────────────────────────┘   │
-│                              │                                          │
-│  ┌──────────────┐   ┌───────▼──────────┐   ┌──────────────────────┐   │
-│  │  Auth Layer   │──▶│  Permission      │──▶│  Query Builder       │   │
-│  │  (better-auth │   │  Engine (CASL)   │   │  (Kysely)            │   │
-│  │   / custom)   │   │                  │   │                      │   │
-│  │              │   │  - filter        │   │  JSON → SQL          │   │
-│  │  JWT verify  │   │  - columns       │   │                      │   │
-│  │  Session     │   │  - check         │   └──────────┬───────────┘   │
-│  │  enrichment  │   │  - preset        │              │               │
-│  └──────────────┘   └──────────────────┘              │               │
-│                                                        ▼               │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  DuckDB (in-process query engine)                               │   │
-│  │                                                                  │   │
-│  │  ┌────────────┐  ┌────────────┐  ┌───────────┐  ┌───────────┐  │   │
-│  │  │  Postgres   │  │  MySQL      │  │  SQLite    │  │  CSV       │  │   │
-│  │  │  (ATTACH)   │  │  (ATTACH)   │  │  (ATTACH)  │  │  (ATTACH)  │  │   │
-│  │  └────────────┘  └────────────┘  └───────────┘  └───────────┘  │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-│                                                                         │
-│  ┌─────────────────────────────────────────────────────────────────┐   │
-│  │  Metadata Store (Turso / SQLite via Drizzle)                    │   │
-│  │  Sessions, roles, audit logs, admin config                      │   │
-│  └─────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Frontend["Browser / Frontend"]
+        AC["AuthCard (sign-in, sign-up)"]
+        DC["drizzle() — Drizzle ORM client"]
+    end
+
+    subgraph Backend["@superapp/backend"]
+        HA["HTTP Adapter (Hono / Express / Next.js)"]
+        AL["Auth Layer (better-auth / custom)"]
+        PE["Permission Engine (CASL)"]
+        QB["Query Builder (Kysely)"]
+        DDB["DuckDB (in-process)"]
+        MS["Metadata Store (Turso / SQLite)"]
+    end
+
+    subgraph Databases
+        PG["Postgres"]
+        MY["MySQL"]
+        SL["SQLite"]
+        CS["CSV"]
+    end
+
+    AC -->|"POST /auth/*"| HA
+    DC -->|"POST /data + JWT"| HA
+    HA --> AL
+    AL --> PE
+    PE --> QB
+    QB --> DDB
+    DDB --> PG
+    DDB --> MY
+    DDB --> SL
+    DDB --> CS
 ```
 
 ## Two Packages
@@ -74,15 +62,15 @@ import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 
 ### `@superapp/db` (Client)
 
-The client is a zero-SQL typed query builder. It:
+The client is real Drizzle ORM with an HTTP driver. It:
 
-- **Provides a `db.connection.table.method()` API** that mirrors your schema.
+- **Exposes standard Drizzle ORM query syntax** that mirrors your schema.
 - **Sends structured JSON** to the server's `/data` endpoint.
 - **Ships auth UI components** (`AuthCard`, `AuthProvider`) built with React.
 - **Generates TypeScript types** from your server's `/schema` endpoint for full autocomplete.
 
 ```typescript
-import { createClient } from '@superapp/db'
+import { drizzle } from '@superapp/db'
 import { createAuth } from '@superapp/db/auth'
 import { AuthCard, AuthProvider } from '@superapp/db/components'
 ```
@@ -102,37 +90,28 @@ import { AuthCard, AuthProvider } from '@superapp/db/components'
 
 ## Dependency Graph
 
-```
-createEngine()
-  │
-  ├── integrations[]          # Database providers (postgres, mysql, sqlite, csv)
-  │     └── DuckDB ATTACH     # Each provider knows how to attach its database type
-  │
-  ├── connections{}            # Named database connection configs
-  │     └── DuckDB namespaces  # main.*, warehouse.*, etc.
-  │
-  ├── auth                     # AuthProvider implementation
-  │     ├── verifyToken()      # JWT signature verification
-  │     ├── findUser()         # Lookup user from JWT payload
-  │     └── resolveSession()   # Enrich user with roles, orgs, etc.
-  │
-  ├── permissions{}            # Permission definitions (snake_case slugs)
-  │     └── CASL abilities     # Compiled into runtime ability checks
-  │
-  ├── roles{}                  # Role → permission[] mappings
-  │     └── resolveSession()   # User's role determines which permissions apply
-  │
-  ├── duckdb{}                 # DuckDB pool configuration
-  │     └── Connection pool    # maxMemory, threads, poolSize, timeouts
-  │
-  ├── limits{}                 # Query and rate limit constraints
-  │
-  ├── audit{}                  # Audit logging pipeline
-  │
-  └── adapter                  # HTTP adapter (Hono, Express, Next.js, generic)
-        ├── POST /data         # Query endpoint
-        ├── POST /auth/*       # Auth routes
-        └── GET /schema        # Schema introspection
+```mermaid
+flowchart TD
+    CE["createEngine()"]
+    CE --> INT["integrations[] — Database providers"]
+    CE --> CONN["connections{} — Named DB configs"]
+    CE --> AUTH["auth — AuthProvider"]
+    CE --> PERM["permissions{} — Permission definitions"]
+    CE --> ROLES["roles{} — Role → permission mappings"]
+    CE --> DUCK["duckdb{} — Pool config"]
+    CE --> LIM["limits{} — Rate and query limits"]
+    CE --> AUD["audit{} — Audit logging"]
+    CE --> ADAPT["adapter — HTTP adapter"]
+
+    INT --> DA["DuckDB ATTACH"]
+    CONN --> DA
+    AUTH --> VT["verifyToken()"]
+    AUTH --> FU["findUser()"]
+    AUTH --> RS["resolveSession()"]
+    PERM --> CASL["CASL abilities"]
+    ADAPT --> PD["POST /data"]
+    ADAPT --> PA["POST /auth/*"]
+    ADAPT --> GS["GET /schema"]
 ```
 
 ## Request Lifecycle

@@ -1,6 +1,7 @@
 ---
 title: Server SDK Overview
 description: What @superapp/backend does, how it works, and what routes it exposes.
+icon: Server
 ---
 
 `@superapp/backend` is a data access layer that turns your databases into a secure, authenticated API. Point it at Postgres, MySQL, SQLite, or CSV files and get instant CRUD with row-level security, audit logging, and an admin UI.
@@ -36,19 +37,18 @@ serve({ fetch: app.fetch, port: 3001 })
 
 Every `/data` request passes through a 10-step pipeline:
 
-```
-Request
-  │
-  ├─ 1. Rate Limiting ─────── per-user / per-IP throttle
-  ├─ 2. Body Validation ───── JSON structure check
-  ├─ 3. JWT Extraction ────── decode token from Authorization header
-  ├─ 4. Session Resolution ── resolveSession(user, db) → enriched user
-  ├─ 5. Role Injection ────── map user role → permission slugs
-  ├─ 6. Permission Check ──── table / operation / column / filter / check
-  ├─ 7. Query Builder ─────── JSON request → Kysely → SQL
-  ├─ 8. DuckDB Execution ──── run query against attached databases
-  ├─ 9. Audit Log ─────────── write query, params, duration, user
-  └─ 10. Response ─────────── return JSON result
+```mermaid
+flowchart LR
+    R["Request"] --> R1["Rate Limit"]
+    R1 --> R2["Validate"]
+    R2 --> R3["JWT"]
+    R3 --> R4["Session"]
+    R4 --> R5["Roles"]
+    R5 --> R6["Permissions"]
+    R6 --> R7["Query Build"]
+    R7 --> R8["DuckDB"]
+    R8 --> R9["Audit"]
+    R9 --> R10["Response"]
 ```
 
 ## Key Concepts

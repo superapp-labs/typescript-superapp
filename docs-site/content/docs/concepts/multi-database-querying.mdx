@@ -1,6 +1,7 @@
 ---
 title: Multi-Database Querying
 description: "Query across Postgres, MySQL, SQLite, and CSV."
+icon: Layers
 ---
 
 superapp uses DuckDB as an in-process query engine that can attach to multiple external databases simultaneously. This means you can query Postgres, MySQL, SQLite, and CSV sources through a single unified API -- and even join across them.
@@ -29,6 +30,22 @@ ATTACH 'sqlite:...'   AS legacy (TYPE sqlite);
 -- CSV files are registered as views in the 'imports' namespace
 ```
 
+```mermaid
+flowchart TD
+    Q["Query: db.select().from(schema.orders)"]
+    DDB["DuckDB Engine"]
+    PG["Postgres (main)"]
+    MY["MySQL (warehouse)"]
+    SL["SQLite (legacy)"]
+    CS["CSV (imports)"]
+
+    Q --> DDB
+    DDB -->|"ATTACH AS main"| PG
+    DDB -->|"ATTACH AS warehouse"| MY
+    DDB -->|"ATTACH AS legacy"| SL
+    DDB -->|"ATTACH AS imports"| CS
+```
+
 After attachment, every table is accessible through its namespace: `main.orders`, `warehouse.events`, `legacy.customers`, `imports.products_2024`.
 
 ## Connection Namespacing
@@ -48,8 +65,8 @@ This namespacing is consistent across the entire system:
 
 ```typescript
 // Client queries
-db.main.orders.findMany({ ... })
-db.warehouse.events.findMany({ ... })
+db.select().from(schema.orders)           // main connection
+db.select().from(schema.events)           // warehouse connection
 
 // Permission definitions
 permissions: {

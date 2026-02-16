@@ -1,66 +1,35 @@
 ---
 title: Request Pipeline
 description: The complete 10-step request pipeline from incoming request to JSON response.
+icon: GitBranch
 ---
 
 Every `POST /data` request passes through a 10-step pipeline. Understanding this pipeline helps you debug permission issues, optimize queries, and reason about security.
 
-```
-  ┌─────────────────────────────────────────────┐
-  │              Incoming Request                │
-  │          POST /data + Bearer JWT             │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  1. Rate Limiting                           │
-  │     Per-user (200/min) and per-IP (500/min)  │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  2. Body Validation                         │
-  │     Parse JSON, validate structure           │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  3. JWT Extraction                          │
-  │     Decode token from Authorization header   │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  4. Session Resolution                      │
-  │     resolveSession(user, db) → enriched user │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  5. Role Injection                          │
-  │     Map user.role → permission slugs         │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  6. Permission Check                        │
-  │     Table → Operation → Columns → Filter     │
-  │     → FK traversal → Check → Preset          │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  7. Query Builder                           │
-  │     JSON request → Kysely → SQL              │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  8. DuckDB Execution                        │
-  │     Run SQL against attached databases       │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  9. Audit Log                               │
-  │     Record query, params, duration, user     │
-  └──────────────────┬──────────────────────────┘
-                     │
-  ┌──────────────────▼──────────────────────────┐
-  │  10. Response                               │
-  │      Return JSON result to client            │
-  └─────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    REQ["Incoming Request — POST /data + Bearer JWT"]
+    R1["1. Rate Limiting — Per-user (200/min) and per-IP (500/min)"]
+    R2["2. Body Validation — Parse JSON, validate structure"]
+    R3["3. JWT Extraction — Decode token from Authorization header"]
+    R4["4. Session Resolution — resolveSession(user, db) → enriched user"]
+    R5["5. Role Injection — Map user.role → permission slugs"]
+    R6["6. Permission Check — Table → Operation → Columns → Filter → Check → Preset"]
+    R7["7. Query Builder — JSON request → Kysely → SQL"]
+    R8["8. DuckDB Execution — Run SQL against attached databases"]
+    R9["9. Audit Log — Record query, params, duration, user"]
+    R10["10. Response — Return JSON result to client"]
+
+    REQ --> R1
+    R1 --> R2
+    R2 --> R3
+    R3 --> R4
+    R4 --> R5
+    R5 --> R6
+    R6 --> R7
+    R7 --> R8
+    R8 --> R9
+    R9 --> R10
 ```
 
 ## Step-by-Step
