@@ -17,34 +17,37 @@ superapp is three packages:
 | `@superapp/auth` | Client-side authentication. Uses [better-auth](https://www.better-auth.com) by default, but supports custom adapters. Provides session management, React hooks, and pre-built auth UI components. |
 
 ```text
-  ┌─────────────────────────────────────────────────────────────────┐
-  │  YOUR FRONTEND (React, Next.js, etc.)                          │
-  │                                                                 │
-  │  @superapp/db         @superapp/auth                           │
-  │  Drizzle ORM ────┐    Session management ────┐                 │
-  │  db.select(...)   │    useSession()           │                 │
-  │  db.insert(...)   │    AuthCard               │                 │
-  └───────────────────┼───────────────────────────┼─────────────────┘
-                      │ HTTP (JSON)               │ HTTP (JWT)
-                      └───────────┬───────────────┘
-                                  ▼
-  ┌─────────────────────────────────────────────────────────────────┐
-  │  @superapp/backend                                              │
-  │                                                                 │
-  │  1. Authenticate ── verify JWT, resolve user + roles            │
-  │         │                                                       │
-  │         ▼                                                       │
-  │  2. Authorize ──── CASL checks permissions for this user        │
-  │         │          • inject WHERE filters (e.g. user_id = ?)    │
-  │         │          • restrict columns to allowed set             │
-  │         │          • validate writes against rules               │
-  │         ▼                                                       │
-  │  3. Execute ────── build SQL (Kysely) → run through DuckDB      │
-  └─────────────────────────────┬───────────────────────────────────┘
-                                │
-                  ┌─────────────┼─────────────┐
-                  ▼             ▼             ▼
-               Postgres      MySQL       SQLite / CSV
+  ┌───────────────────────────────────────────────────────────┐
+  │  YOUR FRONTEND (React, Next.js, etc.)                     │
+  │                                                           │
+  │   ┌────────────────────┐   ┌────────────────────────┐     │
+  │   │  @superapp/db       │  │  @superapp/auth         │    │
+  │   │  Drizzle ORM        │  │  Session management     │    │
+  │   │  db.select(...)     │  │  useSession()           │    │
+  │   │  db.insert(...)     │  │  AuthCard               │    │
+  │   └─────────┬──────────┘   └───────────┬────────────┘     │
+  │             └──────────┬───────────────┘                  │
+  └────────────────────────┼──────────────────────────────────┘
+                           │
+                           │ HTTP + JWT user token
+                           ▼
+  ┌───────────────────────────────────────────────────────────┐
+  │  @superapp/backend                                        │
+  │                                                           │
+  │  1. Authenticate ── verify JWT, resolve user + roles      │
+  │         │                                                 │
+  │         ▼                                                 │
+  │  2. Authorize ──── check permissions for this user        │
+  │         │          • inject WHERE filters (user_id = ?)   │
+  │         │          • restrict columns to allowed set      │
+  │         │          • validate writes against rules        │
+  │         ▼                                                 │
+  │  3. Execute ────── build SQL → run through DuckDB         │
+  └───────────────────────────┬───────────────────────────────┘
+                              │
+                ┌─────────────┼─────────────┐
+                ▼             ▼             ▼
+             Postgres      MySQL       SQLite / CSV
 ```
 
 **Every request from your frontend goes through this pipeline.** You write normal Drizzle ORM queries — `db.select()`, `db.insert()`, etc. — but the backend intercepts each one, verifies who the user is, and automatically filters the data so that **each user can only access their own data**. The client never builds SQL and never bypasses the permission layer.
