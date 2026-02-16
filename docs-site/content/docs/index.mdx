@@ -4,10 +4,6 @@ description: A thin, secure data layer between your frontend and any database.
 icon: House
 ---
 
-<Callout type="warn" title="This project is not yet implemented">
-superapp is currently in the **speccing phase**. We are designing the architecture and API surface before writing implementation code. Your feedback is highly appreciated — [join the discussion on GitHub](https://github.com/superapp-labs/typescript-superapp/discussions).
-</Callout>
-
 One library to connect your frontend to any database -- with authentication, row-level permissions, and type safety built in.
 
 ## What is superapp?
@@ -118,7 +114,11 @@ const orders = await db.select()
   .limit(50)
 ```
 
-The `filter: { customer_id: { $eq: '$user.id' } }` in the server config injects a WHERE clause into every query -- the client never sees it, and cannot bypass it. The Drizzle ORM instance in `@superapp/db` returns data that has already been filtered and validated by the backend's permission engine.
+**What happens here:** The client asks for active orders, but the `filter: { customer_id: { $eq: '$user.id' } }` in the server config automatically injects `WHERE customer_id = ?` into every query. The logged-in user only sees **their own orders**, filtered by active status — without the client writing any authorization logic. The backend enforces it in the middleware before any data leaves the server.
+
+<Callout>
+Because the authorization layer lives entirely in the backend middleware, you can safely use Drizzle ORM directly from the client side — the data returned is always scoped to the user's permissions. That said, we still recommend keeping Drizzle queries in your backend (e.g. Next.js server actions, API routes) for better control over caching, error handling, and request batching.
+</Callout>
 
 ## What's Next
 

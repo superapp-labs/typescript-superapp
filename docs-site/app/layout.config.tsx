@@ -15,5 +15,10 @@ export const baseOptions: BaseLayoutProps = {
       url: 'https://github.com/superapp-labs/typescript-superapp',
       external: true,
     },
+    {
+      text: 'Feedback',
+      url: 'https://github.com/superapp-labs/typescript-superapp/discussions',
+      external: true,
+    },
   ],
 }

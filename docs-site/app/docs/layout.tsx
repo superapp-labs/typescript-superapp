@@ -8,7 +8,25 @@ export default function Layout({ children }: { children: ReactNode }) {
     <DocsLayout
       tree={source.pageTree}
       {...baseOptions}
-      sidebar={{ defaultOpenLevel: 0 }}
+      sidebar={{
+        defaultOpenLevel: 0,
+        banner: (
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <p className="font-medium">Not yet implemented</p>
+            <p className="mt-0.5 opacity-80">
+              This project is in the speccing phase.{' '}
+              <a
+                href="https://github.com/superapp-labs/typescript-superapp/discussions"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Share feedback
+              </a>
+            </p>
+          </div>
+        ),
+      }}
     >
       {children}
     </DocsLayout>
