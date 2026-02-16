@@ -2,5 +2,5 @@
   "title": "Permissions",
   "icon": "Lock",
   "defaultOpen": true,
-  "pages": ["filters", "checks", "presets", "operators", "custom-sql", "middleware", "actions"]
+  "pages": ["filters", "checks", "presets", "operators", "custom-sql", "middleware"]
 }

@@ -29,6 +29,7 @@ const engine = createEngine({
 | `auth` | `AuthProvider` | `undefined` | Authentication provider. If omitted, the engine runs in open mode (no auth). |
 | `permissions` | `Record<string, Permission>` | `{}` | Permission definitions. Keys must be `snake_case` slugs. Only used in `programmatic` mode. |
 | `roles` | `Record<string, string[]>` | `{}` | Role-to-permission mappings. Each key is a role name, value is an array of permission slugs. |
+| `actions` | `Record<string, Action>` | `{}` | Named server-side functions callable by the client via `POST /actions/{name}`. See [Actions](/docs/backend/actions). |
 | `masterKey` | `string` | `undefined` | Master API key for admin access. Required for `admin_ui` mode and admin endpoints. Set via environment variable, never hardcode. |
 | `schemaEndpoint` | `SchemaEndpointConfig \| boolean` | `false` | Enable the `GET /schema` introspection endpoint. Set `true` for defaults or pass a config object. |
 | `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. |
@@ -283,6 +284,19 @@ const engine = createEngine({
   },
   roles: {
     viewer: ['view_own_orders'],
+    warehouse_manager: ['view_own_orders'],
+  },
+  actions: {
+    incrementStock: {
+      roles: ['warehouse_manager'],
+      run: async ({ user, db }, { productId, amount }) => {
+        return db
+          .update(products)
+          .set({ stock: sql`stock + ${amount}` })
+          .where(eq(products.id, productId))
+          .returning()
+      },
+    },
   },
 })
 ```

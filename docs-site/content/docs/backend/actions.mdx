@@ -1,0 +1,417 @@
+---
+title: Actions
+icon: Zap
+description: Named server-side functions callable by the client, with full access to the database, user session, and any table.
+---
+
+Actions are named server-side functions defined at the engine level. Unlike permissions (which are bound to a single table), actions can touch any table, run multi-table transactions, and execute arbitrary business logic. The client calls them by name — no raw SQL.
+
+```typescript
+const engine = createEngine({
+  connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
+  permissions: { /* ... */ },
+  roles: {
+    warehouse_manager: ['view_products', 'edit_products'],
+    customer: ['view_products'],
+  },
+  actions: {
+    incrementStock: {
+      roles: ['warehouse_manager'],
+      run: async ({ user, db }, { productId, amount }) => {
+        const [updated] = await db
+          .update(products)
+          .set({ stock: sql`stock + ${amount}` })
+          .where(eq(products.id, productId))
+          .returning()
+        return updated
+      },
+    },
+  },
+})
+```
+
+```typescript
+// Client calls the action by name
+const result = await superapp.action('incrementStock', {
+  productId: 'prod_123',
+  amount: 5,
+})
+```
+
+## How It Works
+
+1. Client sends `POST /actions/{actionName}` with a JSON body
+2. Engine authenticates the user and resolves the session
+3. Engine checks if the user's role is listed in the action's `roles`
+4. Engine calls `run` with `{ user, db }` and the client's input
+5. Return value is sent back to the client as JSON
+
+```text
+  POST /actions/incrementStock + Bearer JWT + { productId, amount }
+    │
+    ▼
+  1. Auth — JWT verification, session resolution
+    │
+    ▼
+  2. Role check — is the user's role in the action's roles array?
+    │
+    ▼
+  3. Execute — run({ user, db }, input)
+    │
+    ▼
+  4. Response — return value sent as JSON
+```
+
+## Defining Actions
+
+Actions are a top-level field on `createEngine`, alongside `permissions` and `roles`:
+
+```typescript
+const engine = createEngine({
+  connections: { /* ... */ },
+  permissions: { /* ... */ },
+  roles: { /* ... */ },
+  actions: {
+    actionName: {
+      roles: ['role1', 'role2'],
+      run: async ({ user, db }, input) => {
+        // your logic here
+        return result
+      },
+    },
+  },
+})
+```
+
+Each action has two fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `roles` | `string[]` | Which roles can call this action |
+| `run` | `({ user, db }, input) => Promise<any>` | The function that executes the action |
+
+The `run` function receives:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `user` | `UserSession` | Resolved session (same as `$user.*` in filters) |
+| `db` | `DrizzleInstance` | Drizzle query builder — run any query, any table |
+| `input` | `any` | The client's request body (parsed JSON) |
+
+The return value is sent to the client as JSON. If the function returns nothing, the client receives `{ ok: true }`.
+
+## Client API
+
+```typescript
+const result = await superapp.action('actionName', { ...params })
+```
+
+This sends:
+```
+POST /actions/actionName
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{ ...params }
+```
+
+## Examples
+
+### Inventory: Increment, Decrement, and Reset Stock
+
+A warehouse management system where operators scan items in and out. The client shouldn't write raw `SET stock = stock + 1` SQL — the server controls the atomic update and validates stock bounds. Each operation is a separate action with clear naming.
+
+```typescript
+actions: {
+  incrementStock: {
+    roles: ['warehouse_manager', 'admin'],
+    run: async ({ user, db }, { productId, amount }) => {
+      const [updated] = await db
+        .update(products)
+        .set({
+          stock: sql`stock + ${amount}`,
+          lastUpdatedBy: user.id,
+        })
+        .where(eq(products.id, productId))
+        .returning({ id: products.id, stock: products.stock })
+
+      return updated
+    },
+  },
+
+  decrementStock: {
+    roles: ['warehouse_manager', 'admin'],
+    run: async ({ user, db }, { productId, amount }) => {
+      const product = await db.query.products.findFirst({
+        where: eq(products.id, productId),
+      })
+      if (!product) throw new PermissionError('Product not found')
+      if (product.stock < amount) {
+        throw new PermissionError(`Only ${product.stock} units available`)
+      }
+
+      const [updated] = await db
+        .update(products)
+        .set({
+          stock: sql`stock - ${amount}`,
+          lastUpdatedBy: user.id,
+        })
+        .where(eq(products.id, productId))
+        .returning({ id: products.id, stock: products.stock })
+
+      return updated
+    },
+  },
+
+  resetStock: {
+    roles: ['admin'],
+    run: async ({ user, db }, { productId }) => {
+      await db
+        .update(products)
+        .set({
+          stock: 0,
+          lastResetBy: user.id,
+          lastResetAt: new Date(),
+        })
+        .where(eq(products.id, productId))
+    },
+  },
+}
+```
+
+```typescript
+// Client
+await superapp.action('incrementStock', { productId: 'prod_123', amount: 10 })
+await superapp.action('decrementStock', { productId: 'prod_123', amount: 3 })
+await superapp.action('resetStock', { productId: 'prod_123' })
+```
+
+### Finance: Transfer Balance Between Accounts
+
+A fintech app where users transfer money between their own accounts. The transfer must be atomic — debit and credit must both succeed or both fail. This is a textbook case for actions: it touches two rows in the same table, requires row locking, and creates a record in a separate `transactions` table — none of which maps to a single `UPDATE` statement.
+
+```typescript
+actions: {
+  transfer: {
+    roles: ['account_holder'],
+    run: async ({ user, db }, { fromAccountId, toAccountId, amount }) => {
+      if (amount <= 0) throw new PermissionError('Amount must be positive')
+
+      return db.transaction(async (tx) => {
+        const [source] = await tx
+          .select()
+          .from(accounts)
+          .where(and(eq(accounts.id, fromAccountId), eq(accounts.ownerId, user.id)))
+          .for('update')
+
+        if (!source) throw new PermissionError('Source account not found')
+        if (source.balance < amount) throw new PermissionError('Insufficient funds')
+
+        const [dest] = await tx
+          .select()
+          .from(accounts)
+          .where(eq(accounts.id, toAccountId))
+          .for('update')
+
+        if (!dest) throw new PermissionError('Destination account not found')
+
+        await tx.update(accounts).set({ balance: sql`balance - ${amount}` }).where(eq(accounts.id, fromAccountId))
+        await tx.update(accounts).set({ balance: sql`balance + ${amount}` }).where(eq(accounts.id, toAccountId))
+
+        const [record] = await tx
+          .insert(transactions)
+          .values({ fromAccountId, toAccountId, amount, initiatedBy: user.id, timestamp: new Date() })
+          .returning()
+
+        return record
+      })
+    },
+  },
+}
+```
+
+```typescript
+// Client
+const tx = await superapp.action('transfer', {
+  fromAccountId: 'acc_checking',
+  toAccountId: 'acc_savings',
+  amount: 500,
+})
+```
+
+### E-Commerce: Apply Discount Code
+
+An online store where the client sends a discount code and the server validates it against the `discount_codes` table, checks expiration and usage limits, computes the discount amount (percentage or fixed), applies it to the order, and increments the usage counter. All in one transaction — if any step fails, nothing changes.
+
+```typescript
+actions: {
+  applyDiscount: {
+    roles: ['customer'],
+    run: async ({ user, db }, { orderId, code }) => {
+      return db.transaction(async (tx) => {
+        const order = await tx.query.orders.findFirst({
+          where: and(
+            eq(orders.id, orderId),
+            eq(orders.customerId, user.id),
+            eq(orders.status, 'draft'),
+          ),
+        })
+        if (!order) throw new PermissionError('Order not found or not editable')
+
+        const discount = await tx.query.discountCodes.findFirst({
+          where: and(
+            eq(discountCodes.code, code.toUpperCase()),
+            gt(discountCodes.expiresAt, new Date()),
+            lt(discountCodes.usageCount, discountCodes.usageLimit),
+          ),
+        })
+        if (!discount) throw new PermissionError('Invalid or expired discount code')
+
+        const discountAmount = discount.type === 'percentage'
+          ? order.subtotal * (discount.value / 100)
+          : discount.value
+
+        const applied = Math.min(discountAmount, order.subtotal)
+
+        await tx.update(orders).set({
+          discountCode: code.toUpperCase(),
+          discountAmount: applied,
+          total: order.subtotal - applied,
+        }).where(eq(orders.id, orderId))
+
+        await tx.update(discountCodes)
+          .set({ usageCount: sql`usage_count + 1` })
+          .where(eq(discountCodes.id, discount.id))
+
+        return { discountAmount: applied, newTotal: order.subtotal - applied }
+      })
+    },
+  },
+}
+```
+
+```typescript
+// Client
+const { discountAmount, newTotal } = await superapp.action('applyDiscount', {
+  orderId: 'ord_456',
+  code: 'SUMMER20',
+})
+```
+
+### Team Management: Invite Member with Email Notification
+
+A multi-tenant app where admins invite new members to their organization. The action validates the email isn't already a member, enforces role hierarchy (only admins can invite admins), creates the membership record, and queues an invite email. This spans `members` and `email_jobs` tables — clearly not a single-table CRUD operation.
+
+```typescript
+actions: {
+  inviteMember: {
+    roles: ['admin', 'owner'],
+    run: async ({ user, db }, { email, role }) => {
+      if (!['viewer', 'editor', 'admin'].includes(role)) {
+        throw new PermissionError('Invalid role')
+      }
+      if (role === 'admin' && !user.roles.includes('owner')) {
+        throw new PermissionError('Only owners can invite admins')
+      }
+
+      const existing = await db.query.members.findFirst({
+        where: and(
+          eq(members.organizationId, user.current_org_id),
+          eq(members.email, email.toLowerCase()),
+        ),
+      })
+      if (existing) throw new PermissionError('Already a member')
+
+      const [member] = await db.insert(members).values({
+        organizationId: user.current_org_id,
+        email: email.toLowerCase(),
+        role,
+        status: 'invited',
+        invitedBy: user.id,
+        invitedAt: new Date(),
+      }).returning()
+
+      await db.insert(emailJobs).values({
+        to: email.toLowerCase(),
+        template: 'org-invite',
+        data: { inviterName: user.name, orgName: user.org_name, role },
+      })
+
+      return { memberId: member.id, status: 'invited' }
+    },
+  },
+}
+```
+
+```typescript
+// Client
+await superapp.action('inviteMember', { email: 'alice@example.com', role: 'editor' })
+```
+
+### Analytics: Server-Side Aggregation Report
+
+A dashboard where the client requests a revenue report. The aggregation query uses `DATE_TRUNC`, `SUM`, `AVG`, and `GROUP BY` — complex SQL that shouldn't be expressed on the client. The action runs a pre-defined query scoped to the user's organization and returns the computed result. No writes, just a controlled read that returns aggregated data.
+
+```typescript
+actions: {
+  revenueReport: {
+    roles: ['analyst', 'admin', 'owner'],
+    run: async ({ user, db }, { startDate, endDate }) => {
+      const start = new Date(startDate)
+      const end = new Date(endDate)
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        throw new PermissionError('Invalid date range')
+      }
+
+      return db
+        .select({
+          month: sql`DATE_TRUNC('month', ${orders.createdAt})`.as('month'),
+          totalRevenue: sql`SUM(${orders.total})`.as('total_revenue'),
+          orderCount: count(),
+          avgOrderValue: sql`AVG(${orders.total})`.as('avg_order_value'),
+        })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.organizationId, user.current_org_id),
+            gte(orders.createdAt, start),
+            lte(orders.createdAt, end),
+            eq(orders.status, 'completed'),
+          ),
+        )
+        .groupBy(sql`DATE_TRUNC('month', ${orders.createdAt})`)
+        .orderBy(sql`month`)
+    },
+  },
+}
+```
+
+```typescript
+// Client
+const report = await superapp.action('revenueReport', {
+  startDate: '2025-01-01',
+  endDate: '2025-12-31',
+})
+```
+
+## Actions vs Permissions vs Middleware
+
+| | Permissions (CRUD) | Middleware | Actions |
+|---|---|---|---|
+| **Scope** | Single table | Single table (wraps CRUD) | Any table, any logic |
+| **Client sends** | SQL via Drizzle Proxy | SQL via Drizzle Proxy | Action name + JSON |
+| **Defined on** | Permission object | Permission object | Engine config (top-level) |
+| **Access control** | Role → permission → table | Inherits from permission | Role listed in `action.roles` |
+| **Use when** | Standard reads and writes | Intercept or extend a CRUD query | Multi-table logic, workflows, aggregations |
+
+## Error Handling
+
+Throw `PermissionError` to reject with `403 Forbidden`:
+
+```typescript
+run: async ({ user, db }, input) => {
+  throw new PermissionError('Reason shown in error response')
+},
+```
+
+Any other thrown error returns `500 Internal Server Error` and is logged but not exposed to the client. When using `db.transaction()`, any throw automatically rolls back all queries in that transaction.
