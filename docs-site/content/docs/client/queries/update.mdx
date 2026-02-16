@@ -1,78 +1,63 @@
 ---
-title: update
+title: Update
 description: Update one or more rows matching a condition.
+icon: Pencil
 ---
 
-`update` modifies rows matching the `where` condition and returns the updated records.
+Use `db.update()` to modify rows matching a condition.
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { eq } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = drizzle({ connection, token, schema })
 
-const updated = await db.main.orders.update({
-  where: { id: { $eq: 'ord_abc123' } },
-  data: { status: 'shipped' },
-})
-// updated: { id: string; amount: number; status: string; ... }[]
+await db.update(schema.orders)
+  .set({ status: 'shipped' })
+  .where(eq(schema.orders.id, 'ord_abc123'))
 ```
 
-## Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `where` | `object` | Yes | Filter conditions for rows to update |
-| `data` | `object` | Yes | Column-value pairs to set |
-
-## Single Row Update
+## Update with Returning
 
 ```typescript
-const updated = await db.main.orders.update({
-  where: { id: { $eq: 'ord_abc123' } },
-  data: {
+const [updated] = await db.update(schema.orders)
+  .set({ status: 'shipped' })
+  .where(eq(schema.orders.id, 'ord_abc123'))
+  .returning()
+// updated: { id, amount, status, ... }
+```
+
+## Update Multiple Fields
+
+```typescript
+await db.update(schema.orders)
+  .set({
     status: 'delivered',
     amount: 300,
-  },
-})
-// updated: { id: string; amount: number; status: string; ... }[]
+  })
+  .where(eq(schema.orders.id, 'ord_abc123'))
 ```
 
 ## Bulk Update
 
-Update multiple rows by using a broader filter condition.
+Update all rows matching a broader condition.
 
 ```typescript
-const updated = await db.main.orders.update({
-  where: { status: { $eq: 'pending' } },
-  data: { status: 'cancelled' },
-})
-// updated: { id: string; amount: number; status: string; ... }[]
-// All previously pending orders are now cancelled
+await db.update(schema.orders)
+  .set({ status: 'cancelled' })
+  .where(eq(schema.orders.status, 'pending'))
 ```
 
 ## Update with Complex Filters
 
 ```typescript
-const updated = await db.main.orders.update({
-  where: {
-    status: { $eq: 'pending' },
-    created_at: { $lt: '2024-01-01' },
-  },
-  data: { status: 'expired' },
-})
-// updated: { id: string; amount: number; status: string; ... }[]
-```
+import { eq, lt, and } from 'drizzle-orm'
 
-## Update a Customer
-
-```typescript
-const updated = await db.main.customers.update({
-  where: { id: { $eq: 'cust_abc123' } },
-  data: {
-    name: 'Acme Corporation',
-    email: 'new-billing@acme.com',
-  },
-})
-// updated: { id: string; name: string; email: string; ... }[]
+await db.update(schema.orders)
+  .set({ status: 'expired' })
+  .where(and(
+    eq(schema.orders.status, 'pending'),
+    lt(schema.orders.createdAt, new Date('2024-01-01'))
+  ))
 ```

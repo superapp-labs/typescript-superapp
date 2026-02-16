@@ -1,99 +1,82 @@
 ---
-title: aggregate
-description: Compute sum, avg, min, max over columns with optional groupBy.
+title: Aggregations
+description: Compute sum, avg, min, max with Drizzle's aggregation functions.
+icon: BarChart
 ---
 
-`aggregate` computes numeric aggregations over table columns with optional filtering and grouping.
+Use Drizzle's aggregation functions with `db.select()` for numeric computations.
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { sum } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = drizzle({ connection, token, schema })
 
-const result = await db.main.orders.aggregate({
-  sum: ['amount'],
-})
-// result: { sum_amount: number }
-```
-
-## Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `where` | `object` | No | Filter conditions |
-| `sum` | `string[]` | No | Columns to sum |
-| `avg` | `string[]` | No | Columns to average |
-| `min` | `string[]` | No | Columns to find minimum |
-| `max` | `string[]` | No | Columns to find maximum |
-| `groupBy` | `string[]` | No | Columns to group results by |
-
-At least one aggregation (`sum`, `avg`, `min`, or `max`) is required.
-
-## Sum
-
-```typescript
-const totals = await db.main.orders.aggregate({
-  sum: ['amount'],
-  where: { status: { $eq: 'active' } },
-})
-// totals: { sum_amount: number }
+const [result] = await db.select({
+  total: sum(schema.orders.amount),
+}).from(schema.orders)
+// result.total: string (numeric aggregations return strings)
 ```
 
 ## Average
 
 ```typescript
-const averages = await db.main.orders.aggregate({
-  avg: ['amount'],
-})
-// averages: { avg_amount: number }
+import { avg } from 'drizzle-orm'
+
+const [result] = await db.select({
+  average: avg(schema.orders.amount),
+}).from(schema.orders)
 ```
 
 ## Min and Max
 
 ```typescript
-const range = await db.main.orders.aggregate({
-  min: ['amount'],
-  max: ['amount'],
-})
-// range: { min_amount: number; max_amount: number }
+import { min, max } from 'drizzle-orm'
+
+const [result] = await db.select({
+  minimum: min(schema.orders.amount),
+  maximum: max(schema.orders.amount),
+}).from(schema.orders)
 ```
 
 ## Multiple Aggregations
 
-Combine multiple aggregation functions in a single query.
-
 ```typescript
-const stats = await db.main.orders.aggregate({
-  sum: ['amount'],
-  avg: ['amount'],
-  min: ['amount'],
-  max: ['amount'],
-  where: { status: { $eq: 'active' } },
-})
-// stats: { sum_amount: number; avg_amount: number; min_amount: number; max_amount: number }
+import { sum, avg, min, max, eq } from 'drizzle-orm'
+
+const [stats] = await db.select({
+  total: sum(schema.orders.amount),
+  average: avg(schema.orders.amount),
+  minimum: min(schema.orders.amount),
+  maximum: max(schema.orders.amount),
+}).from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
 ```
 
 ## Group By
 
-Group results by one or more columns.
-
 ```typescript
-const byStatus = await db.main.orders.aggregate({
-  sum: ['amount'],
-  avg: ['amount'],
-  groupBy: ['status'],
-})
-// byStatus: { status: string; sum_amount: number; avg_amount: number }[]
+import { sum, avg } from 'drizzle-orm'
+
+const byStatus = await db.select({
+  status: schema.orders.status,
+  total: sum(schema.orders.amount),
+  average: avg(schema.orders.amount),
+}).from(schema.orders)
+  .groupBy(schema.orders.status)
+// [{ status: 'active', total: '15000', average: '357.14' }, ...]
 ```
 
 ## Group By with Filter
 
 ```typescript
-const byCustomer = await db.main.orders.aggregate({
-  sum: ['amount'],
-  groupBy: ['customer_id'],
-  where: { status: { $in: ['active', 'shipped'] } },
-})
-// byCustomer: { customer_id: string; sum_amount: number }[]
+import { sum, inArray } from 'drizzle-orm'
+
+const byCustomer = await db.select({
+  customerId: schema.orders.customerId,
+  total: sum(schema.orders.amount),
+}).from(schema.orders)
+  .where(inArray(schema.orders.status, ['active', 'shipped']))
+  .groupBy(schema.orders.customerId)
 ```

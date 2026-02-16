@@ -1,59 +1,57 @@
 ---
-title: count
-description: Count rows matching a filter condition.
+title: Count
+description: Count rows matching a filter condition using Drizzle aggregations.
+icon: Hash
 ---
 
-`count` returns the number of rows matching the given condition.
+Use `db.select()` with the `count()` function to count rows.
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { count } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = drizzle({ connection, token, schema })
 
-const total = await db.main.orders.count()
-// total: { count: number }
-```
-
-## Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `where` | `object` | No | Filter conditions. Omit to count all rows |
-
-## Count All Rows
-
-```typescript
-const total = await db.main.orders.count()
-// total: { count: number }
+const [result] = await db.select({ count: count() })
+  .from(schema.orders)
+// result.count: number
 ```
 
 ## Count with Filter
 
 ```typescript
-const activeCount = await db.main.orders.count({
-  where: { status: { $eq: 'active' } },
-})
-// activeCount: { count: number }
+import { count, eq } from 'drizzle-orm'
+
+const [result] = await db.select({ count: count() })
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+// result.count: number
 ```
 
 ## Count with Complex Filters
 
 ```typescript
-const highValueActive = await db.main.orders.count({
-  where: {
-    status: { $eq: 'active' },
-    amount: { $gte: 1000 },
-  },
-})
-// highValueActive: { count: number }
+import { count, eq, gte, and } from 'drizzle-orm'
+
+const [result] = await db.select({ count: count() })
+  .from(schema.orders)
+  .where(and(
+    eq(schema.orders.status, 'active'),
+    gte(schema.orders.amount, 1000)
+  ))
+// result.count: number
 ```
 
-## Count Customers in an Organization
+## Count by Group
 
 ```typescript
-const memberCount = await db.main.customers.count({
-  where: { organization_id: { $eq: 'org_abc123' } },
-})
-// memberCount: { count: number }
+import { count } from 'drizzle-orm'
+
+const statusCounts = await db.select({
+  status: schema.orders.status,
+  count: count(),
+}).from(schema.orders)
+  .groupBy(schema.orders.status)
+// [{ status: 'active', count: 42 }, { status: 'pending', count: 15 }]
 ```

@@ -1,102 +1,96 @@
 ---
-title: findMany
-description: Fetch multiple rows with filtering, sorting, pagination, and relation includes.
+title: Select Queries
+description: Fetch rows with filtering, sorting, joins, pagination, and relational queries.
+icon: Search
 ---
 
-`findMany` retrieves multiple rows from a table with optional filtering, sorting, and pagination.
+Drizzle provides two query styles: the **select builder** for SQL-like queries, and **relational queries** for loading nested data.
+
+## Select Builder
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { eq, desc } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = drizzle({ connection, token, schema })
 
-const orders = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status'],
+const orders = await db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+  .orderBy(desc(schema.orders.createdAt))
+  .limit(10)
+```
+
+## Select Specific Columns
+
+```typescript
+const orders = await db.select({
+  id: schema.orders.id,
+  amount: schema.orders.amount,
+  status: schema.orders.status,
+}).from(schema.orders)
+```
+
+## Filtering
+
+```typescript
+import { eq, gte, and } from 'drizzle-orm'
+
+const activeHighValue = await db.select()
+  .from(schema.orders)
+  .where(and(
+    eq(schema.orders.status, 'active'),
+    gte(schema.orders.amount, 100)
+  ))
+```
+
+## Sorting and Pagination
+
+```typescript
+import { desc } from 'drizzle-orm'
+
+const page2 = await db.select()
+  .from(schema.orders)
+  .orderBy(desc(schema.orders.createdAt))
+  .limit(20)
+  .offset(20)
+```
+
+## Joins
+
+```typescript
+const ordersWithCustomer = await db.select({
+  orderId: schema.orders.id,
+  amount: schema.orders.amount,
+  customerName: schema.customers.name,
+}).from(schema.orders)
+  .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+```
+
+## Relational Queries
+
+Use `db.query` for loading nested relations — similar to Prisma's `include`.
+
+```typescript
+const ordersWithCustomer = await db.query.orders.findMany({
+  with: { customer: true },
+  where: eq(schema.orders.status, 'active'),
+  orderBy: desc(schema.orders.createdAt),
   limit: 10,
 })
-// orders: { id: string; amount: number; status: string }[]
-```
-
-## Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `select` | `string[]` | No | Columns to return. Omit to return all permitted columns |
-| `where` | `object` | No | Filter conditions. See [Filter Operators](/docs/client/queries/filtering) |
-| `include` | `object` | No | Related tables to include |
-| `orderBy` | `object` | No | Sort order. `{ column: 'asc' \| 'desc' }` |
-| `limit` | `number` | No | Maximum number of rows to return |
-| `offset` | `number` | No | Number of rows to skip |
-
-## With Filters
-
-```typescript
-const activeOrders = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status', 'created_at'],
-  where: {
-    status: { $eq: 'active' },
-    amount: { $gte: 100 },
-  },
-})
-// activeOrders: { id: string; amount: number; status: string; created_at: string }[]
-```
-
-## With Includes
-
-Load related data in a single query.
-
-```typescript
-const ordersWithCustomer = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status'],
-  include: {
-    customer: {
-      select: ['id', 'name', 'email'],
-    },
-  },
-})
-// ordersWithCustomer: {
-//   id: string; amount: number; status: string;
-//   customer: { id: string; name: string; email: string }
-// }[]
-```
-
-## With Sorting and Pagination
-
-```typescript
-const page2 = await db.main.orders.findMany({
-  select: ['id', 'amount', 'created_at'],
-  orderBy: { created_at: 'desc' },
-  limit: 20,
-  offset: 20,
-})
-// page2: { id: string; amount: number; created_at: string }[]
+// { id, amount, status, customer: { id, name, email } }[]
 ```
 
 ## Complex Filters
 
-Combine conditions with `$and`, `$or`, and `$not`.
-
 ```typescript
-const filtered = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status'],
-  where: {
-    $or: [
-      { status: { $eq: 'active' }, amount: { $gte: 500 } },
-      { status: { $eq: 'pending' }, amount: { $lt: 100 } },
-    ],
-  },
-})
-// filtered: { id: string; amount: number; status: string }[]
-```
+import { eq, gte, lt, or, and } from 'drizzle-orm'
 
-## Select All Columns
-
-Omit `select` to return all columns the user has permission to access.
-
-```typescript
-const allColumns = await db.main.orders.findMany({
-  where: { status: { $eq: 'active' } },
-  limit: 10,
-})
+const filtered = await db.select()
+  .from(schema.orders)
+  .where(or(
+    and(eq(schema.orders.status, 'active'), gte(schema.orders.amount, 500)),
+    and(eq(schema.orders.status, 'pending'), lt(schema.orders.amount, 100))
+  ))
 ```

@@ -1,64 +1,53 @@
 ---
-title: findOne
-description: Fetch a single row by condition with optional relation includes.
+title: Find First
+description: Fetch a single record with optional relation loading.
+icon: Target
 ---
 
-`findOne` retrieves a single row matching the given condition. Returns `null` if no row matches.
+Use `db.query.*.findFirst()` to retrieve a single record. Returns `undefined` if no match.
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { eq } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = drizzle({ connection, token, schema })
 
-const order = await db.main.orders.findOne({
-  where: { id: { $eq: 'ord_abc123' } },
+const order = await db.query.orders.findFirst({
+  where: eq(schema.orders.id, 'ord_abc123'),
 })
-// order: { id: string; amount: number; status: string; ... } | null
+// order: { id, amount, status, ... } | undefined
 ```
 
-## Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `where` | `object` | Yes | Filter conditions to match a single row |
-| `select` | `string[]` | No | Columns to return. Omit to return all permitted columns |
-| `include` | `object` | No | Related tables to include |
-
-## With Select
+## With Relations
 
 ```typescript
-const order = await db.main.orders.findOne({
-  where: { id: { $eq: 'ord_abc123' } },
-  select: ['id', 'amount', 'status'],
-})
-// order: { id: string; amount: number; status: string } | null
-```
-
-## With Includes
-
-```typescript
-const order = await db.main.orders.findOne({
-  where: { id: { $eq: 'ord_abc123' } },
-  include: {
-    customer: {
-      select: ['id', 'name', 'email'],
-    },
+const order = await db.query.orders.findFirst({
+  where: eq(schema.orders.id, 'ord_abc123'),
+  with: {
+    customer: true,
   },
 })
-// order: {
-//   id: string; amount: number; status: string;
-//   customer: { id: string; name: string; email: string }
-// } | null
+// order: { id, amount, status, customer: { id, name, email } } | undefined
 ```
 
-## Handling Null Results
+## With Select Builder
 
-Always check the result before using it, since `findOne` returns `null` when no row matches.
+Alternatively, use the select builder with `.limit(1)`:
 
 ```typescript
-const order = await db.main.orders.findOne({
-  where: { id: { $eq: 'ord_abc123' } },
+const [order] = await db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.id, 'ord_abc123'))
+  .limit(1)
+// order: { id, amount, status, ... } | undefined
+```
+
+## Handling Undefined Results
+
+```typescript
+const order = await db.query.orders.findFirst({
+  where: eq(schema.orders.id, 'ord_abc123'),
 })
 
 if (!order) {

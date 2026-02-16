@@ -1,35 +1,29 @@
 ---
-title: delete
+title: Delete
 description: Delete one or more rows matching a condition.
+icon: Trash
 ---
 
-`delete` removes rows matching the `where` condition and returns the deleted records.
+Use `db.delete()` to remove rows matching a condition.
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { eq } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = drizzle({ connection, token, schema })
 
-const deleted = await db.main.orders.delete({
-  where: { id: { $eq: 'ord_abc123' } },
-})
-// deleted: { id: string; amount: number; status: string; ... }[]
+await db.delete(schema.orders)
+  .where(eq(schema.orders.id, 'ord_abc123'))
 ```
 
-## Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `where` | `object` | Yes | Filter conditions for rows to delete |
-
-## Single Row Delete
+## Delete with Returning
 
 ```typescript
-const deleted = await db.main.orders.delete({
-  where: { id: { $eq: 'ord_abc123' } },
-})
-// deleted: { id: string; amount: number; status: string; ... }[]
+const [deleted] = await db.delete(schema.orders)
+  .where(eq(schema.orders.id, 'ord_abc123'))
+  .returning()
+// deleted: { id, amount, status, ... }
 ```
 
 ## Filtered Delete
@@ -37,30 +31,18 @@ const deleted = await db.main.orders.delete({
 Delete multiple rows matching a condition.
 
 ```typescript
-const deleted = await db.main.orders.delete({
-  where: { status: { $eq: 'cancelled' } },
-})
-// deleted: { id: string; amount: number; status: string; ... }[]
-// All cancelled orders are removed
+await db.delete(schema.orders)
+  .where(eq(schema.orders.status, 'cancelled'))
 ```
 
 ## Delete with Complex Filters
 
 ```typescript
-const deleted = await db.main.orders.delete({
-  where: {
-    status: { $eq: 'expired' },
-    created_at: { $lt: '2023-01-01' },
-  },
-})
-// deleted: { id: string; amount: number; status: string; ... }[]
-```
+import { eq, lt, and } from 'drizzle-orm'
 
-## Delete a Customer
-
-```typescript
-const deleted = await db.main.customers.delete({
-  where: { id: { $eq: 'cust_abc123' } },
-})
-// deleted: { id: string; name: string; email: string; ... }[]
+await db.delete(schema.orders)
+  .where(and(
+    eq(schema.orders.status, 'expired'),
+    lt(schema.orders.createdAt, new Date('2023-01-01'))
+  ))
 ```
