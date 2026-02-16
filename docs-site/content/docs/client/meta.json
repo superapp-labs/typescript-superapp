@@ -1,5 +1,6 @@
 {
   "title": "Client SDK",
+  "icon": "Monitor",
   "pages": [
     "overview",
     "create-client",

@@ -1,4 +1,5 @@
 {
   "title": "Client",
+  "icon": "Monitor",
   "pages": ["create-client", "query-methods", "filter-operators"]
 }

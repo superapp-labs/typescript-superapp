@@ -1,4 +1,5 @@
 {
   "title": "Queries",
+  "icon": "Database",
   "pages": ["find-many", "find-one", "create", "update", "delete", "count", "aggregate", "filtering"]
 }

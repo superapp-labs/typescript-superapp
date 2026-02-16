@@ -1,4 +1,5 @@
 {
   "title": "Examples",
+  "icon": "BookOpen",
   "pages": ["orders-dashboard", "multi-tenant-saas"]
 }

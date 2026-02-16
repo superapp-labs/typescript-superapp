@@ -1,4 +1,5 @@
 {
   "title": "HTTP",
+  "icon": "Globe",
   "pages": ["data-endpoint", "auth-endpoints", "schema-endpoint"]
 }

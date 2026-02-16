@@ -1,4 +1,5 @@
 {
   "title": "Permissions",
+  "icon": "Lock",
   "pages": ["overview", "filter", "check", "preset", "relationship-traversal", "custom-sql", "operators"]
 }

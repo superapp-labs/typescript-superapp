@@ -1,5 +1,6 @@
 {
   "title": "Server SDK",
+  "icon": "Server",
   "pages": [
     "overview",
     "create-engine",

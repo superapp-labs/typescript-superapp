@@ -15,3 +15,9 @@
 - Commit as often as possible — after every meaningful change, commit immediately so the Chief can review progress
 - NEVER push to remote unless the user explicitly asks — always let the supervisor review commits first
 - Do NOT start Playwright browser unless necessary or explicitly requested by Chief
+
+# Project Documentation
+
+- All project documentation lives in `docs-site/content/` (MDX files)
+- **Read docs first** when you need to understand app context, architecture, or feature behavior
+- **Update docs** whenever integrating new features or making changes to the app — keep documentation in sync with the codebase

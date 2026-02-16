@@ -1,4 +1,5 @@
 {
   "title": "Integrations",
+  "icon": "Puzzle",
   "pages": ["overview", "postgres", "mysql", "sqlite", "csv", "custom-provider"]
 }

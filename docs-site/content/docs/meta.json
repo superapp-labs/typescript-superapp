@@ -2,23 +2,14 @@
   "title": "Documentation",
   "pages": [
     "index",
-    "---Getting Started---",
     "getting-started",
-    "---Server SDK---",
     "backend",
-    "---Client SDK---",
     "client",
-    "---Integrations---",
     "integrations",
-    "---CLI---",
     "cli",
-    "---Security---",
     "security",
-    "---Concepts---",
     "concepts",
-    "---Examples---",
     "examples",
-    "---API Reference---",
     "api-reference"
   ]
 }

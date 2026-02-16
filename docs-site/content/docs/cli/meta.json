@@ -1,4 +1,5 @@
 {
   "title": "CLI",
+  "icon": "Terminal",
   "pages": ["generate", "create-app"]
 }

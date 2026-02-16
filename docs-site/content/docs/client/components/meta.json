@@ -1,4 +1,5 @@
 {
   "title": "Components",
+  "icon": "LayoutGrid",
   "pages": ["auth-provider", "auth-card", "user-button"]
 }

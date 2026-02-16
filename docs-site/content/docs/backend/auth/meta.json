@@ -1,4 +1,5 @@
 {
   "title": "Authentication",
+  "icon": "KeyRound",
   "pages": ["overview", "better-auth", "custom-provider"]
 }
