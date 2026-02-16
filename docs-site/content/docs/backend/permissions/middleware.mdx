@@ -147,9 +147,9 @@ This is especially useful for writes that need atomic side effects — stock dec
 
 ## Examples
 
-### Real-World: Order Creation with Stock Validation
+### E-Commerce: Order Creation with Stock Validation
 
-A complete example combining pre-validation, transactions, and post-query side effects:
+An online store lets customers place orders through a dashboard built with Drizzle on the client. The client sends an `INSERT` with just the product and quantity — but the server needs to verify stock availability, compute the total price from the catalog, decrement inventory, and queue a warehouse fulfillment job. All of this must happen atomically: if the warehouse job fails to insert, the order and stock change must roll back too.
 
 ```typescript
 create_order: {
@@ -166,7 +166,7 @@ create_order: {
     quantity: { $gte: 1, $lte: 100 },
   },
   middleware: async ({ user, db, input }, next) => {
-    // 1. Validate: check product exists and has stock
+    // Validate: product exists in this org and has enough stock
     const product = await db.query.products.findFirst({
       where: and(
         eq(products.id, input.product_id),
@@ -182,7 +182,7 @@ create_order: {
       )
     }
 
-    // 2. Execute atomically: insert order + decrement stock
+    // Execute atomically: insert order + decrement stock + queue job
     return db.transaction(async (tx) => {
       const rows = await next({
         db: tx,
@@ -198,7 +198,6 @@ create_order: {
         .set({ stock: sql`stock - ${input.quantity}` })
         .where(eq(products.id, input.product_id))
 
-      // 3. Side effect: notify warehouse (if this fails, order rolls back)
       await tx.insert(warehouseJobs).values({
         orderId: rows[0].id,
         productId: input.product_id,
@@ -212,121 +211,219 @@ create_order: {
 }
 ```
 
-This permission:
-1. Uses **declarative** `preset`, `check`, and `columns` for the simple stuff
-2. Uses **middleware** to validate stock, compute the price, atomically decrement inventory, and queue a warehouse job — all in one transaction
+### Project Management: Team-Scoped Task Visibility
 
-### Dynamic Filter Based on Lookup
-
-Add filters based on data only known at runtime:
+A project management app where users belong to multiple teams. Tasks should only be visible to members of the team that owns them. The team membership is complex — users can be active or inactive, and membership can expire — so a simple declarative `filter` with `$user.team_ids` isn't enough. The middleware looks up the user's currently active team memberships at query time and injects a dynamic filter.
 
 ```typescript
-middleware: async ({ user, db, filter }, next) => {
-  const teamIds = await db
-    .select({ id: teams.id })
-    .from(teams)
-    .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
-    .where(
-      and(
-        eq(teamMembers.userId, user.id),
-        eq(teamMembers.status, 'active'),
-      ),
-    )
+view_tasks: {
+  name: 'View team tasks',
+  table: 'main.tasks',
+  operations: { select: true },
+  columns: '*',
+  middleware: async ({ user, db, filter }, next) => {
+    const activeTeams = await db
+      .select({ id: teams.id })
+      .from(teams)
+      .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+      .where(
+        and(
+          eq(teamMembers.userId, user.id),
+          eq(teamMembers.status, 'active'),
+          gt(teamMembers.expiresAt, new Date()),
+        ),
+      )
 
-  return next({
-    filter: { ...filter, team_id: { $in: teamIds.map(t => t.id) } },
-  })
-},
+    if (activeTeams.length === 0) {
+      throw new PermissionError('No active team memberships')
+    }
+
+    return next({
+      filter: {
+        ...filter,
+        team_id: { $in: activeTeams.map(t => t.id) },
+      },
+    })
+  },
+}
 ```
 
-### Restrict Columns by Plan
+### SaaS: Feature Gating by Subscription Plan
 
-Dynamically limit visible columns based on the user's subscription:
+A SaaS analytics platform where free-tier users can see basic metrics (name, status, created date) but paid users get access to all columns including revenue data, conversion rates, and custom fields. The plan is stored in a separate `subscriptions` table, so you can't express this with a static `columns` list — it depends on the user's current plan at query time.
 
 ```typescript
-middleware: async ({ user, db }, next) => {
-  const sub = await db.query.subscriptions.findFirst({
-    where: eq(subscriptions.userId, user.id),
-    columns: { plan: true },
-  })
-  if (sub?.plan === 'free') {
-    return next({ columns: ['id', 'name', 'status', 'created_at'] })
-  }
-  return next()
-},
+view_campaigns: {
+  name: 'View campaigns',
+  table: 'main.campaigns',
+  operations: { select: true },
+  filter: { organization_id: { $eq: '$user.current_org_id' } },
+  middleware: async ({ user, db }, next) => {
+    const sub = await db.query.subscriptions.findFirst({
+      where: eq(subscriptions.organizationId, user.current_org_id),
+      columns: { plan: true },
+    })
+
+    if (sub?.plan === 'free') {
+      return next({
+        columns: ['id', 'name', 'status', 'created_at'],
+      })
+    }
+    return next()
+  },
+}
 ```
 
-### Redact Sensitive Fields
+### Healthcare: PII Redaction for Non-Clinical Staff
 
-Mask data based on the user's role:
+A hospital management system where administrative staff can look up patient records to schedule appointments, but only clinical staff (doctors, nurses) should see personally identifiable information. Admin staff sees masked emails, phone numbers, and social security numbers. The redaction happens after the query returns, so the database query itself is unchanged — only the response is sanitized.
 
 ```typescript
-middleware: async ({ user }, next) => {
-  const rows = await next()
+view_patients: {
+  name: 'View patients',
+  table: 'main.patients',
+  operations: { select: true },
+  columns: '*',
+  filter: { facility_id: { $eq: '$user.facility_id' } },
+  middleware: async ({ user }, next) => {
+    const rows = await next()
 
-  if (!user.roles.includes('admin')) {
+    if (!user.roles.includes('clinical')) {
+      return rows.map(row => ({
+        ...row,
+        email: row.email ? `${row.email[0]}***@***` : null,
+        phone: row.phone ? '***-****' : null,
+        ssn: row.ssn ? '***-**-' + row.ssn.slice(-4) : null,
+        date_of_birth: null,
+      }))
+    }
+    return rows
+  },
+}
+```
+
+### Marketplace: Order List with Item Counts
+
+A marketplace dashboard shows sellers a list of their orders. Each order row should include the number of line items, but `item_count` isn't stored on the `orders` table — it lives in `order_items`. Rather than forcing the client to make a second query and join the data, the middleware fetches item counts in a single batch query after the main query returns and attaches them to each row.
+
+```typescript
+view_orders: {
+  name: 'View seller orders',
+  table: 'main.orders',
+  operations: { select: true },
+  columns: '*',
+  filter: { seller_id: { $eq: '$user.id' } },
+  middleware: async ({ db }, next) => {
+    const rows = await next()
+    if (rows.length === 0) return rows
+
+    const orderIds = rows.map(r => r.id)
+    const counts = await db
+      .select({
+        orderId: orderItems.orderId,
+        itemCount: count(),
+      })
+      .from(orderItems)
+      .where(inArray(orderItems.orderId, orderIds))
+      .groupBy(orderItems.orderId)
+
+    const countMap = new Map(counts.map(c => [c.orderId, c.itemCount]))
     return rows.map(row => ({
       ...row,
-      email: row.email ? `${row.email[0]}***@***` : null,
-      phone: row.phone ? '***-****' : null,
+      item_count: countMap.get(row.id) ?? 0,
     }))
-  }
-  return rows
-},
+  },
+}
 ```
 
-### Add Computed Fields
+### Multi-Tenant: Cascading Delete with Usage Recalculation
 
-Attach data that isn't stored in the table:
+A multi-tenant platform tracks per-organization resource usage (number of projects, storage used, etc.) in a denormalized `organizations.project_count` column for fast billing lookups. When a user deletes a project, the count must be recalculated. Both the delete and the count update must succeed or fail together — otherwise the billing data drifts out of sync.
 
 ```typescript
-middleware: async ({ db }, next) => {
-  const rows = await next()
-  if (rows.length === 0) return rows
+delete_project: {
+  name: 'Delete project',
+  table: 'main.projects',
+  operations: { delete: true },
+  filter: {
+    organization_id: { $eq: '$user.current_org_id' },
+  },
+  middleware: async ({ user, db }, next) => {
+    return db.transaction(async (tx) => {
+      const rows = await next({ db: tx })
 
-  const orderIds = rows.map(r => r.id)
-  const counts = await db
-    .select({
-      orderId: orderItems.orderId,
-      itemCount: count(),
+      // Recalculate project count — if this fails, the delete rolls back
+      const [{ total }] = await tx
+        .select({ total: count() })
+        .from(projects)
+        .where(eq(projects.organizationId, user.current_org_id))
+
+      await tx
+        .update(organizations)
+        .set({ projectCount: total })
+        .where(eq(organizations.id, user.current_org_id))
+
+      return rows
     })
-    .from(orderItems)
-    .where(inArray(orderItems.orderId, orderIds))
-    .groupBy(orderItems.orderId)
-
-  const countMap = new Map(counts.map(c => [c.orderId, c.itemCount]))
-  return rows.map(row => ({
-    ...row,
-    item_count: countMap.get(row.id) ?? 0,
-  }))
-},
+  },
+}
 ```
 
-### Transactional Write with Rollback
+### Approval Workflow: Role-Based Status Transitions
 
-Ensure a write and its side effects succeed or fail together:
+A procurement system where purchase orders go through an approval workflow: `draft` → `submitted` → `approved` → `fulfilled`. Only managers can move an order to `approved`, and only the original creator can move it from `draft` to `submitted`. The declarative `check` can validate that `status` is one of the allowed values, but it can't express "who is allowed to set which status" — that requires looking up the user's role and the order's current state.
 
 ```typescript
-middleware: async ({ user, db, operation }, next) => {
-  if (operation !== 'delete') return next()
+manage_purchase_orders: {
+  name: 'Manage purchase orders',
+  table: 'main.purchase_orders',
+  operations: { select: true, update: true },
+  filter: { organization_id: { $in: '$user.org_ids' } },
+  check: {
+    status: { $in: ['draft', 'submitted', 'approved', 'fulfilled'] },
+  },
+  preset: { updated_by: '$user.id' },
+  middleware: async ({ user, db, operation, input, filter }, next) => {
+    if (operation !== 'update' || !input?.status) return next()
 
-  return db.transaction(async (tx) => {
-    const rows = await next({ db: tx })
+    // Look up the current order to check the transition
+    const [order] = await db
+      .select({ status: purchaseOrders.status, createdBy: purchaseOrders.createdBy })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.id, input.id))
+      .limit(1)
 
-    // Recalculate org usage — if this fails, the delete rolls back
-    const remaining = await tx
-      .select({ count: count() })
-      .from(orders)
-      .where(eq(orders.organizationId, user.current_org_id))
+    if (!order) throw new PermissionError('Order not found')
 
-    await tx
-      .update(organizations)
-      .set({ orderCount: remaining[0].count })
-      .where(eq(organizations.id, user.current_org_id))
+    // draft → submitted: only the creator
+    if (input.status === 'submitted' && order.status === 'draft') {
+      if (order.createdBy !== user.id) {
+        throw new PermissionError('Only the creator can submit this order')
+      }
+    }
 
-    return rows
-  })
-},
+    // submitted → approved: only managers
+    if (input.status === 'approved' && order.status === 'submitted') {
+      if (!user.roles.includes('manager')) {
+        throw new PermissionError('Only managers can approve orders')
+      }
+    }
+
+    // No skipping steps (e.g., draft → approved)
+    const allowedTransitions = {
+      draft: ['submitted'],
+      submitted: ['approved', 'draft'],
+      approved: ['fulfilled'],
+    }
+    if (!allowedTransitions[order.status]?.includes(input.status)) {
+      throw new PermissionError(
+        `Cannot transition from ${order.status} to ${input.status}`,
+      )
+    }
+
+    return next()
+  },
+}
 ```
 
 ## Combining with Declarative Rules
