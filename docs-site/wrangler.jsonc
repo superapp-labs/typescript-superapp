@@ -4,8 +4,15 @@
   "name": "superapp-docs",
   "compatibility_date": "2024-12-30",
   "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
-  }
+  },
+  "routes": [
+    {
+      "pattern": "typescript-superapp.bunnytech.app",
+      "custom_domain": true
+    }
+  ]
 }
