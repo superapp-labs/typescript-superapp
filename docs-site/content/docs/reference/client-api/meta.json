@@ -1,0 +1,5 @@
+{
+  "title": "Client API",
+  "icon": "Monitor",
+  "pages": ["create-client", "query-methods", "filter-operators"]
+}

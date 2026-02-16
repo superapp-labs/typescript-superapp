@@ -1,0 +1,5 @@
+{
+  "title": "Reference",
+  "icon": "FileCode",
+  "pages": ["server-api", "client-api", "http-api", "cli"]
+}

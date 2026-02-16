@@ -1,0 +1,13 @@
+{
+  "title": "Advanced",
+  "icon": "Wrench",
+  "pages": [
+    "architecture",
+    "request-pipeline",
+    "engine-modes",
+    "multi-database",
+    "duckdb",
+    "audit-logging",
+    "security"
+  ]
+}

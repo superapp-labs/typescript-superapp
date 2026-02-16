@@ -1,5 +1,0 @@
-{
-  "title": "Server",
-  "icon": "Server",
-  "pages": ["create-engine", "permission-object", "auth-provider"]
-}

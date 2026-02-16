@@ -1,0 +1,13 @@
+{
+  "title": "Server",
+  "icon": "Server",
+  "pages": [
+    "overview",
+    "configuration",
+    "databases",
+    "auth",
+    "permissions",
+    "roles",
+    "adapters"
+  ]
+}

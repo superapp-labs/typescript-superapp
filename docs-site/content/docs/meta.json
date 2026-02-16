@@ -3,13 +3,10 @@
   "pages": [
     "index",
     "getting-started",
-    "backend",
+    "server",
     "client",
-    "integrations",
-    "cli",
-    "security",
-    "concepts",
+    "advanced",
     "examples",
-    "api-reference"
+    "reference"
   ]
 }

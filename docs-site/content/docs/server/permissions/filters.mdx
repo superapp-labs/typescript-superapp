@@ -1,0 +1,239 @@
+---
+title: Filters
+description: Inject WHERE clauses to restrict which rows users can access, from simple equality to FK traversal.
+icon: Filter
+---
+
+Filters add WHERE clauses to every query, ensuring users only see and modify rows they have access to. They apply to `select`, `update`, and `delete` operations.
+
+```typescript
+permissions: {
+  view_own_orders: {
+    name: 'View own orders',
+    table: 'main.orders',
+    operations: { select: true },
+    columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+    filter: { customer_id: { $eq: '$user.id' } },
+  },
+}
+```
+
+**Generated SQL:**
+
+```sql
+SELECT id, amount, status, customer_id, created_at
+FROM main.orders
+WHERE customer_id = 'usr_123'  -- injected by filter
+```
+
+## Simple Filters
+
+Direct column comparisons:
+
+```typescript
+// Exact match
+filter: { customer_id: { $eq: '$user.id' } }
+// → WHERE customer_id = 'usr_123'
+
+// Multiple values
+filter: { status: { $in: ['active', 'pending'] } }
+// → WHERE status IN ('active', 'pending')
+
+// Range
+filter: { amount: { $gte: 0, $lte: 50_000 } }
+// → WHERE amount >= 0 AND amount <= 50000
+
+// Multiple conditions (AND)
+filter: {
+  organization_id: { $eq: '$user.current_org_id' },
+  status: { $ne: 'deleted' },
+}
+// → WHERE organization_id = 'org_456' AND status != 'deleted'
+```
+
+## Array Session Variables
+
+When `$user.*` resolves to an array, use `$in`:
+
+```typescript
+filter: { organization_id: { $in: '$user.org_ids' } }
+// If $user.org_ids = ['org_1', 'org_2', 'org_3']
+// → WHERE organization_id IN ('org_1', 'org_2', 'org_3')
+```
+
+## Relationship Traversal
+
+Filter through foreign key relationships by nesting objects. Each key is a related table, and the engine follows the FK path:
+
+```typescript
+filter: {
+  organization: {
+    members: {
+      user_id: { $eq: '$user.id' },
+    },
+  },
+}
+```
+
+**Generated SQL:**
+
+```sql
+SELECT main.orders.*
+FROM main.orders
+WHERE main.orders.organization_id IN (
+  SELECT id FROM main.organizations
+  WHERE id IN (
+    SELECT organization_id FROM main.members
+    WHERE user_id = 'usr_123'
+  )
+)
+```
+
+### How Path Resolution Works
+
+The engine resolves nested filter objects by inspecting FK relationships in your schema:
+
+```text
+main.orders
+  → organization (FK: orders.organization_id → organizations.id)
+    → members (FK: members.organization_id → organizations.id)
+      → user_id = $user.id
+```
+
+1. `organization` -- looks for an `organization_id` column on `main.orders` that references `main.organizations`
+2. `members` -- looks for a relationship between `main.organizations` and `main.members`
+3. `user_id: { $eq: '$user.id' }` -- the leaf condition applied to `main.members`
+
+### Single Hop
+
+Filter orders by their customer's status:
+
+```typescript
+filter: {
+  customer: {
+    status: { $eq: 'active' },
+  },
+}
+```
+
+```sql
+SELECT * FROM main.orders
+WHERE customer_id IN (
+  SELECT id FROM main.customers
+  WHERE status = 'active'
+)
+```
+
+### Two Hops with Role Check
+
+Filter orders where the user is an admin or owner of the organization:
+
+```typescript
+filter: {
+  organization: {
+    members: {
+      user_id: { $eq: '$user.id' },
+      role: { $in: ['owner', 'admin'] },
+    },
+  },
+}
+```
+
+```sql
+SELECT * FROM main.orders
+WHERE organization_id IN (
+  SELECT id FROM main.organizations
+  WHERE id IN (
+    SELECT organization_id FROM main.members
+    WHERE user_id = 'usr_123'
+      AND role IN ('owner', 'admin')
+  )
+)
+```
+
+### Combined Direct and FK Filters
+
+Mix direct column filters with FK traversal:
+
+```typescript
+filter: {
+  status: { $ne: 'deleted' },
+  organization: {
+    members: {
+      user_id: { $eq: '$user.id' },
+    },
+  },
+}
+```
+
+```sql
+SELECT * FROM main.orders
+WHERE status != 'deleted'
+  AND organization_id IN (
+    SELECT id FROM main.organizations
+    WHERE id IN (
+      SELECT organization_id FROM main.members
+      WHERE user_id = 'usr_123'
+    )
+  )
+```
+
+### Depth Limits
+
+The `maxFilterDepth` setting controls how many FK hops are allowed:
+
+```typescript
+limits: {
+  maxFilterDepth: 5,  // default
+}
+```
+
+If a filter exceeds this depth, the request returns `400 Bad Request`.
+
+## Complex Filters with Logical Operators
+
+Combine conditions with `$or`, `$and`, and `$not`:
+
+```typescript
+filter: {
+  $or: [
+    { customer_id: { $eq: '$user.id' } },
+    { organization_id: { $in: '$user.org_ids' } },
+  ],
+}
+// → WHERE (customer_id = 'usr_123' OR organization_id IN ('org_1', 'org_2'))
+```
+
+```typescript
+filter: {
+  $and: [
+    { status: { $ne: 'deleted' } },
+    {
+      $or: [
+        { customer_id: { $eq: '$user.id' } },
+        { assigned_to: { $eq: '$user.id' } },
+      ],
+    },
+  ],
+}
+// → WHERE status != 'deleted' AND (customer_id = 'usr_123' OR assigned_to = 'usr_123')
+```
+
+## Filter Merging
+
+When a user has multiple permissions for the same table, filters are merged with OR:
+
+```typescript
+// Permission 1: view_own_orders
+filter: { customer_id: { $eq: '$user.id' } }
+
+// Permission 2: view_org_orders
+filter: { organization_id: { $in: '$user.org_ids' } }
+
+// Merged result:
+// → WHERE (customer_id = 'usr_123') OR (organization_id IN ('org_1', 'org_2'))
+```
+
+## All Filter Operators
+
+See [Permission Operators](/docs/server/permissions/operators) for the complete list of comparison and logical operators.

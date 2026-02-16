@@ -1,10 +1,9 @@
 {
-  "title": "Client SDK",
+  "title": "Client",
   "icon": "Monitor",
   "pages": [
     "overview",
-    "create-client",
-    "drizzle-compatibility",
+    "setup",
     "queries",
     "auth",
     "components",

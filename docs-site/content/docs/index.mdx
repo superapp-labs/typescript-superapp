@@ -1,48 +1,48 @@
 ---
 title: Introduction
-description: A thin, secure data access layer between any database and any frontend.
+description: A thin, secure data layer between your frontend and any database.
 icon: Home
 ---
 
-One library to connect your frontend to any database — with auth, permissions, and type safety built in.
+One library to connect your frontend to any database -- with authentication, row-level permissions, and type safety built in.
 
 ## What is superapp?
 
-superapp is two packages that form a complete data access layer:
+superapp is two packages:
 
-- **`@superapp/backend`** — The server engine. Connects to Postgres, MySQL, SQLite, or CSV files through DuckDB, enforces row-level permissions, handles auth via better-auth, and ships with an admin UI for managing everything visually.
-- **`@superapp/db`** — The client SDK. Real Drizzle ORM with an HTTP driver plugin. Full type safety, pre-built auth UI components, zero server dependencies.
+| Package | What it does |
+|---|---|
+| `@superapp/backend` | Connects to Postgres, MySQL, SQLite, or CSV through DuckDB. Handles auth, enforces row-level permissions, runs queries. |
+| `@superapp/db` | Drizzle ORM client with an HTTP driver. Full type safety, auth UI components, zero server dependencies. |
 
-## Architecture
-
-```mermaid
-flowchart TD
-    A["Frontend (React, Next.js)"] --> B["@superapp/db (Drizzle ORM)"]
-    B -->|"HTTP + JWT"| C["@superapp/backend"]
-    C --> D["Auth (JWT)"]
-    D --> E["Permissions (row-level)"]
-    E --> F["Query Builder"]
-    F --> G["DuckDB"]
-    G --> H["Postgres"]
-    G --> I["MySQL"]
-    G --> J["SQLite"]
-    G --> K["CSV"]
+```text
+  Frontend (React, Next.js)
+        │
+        ▼
+  @superapp/db (Drizzle ORM)
+        │
+        │ HTTP + JWT
+        ▼
+  @superapp/backend
+        │
+    ┌───┼───────────────┐
+    │   │               │
+    ▼   ▼               ▼
+  Auth  Permissions   Query Builder
+                        │
+                        ▼
+                      DuckDB
+                        │
+          ┌─────┬───────┼────────┐
+          ▼     ▼       ▼        ▼
+       Postgres MySQL  SQLite   CSV
 ```
 
-## Key Features
+## How it works
 
-- **Type-safe queries** — Your frontend code gets full autocomplete and type checking against your actual database schema.
-- **Automatic row-level security** — Permissions inject WHERE clauses into every query. Users only see their own data without you writing filter logic.
-- **Multi-database via DuckDB** — Query Postgres, MySQL, SQLite, and CSV files through a single interface. Join across databases.
-- **Plug-and-play auth** — better-auth integration with pre-built UI components. Sign-in, sign-up, and user management out of the box.
-- **Visual permission editor** — An admin UI to create roles and permissions without touching code.
-- **Audit logging** — Every query, every permission denial, every admin action is logged with full context.
-
-## Who is This For?
-
-- **SaaS teams** building multi-tenant applications where each customer must only see their own data.
-- **Internal tools** that need to query production databases safely, with guardrails.
-- **Multi-tenant apps** where row-level security and organization-scoped access are table stakes.
+1. **Define your server** -- connect databases, configure auth, declare permissions
+2. **Generate types** -- the CLI introspects your schema and outputs Drizzle table definitions
+3. **Query from the frontend** -- use standard Drizzle ORM syntax, permissions are enforced automatically
 
 ## Quick Example
 
@@ -57,23 +57,17 @@ import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 
 const engine = createEngine({
-  database: './superapp.db',
   integrations: [postgresProvider],
   connections: {
     main: { type: 'postgres', url: process.env.PG_URL! },
   },
   auth: betterAuthProvider({ secret: process.env.AUTH_SECRET! }),
-  masterKey: process.env.SUPERAPP_MASTER_KEY!,
   permissions: {
     view_own_orders: {
       table: 'main.orders',
       operations: { select: true },
       columns: ['id', 'amount', 'status', 'created_at'],
-      filter: {
-        organization: {
-          members: { user_id: { $eq: '$user.id' } },
-        },
-      },
+      filter: { customer_id: { $eq: '$user.id' } },
     },
   },
   roles: {
@@ -116,7 +110,9 @@ const orders = await db.select()
   .limit(50)
 ```
 
+The `filter: { customer_id: { $eq: '$user.id' } }` in the server config injects a WHERE clause into every query -- the client never sees it, and cannot bypass it.
+
 ## What's Next
 
-- [Installation](/docs/getting-started/installation) — Install the server engine and client SDK.
-- [Quick Start](/docs/getting-started/quick-start) — Get running in 5 minutes.
+- [Installation](/docs/getting-started/installation) -- Install the packages and set up your environment.
+- [Quick Start](/docs/getting-started/quick-start) -- Get running in 5 minutes.

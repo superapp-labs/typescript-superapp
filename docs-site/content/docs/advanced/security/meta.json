@@ -1,0 +1,5 @@
+{
+  "title": "Security",
+  "icon": "Shield",
+  "pages": ["overview", "session-isolation", "jwt-validation", "encryption", "request-limits"]
+}

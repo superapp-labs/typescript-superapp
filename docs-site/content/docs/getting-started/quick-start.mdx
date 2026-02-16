@@ -215,23 +215,23 @@ export default function DashboardPage() {
 
 ## What You Just Built
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant Backend
-    participant Database
-
-    Browser->>Backend: POST /auth/sign-in
-    Backend-->>Browser: JWT token
-
-    Browser->>Backend: POST /data (JWT + Drizzle query)
-    Backend->>Backend: Verify JWT
-    Backend->>Backend: Resolve session ($user)
-    Backend->>Backend: Check permissions
-    Backend->>Backend: Inject WHERE filters
-    Backend->>Database: Execute SQL via DuckDB
-    Database-->>Backend: Results
-    Backend-->>Browser: Typed response
+```text
+Browser                       Backend                        Database
+  |                              |                              |
+  |-- POST /auth/sign-in ------>|                              |
+  |<-------- JWT token ---------|                              |
+  |                              |                              |
+  |-- POST /data -------------->|                              |
+  |   (JWT + Drizzle query)     |                              |
+  |                              |-- Verify JWT                |
+  |                              |-- Resolve session ($user)   |
+  |                              |-- Check permissions         |
+  |                              |-- Inject WHERE filters      |
+  |                              |                              |
+  |                              |-- Execute SQL via DuckDB -->|
+  |                              |<-------- Results -----------|
+  |                              |                              |
+  |<------ Typed response ------|                              |
 ```
 
 ## What's Next

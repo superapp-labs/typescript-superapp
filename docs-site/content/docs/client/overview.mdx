@@ -10,12 +10,8 @@ icon: Monitor
 
 The client uses a Drizzle HTTP driver plugin that sends queries to the superapp backend. The server validates your JWT, applies row-level permissions, and executes against your database.
 
-```mermaid
-flowchart LR
-    A["Client (Drizzle ORM)"] --> B["HTTP Driver"]
-    B --> C["superapp Backend"]
-    C --> D["Permission Engine"]
-    D --> E["Database"]
+```text
+Client (Drizzle ORM) --> HTTP Driver --> superapp Backend --> Permission Engine --> Database
 ```
 
 ## Quick Example

@@ -1,0 +1,114 @@
+---
+title: Configuration
+description: Configure and initialize the superapp backend engine with connections, auth, permissions, and more.
+icon: Cog
+---
+
+`createEngine` is the single entry point for configuring your backend. It returns an engine instance you pass to any adapter.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+## Full Configuration
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { mysqlProvider } from '@superapp/backend/integrations/mysql'
+import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
+import { csvProvider } from '@superapp/backend/integrations/csv'
+
+const engine = createEngine({
+  mode: 'programmatic',
+  database: process.env.TURSO_URL ?? './superapp.db',
+  integrations: [postgresProvider, mysqlProvider, sqliteProvider, csvProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+  auth: betterAuthProvider({ /* ... */ }),
+  duckdb: {
+    maxMemory: '256MB',
+    threads: 2,
+    queryTimeout: 30_000,
+    poolSize: 10,
+    idleTimeout: 300_000,
+  },
+  limits: {
+    maxLimit: 10_000,
+    maxIncludeDepth: 3,
+    maxFilterDepth: 5,
+    rateLimitPerUser: 200,
+    rateLimitPerIP: 500,
+  },
+  audit: {
+    enabled: true,
+    logQuery: true,
+    logParams: true,
+    logDuration: true,
+    retention: '90d',
+  },
+  jwt: {
+    algorithms: ['RS256', 'ES256'],
+    issuer: 'https://auth.myapp.com',
+  },
+  security: {
+    cors: {
+      origin: ['https://myapp.com'],
+      credentials: true,
+    },
+  },
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  permissions: { /* ... */ },
+  roles: { /* ... */ },
+})
+```
+
+## Options Reference
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `mode` | `'programmatic' \| 'managed'` | `'programmatic'` | Engine operation mode |
+| `database` | `string` | `'./superapp.db'` | DuckDB database path or Turso URL |
+| `integrations` | `Provider[]` | `[]` | Database integration providers to load |
+| `connections` | `Record<string, Connection>` | `{}` | Named database connections |
+| `auth` | `AuthProvider` | — | Authentication provider |
+| `duckdb` | `DuckDBConfig` | — | DuckDB memory, threads, pool settings |
+| `limits` | `LimitsConfig` | — | Query and rate limit constraints |
+| `audit` | `AuditConfig` | — | Audit logging configuration |
+| `jwt` | `JWTConfig` | — | JWT algorithm and issuer settings |
+| `security` | `SecurityConfig` | — | CORS and security headers |
+| `masterKey` | `string` | — | Master API key for admin access |
+| `permissions` | `Record<string, Permission>` | `{}` | Permission definitions (snake_case slugs) |
+| `roles` | `Record<string, string[]>` | `{}` | Role-to-permission mappings |
+
+## Minimal vs. Full
+
+For development, only `connections` is required. Add `auth`, `permissions`, and `roles` when you need access control:
+
+```typescript
+// Development — open access
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: 'postgres://localhost:5432/mydb' },
+  },
+})
+
+// Production — full access control
+const engine = createEngine({
+  connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
+  auth: betterAuthProvider({ /* ... */ }),
+  permissions: { /* ... */ },
+  roles: { /* ... */ },
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  audit: { enabled: true },
+})
+```

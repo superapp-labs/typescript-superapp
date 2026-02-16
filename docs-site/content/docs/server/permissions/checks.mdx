@@ -1,0 +1,114 @@
+---
+title: Checks
+description: Validate data on insert and update operations before they reach the database.
+icon: CheckCircle
+---
+
+Checks validate the values a user is trying to write. If the data does not match the check rules, the request is rejected with `403 Forbidden` before any SQL is executed.
+
+```typescript
+permissions: {
+  create_orders: {
+    name: 'Create orders',
+    table: 'main.orders',
+    operations: { insert: true },
+    columns: ['amount', 'status', 'customer_id'],
+    check: {
+      amount: { $gte: 0 },
+      status: { $in: ['draft'] },
+    },
+  },
+}
+```
+
+A user trying to insert `{ amount: -50, status: 'draft' }` gets rejected because `amount` fails the `$gte: 0` check.
+
+## How Checks Work
+
+Checks run **before** the query. They compare the request body values against the rules:
+
+1. Extract the values from the request body
+2. Apply each check operator to the corresponding value
+3. If any check fails, return `403` with the failing field
+4. If all pass, proceed to query execution
+
+## Check vs. Filter
+
+| | Filter | Check |
+|---|---|---|
+| **Purpose** | Row-level security (which rows) | Value validation (what values) |
+| **Applies to** | `select`, `update`, `delete` | `insert`, `update` |
+| **Mechanism** | Adds WHERE clause | Validates request body |
+| **Failure** | Silently excludes rows | Returns 403 error |
+
+## Examples
+
+### Range Validation
+
+```typescript
+check: {
+  amount: { $gte: 0, $lte: 100_000 },
+}
+// Allows: { amount: 500 }
+// Rejects: { amount: -1 }, { amount: 200_000 }
+```
+
+### Enum Validation
+
+```typescript
+check: {
+  status: { $in: ['draft', 'active', 'closed'] },
+}
+// Allows: { status: 'draft' }
+// Rejects: { status: 'deleted' }, { status: 'archived' }
+```
+
+### Multiple Field Checks
+
+```typescript
+check: {
+  amount: { $gte: 0, $lte: 100_000 },
+  status: { $in: ['draft', 'active', 'closed'] },
+  priority: { $gte: 1, $lte: 5 },
+}
+// All three fields are validated independently
+// ALL must pass for the request to proceed
+```
+
+### Update Checks
+
+Checks also apply to update operations, validating the new values:
+
+```typescript
+permissions: {
+  edit_org_orders: {
+    name: 'Edit organization orders',
+    table: 'main.orders',
+    operations: { update: true },
+    columns: '*',
+    filter: { organization_id: { $in: '$user.org_ids' } },
+    check: {
+      status: { $in: ['draft', 'active', 'closed'] },
+      amount: { $gte: 0, $lte: 100_000 },
+    },
+  },
+}
+// User can update orders in their org,
+// but only set status to draft/active/closed
+// and amount between 0 and 100,000
+```
+
+## Checks with Session Variables
+
+You can reference `$user.*` in check values:
+
+```typescript
+check: {
+  organization_id: { $eq: '$user.current_org_id' },
+}
+// Ensures users can only write to their own organization
+```
+
+## Supported Operators
+
+All [comparison operators](/docs/backend/permissions/operators) are available in checks: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`.
