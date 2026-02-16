@@ -11,14 +11,28 @@ description: Drizzle ORM for the frontend — real Drizzle with an HTTP driver t
 The client uses a Drizzle HTTP driver plugin that sends queries to the superapp backend. The server validates your JWT, applies row-level permissions, and executes against your database. The data returned to the client has already been filtered and restricted by the permission engine — the client consumes Drizzle ORM, but with all data scoped to the user's configured permissions.
 
 ```text
-Client (Drizzle ORM) --> HTTP Driver --> superapp Backend --> Permission Engine --> Database
-                                                                    │
-                                                          Filters, restricts,
-                                                          validates data
-                                                                    │
-                                                                    ▼
-                                                          Returns scoped results
+  Your Frontend                superapp Backend                  Database
+  ─────────────                ────────────────                  ────────
+  db.select(...)  ── JSON ──▶  Verify JWT
+                               Who is this user?
+                                     │
+                                     ▼
+                               Apply permissions
+                               • Add WHERE user_id = ?
+                               • Restrict visible columns
+                               • Validate write operations
+                                     │
+                                     ▼
+                               Build & run SQL  ─── query ────▶  Postgres
+                                                                 MySQL
+                               Return filtered  ◀── results ──  SQLite
+                                  results                        CSV
+                                     │
+  Receive scoped  ◀── JSON ──       │
+  data only
 ```
+
+**You write normal Drizzle queries. The backend ensures each user only sees their own data.**
 
 ## Quick Example
 
