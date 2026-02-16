@@ -28,13 +28,13 @@ Every `POST /data` request passes through a 9-step pipeline. The client sends pa
   6. Permission Check — Validate SQL → Inject filters → Restrict columns → Check → Preset
     │
     ▼
-  6a. beforeExecute Hook — Custom TypeScript logic (optional)
+  6a. Guard — Custom TypeScript logic (optional)
     │
     ▼
   7. DuckDB Execution — Run permission-filtered SQL against attached databases
     │
     ▼
-  7a. afterExecute Hook — Custom TypeScript logic (optional)
+  7a. Transform — Custom TypeScript logic (optional)
     │
     ▼
   8. Audit Log — Record query, params, duration, user
@@ -128,15 +128,15 @@ limits: {
 
 If any check fails, returns `403 Forbidden`.
 
-### 6a. beforeExecute Hook
+### 6a. Guard
 
-If the matching permission defines a `hooks.beforeExecute` function, it runs now with the full query context (`user`, `db`, `table`, `operation`, `columns`, `input`, `filter`). The hook can:
+If the matching permission defines a `guard` function, it runs now with the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`). The guard can:
 
 - **Throw** to reject the request with `403 Forbidden`
 - **Return** modified `filter`, `input`, or `columns` to alter the query
 - **Return nothing** to pass through unchanged
 
-See [Custom Hooks](/docs/backend/permissions/custom-hooks) for details.
+See [Guard & Transform](/docs/backend/permissions/guard-and-transform) for details.
 
 ### 7. DuckDB Execution
 
@@ -150,15 +150,15 @@ duckdb: {
 
 Timeout returns `408 Request Timeout`.
 
-### 7a. afterExecute Hook
+### 7a. Transform
 
-If the matching permission defines a `hooks.afterExecute` function, it runs with the query results. The hook can:
+If the matching permission defines a `transform` function, it runs with the query results. The transform can:
 
 - **Return an array** to replace the result set (transform, redact, or enrich rows)
 - **Return nothing** to pass results through unchanged
 - **Run side effects** like writing audit entries or triggering notifications
 
-See [Custom Hooks](/docs/backend/permissions/custom-hooks) for details.
+See [Guard & Transform](/docs/backend/permissions/guard-and-transform) for details.
 
 ### 8. Audit Log
 

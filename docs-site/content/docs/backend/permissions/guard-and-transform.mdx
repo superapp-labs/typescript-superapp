@@ -1,0 +1,383 @@
+---
+title: Guard & Transform
+icon: Code
+description: Run custom TypeScript before or after query execution, with full access to the database, user session, and query data.
+---
+
+When declarative filters, checks, and presets are not enough, `guard` and `transform` let you run arbitrary TypeScript as part of the permission. You get full access to the database, the user session, and the client's query.
+
+```typescript
+permissions: {
+  view_orders: {
+    name: 'View orders',
+    table: 'main.orders',
+    operations: { select: true },
+    columns: '*',
+    guard: async ({ user, db }) => {
+      const subscription = await db.query.subscriptions.findFirst({
+        where: eq(subscriptions.userId, user.id),
+      })
+      if (subscription?.status !== 'active') {
+        throw new PermissionError('Active subscription required')
+      }
+    },
+  },
+}
+```
+
+## Overview
+
+A permission can define two functions:
+
+| Field | Runs | Purpose |
+|---|---|---|
+| `guard` | Before query execution | Gate access, modify filters/input/columns |
+| `transform` | After query execution | Shape results, run side effects |
+
+Both are optional. They run within the [request pipeline](/docs/advanced/request-pipeline) — `guard` runs after permission checks (step 6) but before DuckDB execution (step 7), and `transform` runs after execution but before the response (step 9).
+
+```text
+  6. Permission Check — filters, checks, presets applied
+    │
+    ▼
+  6a. guard ← runs here
+    │
+    ▼
+  7. DuckDB Execution
+    │
+    ▼
+  7a. transform ← runs here
+    │
+    ▼
+  8. Audit Log
+```
+
+## Query Context
+
+Both functions receive a context object with everything you need:
+
+```typescript
+interface QueryContext {
+  /** Resolved user session (same as $user.* in filters) */
+  user: UserSession
+
+  /** Drizzle query builder — run any query against your database */
+  db: DrizzleInstance
+
+  /** Target table, e.g. 'main.orders' */
+  table: string
+
+  /** Detected operation */
+  operation: 'select' | 'insert' | 'update' | 'delete'
+
+  /** Columns the client is requesting or writing */
+  columns: string[]
+
+  /** The client's raw query */
+  query: {
+    /** Parameterized SQL sent by Drizzle Proxy */
+    sql: string
+    /** Parameter values */
+    params: any[]
+  }
+
+  /** Request body values (insert and update only) */
+  input?: Record<string, any>
+
+  /** Current resolved filter (after filter merging and $user.* substitution) */
+  filter?: Record<string, any>
+}
+```
+
+The `transform` function also receives the query results:
+
+```typescript
+interface TransformContext extends QueryContext {
+  /** Rows returned by the query */
+  rows: any[]
+}
+```
+
+## guard
+
+```typescript
+guard?: (ctx: QueryContext) => Promise<GuardResult | void>
+```
+
+Runs before the query hits the database. Use it to:
+
+- **Deny requests** — throw to return 403
+- **Modify filters** — return a new filter to extend the WHERE clause
+- **Modify input** — return transformed input data for writes
+- **Run side-effect queries** — look up related data via `ctx.db`
+
+### Return Values
+
+| Return | Effect |
+|---|---|
+| `void` (return nothing) | Query proceeds unchanged |
+| `{ filter: {...} }` | Merges with existing filter (AND) |
+| `{ input: {...} }` | Merges with existing input data |
+| `{ columns: [...] }` | Overrides the column list |
+| `throw` | Request is rejected with 403 |
+
+```typescript
+interface GuardResult {
+  filter?: Record<string, any>
+  input?: Record<string, any>
+  columns?: string[]
+}
+```
+
+### Examples
+
+#### Validate Against External Data
+
+Check a related table before allowing the query:
+
+```typescript
+guard: async ({ user, db, operation }) => {
+  if (operation === 'insert') {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, user.current_org_id),
+    })
+    if (org.order_count >= org.order_limit) {
+      throw new PermissionError('Organization order limit reached')
+    }
+  }
+},
+```
+
+#### Dynamic Filter Based on Lookup
+
+Add filters based on data only known at runtime:
+
+```typescript
+guard: async ({ user, db }) => {
+  const teamIds = await db
+    .select({ id: teams.id })
+    .from(teams)
+    .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+    .where(
+      and(
+        eq(teamMembers.userId, user.id),
+        eq(teamMembers.status, 'active'),
+        gte(teamMembers.joinedAt, subDays(new Date(), 90)),
+      ),
+    )
+
+  return {
+    filter: { team_id: { $in: teamIds.map(t => t.id) } },
+  }
+},
+```
+
+#### Transform Input on Write
+
+Normalize or enrich data before it's written:
+
+```typescript
+guard: async ({ input, operation }) => {
+  if (operation === 'insert' && input) {
+    return {
+      input: {
+        ...input,
+        email: input.email?.toLowerCase().trim(),
+        slug: input.name?.toLowerCase().replace(/\s+/g, '-'),
+      },
+    }
+  }
+},
+```
+
+#### Restrict Columns by Plan
+
+Dynamically limit visible columns based on the user's subscription:
+
+```typescript
+guard: async ({ user, db }) => {
+  const plan = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.userId, user.id),
+    columns: { plan: true },
+  })
+  if (plan?.plan === 'free') {
+    return {
+      columns: ['id', 'name', 'status', 'created_at'],
+    }
+  }
+  // Paid users see all columns (no override)
+},
+```
+
+#### Inspect the Client Query
+
+Use `query.sql` and `query.params` to make decisions based on what the client is requesting:
+
+```typescript
+guard: async ({ user, query }) => {
+  // Block queries that request too broad a date range
+  if (query.sql.includes('created_at') === false) {
+    throw new PermissionError('Query must include a created_at filter')
+  }
+},
+```
+
+## transform
+
+```typescript
+transform?: (ctx: TransformContext) => Promise<any[] | void>
+```
+
+Runs after the query returns results. Use it to:
+
+- **Transform rows** — redact fields, compute virtual columns
+- **Filter results** — remove rows based on logic that can't be expressed in SQL
+- **Side effects** — trigger notifications, update counters, write audit entries
+
+### Return Values
+
+| Return | Effect |
+|---|---|
+| `void` (return nothing) | Results pass through unchanged |
+| `any[]` | Replaces the result set |
+
+### Examples
+
+#### Redact Sensitive Fields
+
+Mask data based on the user's role:
+
+```typescript
+transform: async ({ user, rows }) => {
+  if (!user.roles.includes('admin')) {
+    return rows.map(row => ({
+      ...row,
+      email: row.email ? `${row.email[0]}***@***` : null,
+      phone: row.phone ? '***-****' : null,
+    }))
+  }
+},
+```
+
+#### Add Computed Fields
+
+Attach data that isn't stored in the table:
+
+```typescript
+transform: async ({ db, rows }) => {
+  if (rows.length === 0) return
+
+  const orderIds = rows.map(r => r.id)
+  const counts = await db
+    .select({
+      orderId: orderItems.orderId,
+      itemCount: count(),
+    })
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, orderIds))
+    .groupBy(orderItems.orderId)
+
+  const countMap = new Map(counts.map(c => [c.orderId, c.itemCount]))
+  return rows.map(row => ({
+    ...row,
+    item_count: countMap.get(row.id) ?? 0,
+  }))
+},
+```
+
+#### Log High-Value Operations
+
+Write custom audit entries for sensitive queries:
+
+```typescript
+transform: async ({ user, db, table, operation, rows }) => {
+  if (operation === 'select' && rows.length > 1000) {
+    await db.insert(auditLogs).values({
+      userId: user.id,
+      action: 'large_export',
+      table,
+      rowCount: rows.length,
+      timestamp: new Date(),
+    })
+  }
+},
+```
+
+## Combining with Declarative Rules
+
+`guard` and `transform` work alongside filters, checks, presets, and custom SQL. The engine applies them in order:
+
+```text
+1. filter      → WHERE clause injected
+2. check       → Input values validated
+3. preset      → Server values injected
+4. customSql   → SQL fragment appended to WHERE
+5. guard       → Your TypeScript runs (can modify query)
+6. Query executes
+7. transform   → Your TypeScript runs on results
+```
+
+Use declarative rules for the common cases and `guard`/`transform` for the edge cases:
+
+```typescript
+manage_orders: {
+  name: 'Manage orders',
+  table: 'main.orders',
+  operations: { select: true, insert: true, update: true },
+  // Declarative: org scoping
+  filter: { organization_id: { $in: '$user.org_ids' } },
+  // Declarative: value validation
+  check: { amount: { $gte: 0 } },
+  // Declarative: audit columns
+  preset: { updated_by: '$user.id' },
+  // Programmatic: business logic
+  guard: async ({ user, db, operation, input }) => {
+    if (operation === 'update' && input?.status === 'approved') {
+      const membership = await db.query.orgMembers.findFirst({
+        where: and(
+          eq(orgMembers.userId, user.id),
+          eq(orgMembers.orgId, user.current_org_id),
+        ),
+        columns: { role: true },
+      })
+      if (membership?.role !== 'manager') {
+        throw new PermissionError('Only managers can approve orders')
+      }
+    }
+  },
+  transform: async ({ user, rows }) => {
+    // Non-managers can't see the internal_notes column
+    if (!user.roles.includes('manager')) {
+      return rows.map(({ internal_notes, ...row }) => row)
+    }
+  },
+}
+```
+
+## Error Handling
+
+Throw `PermissionError` to reject with `403 Forbidden`:
+
+```typescript
+guard: async (ctx) => {
+  throw new PermissionError('Reason shown in error response')
+},
+```
+
+Any other thrown error returns `500 Internal Server Error` and is logged but not exposed to the client.
+
+## When to Use
+
+| Use Case | Recommendation |
+|---|---|
+| Static row filtering | Use [filters](/docs/backend/permissions/filters) |
+| Value validation | Use [checks](/docs/backend/permissions/checks) |
+| Auto-set columns | Use [presets](/docs/backend/permissions/presets) |
+| Date math, computed WHERE | Use [custom SQL](/docs/backend/permissions/custom-sql) |
+| Lookup-based access control | Use `guard` |
+| Business rule validation | Use `guard` |
+| Input transformation | Use `guard` |
+| Result transformation | Use `transform` |
+| Side effects (audit, notifications) | Use `transform` |
+
+Prefer declarative rules when possible. Use `guard` and `transform` only when the built-in mechanisms cannot express your logic.
