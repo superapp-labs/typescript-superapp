@@ -28,7 +28,13 @@ Every `POST /data` request passes through a 9-step pipeline. The client sends pa
   6. Permission Check — Validate SQL → Inject filters → Restrict columns → Check → Preset
     │
     ▼
+  6a. beforeExecute Hook — Custom TypeScript logic (optional)
+    │
+    ▼
   7. DuckDB Execution — Run permission-filtered SQL against attached databases
+    │
+    ▼
+  7a. afterExecute Hook — Custom TypeScript logic (optional)
     │
     ▼
   8. Audit Log — Record query, params, duration, user
@@ -122,6 +128,16 @@ limits: {
 
 If any check fails, returns `403 Forbidden`.
 
+### 6a. beforeExecute Hook
+
+If the matching permission defines a `hooks.beforeExecute` function, it runs now with the full query context (`user`, `db`, `table`, `operation`, `columns`, `input`, `filter`). The hook can:
+
+- **Throw** to reject the request with `403 Forbidden`
+- **Return** modified `filter`, `input`, or `columns` to alter the query
+- **Return nothing** to pass through unchanged
+
+See [Custom Hooks](/docs/backend/permissions/custom-hooks) for details.
+
 ### 7. DuckDB Execution
 
 The permission-filtered SQL is executed against DuckDB, which routes the query to the appropriate attached database (Postgres, MySQL, etc.):
@@ -133,6 +149,16 @@ duckdb: {
 ```
 
 Timeout returns `408 Request Timeout`.
+
+### 7a. afterExecute Hook
+
+If the matching permission defines a `hooks.afterExecute` function, it runs with the query results. The hook can:
+
+- **Return an array** to replace the result set (transform, redact, or enrich rows)
+- **Return nothing** to pass results through unchanged
+- **Run side effects** like writing audit entries or triggering notifications
+
+See [Custom Hooks](/docs/backend/permissions/custom-hooks) for details.
 
 ### 8. Audit Log
 

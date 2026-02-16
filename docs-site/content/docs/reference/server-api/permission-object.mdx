@@ -44,6 +44,12 @@ interface Permission {
 
   /** Custom SQL fragment for advanced filtering (use with caution) */
   customSql?: string
+
+  /** Lifecycle hooks for custom TypeScript logic */
+  hooks?: {
+    beforeExecute?: (ctx: HookContext) => Promise<HookResult | void>
+    afterExecute?: (ctx: AfterHookContext) => Promise<any[] | void>
+  }
 }
 ```
 
@@ -257,6 +263,35 @@ customSql: "created_at >= CURRENT_DATE - INTERVAL '30 days'"
 <Callout type="warn">
 `customSql` bypasses the filter operator validation. Use it sparingly and ensure the SQL is safe. Never interpolate user input directly.
 </Callout>
+
+### `hooks`
+
+| | |
+|---|---|
+| **Type** | `{ beforeExecute?: Function; afterExecute?: Function }` |
+| **Required** | No |
+| **Applies to** | All operations |
+
+Lifecycle hooks that run custom TypeScript before or after query execution. Hooks receive the full query context including a Drizzle `db` instance for running additional queries.
+
+```typescript
+hooks: {
+  // Runs after permission checks, before query execution
+  beforeExecute: async ({ user, db, operation, input, filter }) => {
+    // Throw PermissionError to deny
+    // Return { filter, input, columns } to modify the query
+    // Return void to pass through
+  },
+
+  // Runs after query execution, before response
+  afterExecute: async ({ user, db, rows }) => {
+    // Return any[] to replace results
+    // Return void to pass through
+  },
+}
+```
+
+See [Custom Hooks](/docs/backend/permissions/custom-hooks) for full documentation and examples.
 
 ## Complete Examples
 
