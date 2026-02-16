@@ -1,245 +1,187 @@
 ---
 title: Filter Operators
-description: "Complete filter operator reference."
+description: "Complete Drizzle filter operator reference."
 ---
 
-Filter operators are used in `where` clauses to build query conditions. They work in both client queries and server-side permission definitions.
+Drizzle provides filter operators as functions imported from `drizzle-orm`. They're used in `.where()` clauses and relational query conditions.
 
 ```typescript
-db.main.orders.findMany({
-  where: {
-    status: { $eq: 'active' },
-    amount: { $gte: 100 },
-  },
-})
+import { eq, gt, and } from 'drizzle-orm'
+
+const orders = await db.select()
+  .from(schema.orders)
+  .where(and(
+    eq(schema.orders.status, 'active'),
+    gt(schema.orders.amount, 100)
+  ))
 ```
 
 ## Comparison Operators
 
-| Operator | Description | Value Type | SQL Equivalent | Example |
-|---|---|---|---|---|
-| `$eq` | Equal to | `string \| number \| boolean` | `= value` | `{ status: { $eq: 'active' } }` |
-| `$ne` | Not equal to | `string \| number \| boolean` | `!= value` | `{ status: { $ne: 'cancelled' } }` |
-| `$gt` | Greater than | `number \| string` | `> value` | `{ amount: { $gt: 100 } }` |
-| `$gte` | Greater than or equal to | `number \| string` | `>= value` | `{ amount: { $gte: 100 } }` |
-| `$lt` | Less than | `number \| string` | `< value` | `{ amount: { $lt: 1000 } }` |
-| `$lte` | Less than or equal to | `number \| string` | `<= value` | `{ amount: { $lte: 1000 } }` |
+| Function | Description | SQL Equivalent | Example |
+|---|---|---|---|
+| `eq(col, val)` | Equal to | `= value` | `eq(schema.orders.status, 'active')` |
+| `ne(col, val)` | Not equal to | `!= value` | `ne(schema.orders.status, 'cancelled')` |
+| `gt(col, val)` | Greater than | `> value` | `gt(schema.orders.amount, 100)` |
+| `gte(col, val)` | Greater than or equal | `>= value` | `gte(schema.orders.amount, 100)` |
+| `lt(col, val)` | Less than | `< value` | `lt(schema.orders.amount, 1000)` |
+| `lte(col, val)` | Less than or equal | `<= value` | `lte(schema.orders.amount, 1000)` |
+| `between(col, a, b)` | Between two values | `BETWEEN a AND b` | `between(schema.orders.amount, 100, 1000)` |
 
 ```typescript
-// Price between 10 and 100 (inclusive)
-where: {
-  price: { $gte: 10, $lte: 100 },
-}
+import { gte, lte, and, between } from 'drizzle-orm'
 
-// Date comparison (ISO strings)
-where: {
-  created_at: { $gte: '2025-01-01T00:00:00Z' },
-}
+// Range with individual operators
+db.select().from(schema.orders).where(and(
+  gte(schema.orders.amount, 10),
+  lte(schema.orders.amount, 100)
+))
+
+// Same range with between
+db.select().from(schema.orders).where(
+  between(schema.orders.amount, 10, 100)
+)
+
+// Date comparison
+db.select().from(schema.orders).where(
+  gte(schema.orders.createdAt, new Date('2025-01-01'))
+)
 ```
 
 ## Set Operators
 
-| Operator | Description | Value Type | SQL Equivalent | Example |
-|---|---|---|---|---|
-| `$in` | Value is in array | `Array<string \| number>` | `IN (values)` | `{ status: { $in: ['active', 'pending'] } }` |
-| `$nin` | Value is not in array | `Array<string \| number>` | `NOT IN (values)` | `{ status: { $nin: ['cancelled', 'archived'] } }` |
+| Function | Description | SQL Equivalent | Example |
+|---|---|---|---|
+| `inArray(col, vals)` | Value is in array | `IN (values)` | `inArray(schema.orders.status, ['active', 'pending'])` |
+| `notInArray(col, vals)` | Value is not in array | `NOT IN (values)` | `notInArray(schema.orders.status, ['cancelled'])` |
 
 ```typescript
-// Orders with specific statuses
-where: {
-  status: { $in: ['active', 'pending', 'processing'] },
-}
+import { inArray, notInArray } from 'drizzle-orm'
 
-// Exclude certain categories
-where: {
-  category_id: { $nin: ['cat_internal', 'cat_test'] },
-}
+db.select().from(schema.orders).where(
+  inArray(schema.orders.status, ['active', 'pending', 'processing'])
+)
+
+db.select().from(schema.orders).where(
+  notInArray(schema.orders.status, ['cancelled', 'archived'])
+)
 ```
 
-## Pattern Matching Operators
+## Pattern Matching
 
-| Operator | Description | Value Type | SQL Equivalent | Example |
-|---|---|---|---|---|
-| `$like` | Case-sensitive pattern match | `string` | `LIKE pattern` | `{ name: { $like: '%widget%' } }` |
-| `$ilike` | Case-insensitive pattern match | `string` | `ILIKE pattern` | `{ email: { $ilike: '%@example.com' } }` |
+| Function | Description | SQL Equivalent | Example |
+|---|---|---|---|
+| `like(col, pattern)` | Case-sensitive pattern | `LIKE pattern` | `like(schema.customers.name, 'Acme%')` |
+| `ilike(col, pattern)` | Case-insensitive pattern | `ILIKE pattern` | `ilike(schema.customers.email, '%@example.com')` |
 
-Pattern characters:
-- `%` matches any sequence of characters (including empty)
-- `_` matches exactly one character
+Pattern characters: `%` matches any sequence, `_` matches one character.
 
 ```typescript
-// Names starting with "Order"
-where: {
-  name: { $like: 'Order%' },
-}
+import { like, ilike } from 'drizzle-orm'
 
-// Case-insensitive email domain search
-where: {
-  email: { $ilike: '%@example.com' },
-}
+db.select().from(schema.customers).where(
+  like(schema.customers.name, 'Order%')
+)
 
-// Single character wildcard
-where: {
-  code: { $like: 'A_B' },  // matches 'A1B', 'AXB', etc.
-}
+db.select().from(schema.customers).where(
+  ilike(schema.customers.email, '%@example.com')
+)
 ```
 
-## Null Check Operator
+## Null Checks
 
-| Operator | Description | Value Type | SQL Equivalent | Example |
-|---|---|---|---|---|
-| `$is_null` | Check if value is null or not null | `boolean` | `IS NULL` / `IS NOT NULL` | `{ deleted_at: { $is_null: true } }` |
+| Function | Description | SQL Equivalent |
+|---|---|---|
+| `isNull(col)` | Column is null | `IS NULL` |
+| `isNotNull(col)` | Column is not null | `IS NOT NULL` |
 
 ```typescript
-// Rows where deleted_at is NULL (not deleted)
-where: {
-  deleted_at: { $is_null: true },
-}
+import { isNull, isNotNull } from 'drizzle-orm'
 
-// Rows where assigned_to is NOT NULL (assigned)
-where: {
-  assigned_to: { $is_null: false },
-}
+// Active records (not soft-deleted)
+db.select().from(schema.orders).where(isNull(schema.orders.deletedAt))
+
+// Assigned records
+db.select().from(schema.orders).where(isNotNull(schema.orders.assignedTo))
 ```
 
 ## Logical Operators
 
-| Operator | Description | Value Type | SQL Equivalent | Example |
-|---|---|---|---|---|
-| `$and` | All conditions must match | `FilterObject[]` | `cond1 AND cond2` | `{ $and: [{ ... }, { ... }] }` |
-| `$or` | At least one condition must match | `FilterObject[]` | `cond1 OR cond2` | `{ $or: [{ ... }, { ... }] }` |
-| `$not` | Negate a condition | `FilterObject` | `NOT (condition)` | `{ $not: { status: { $eq: 'cancelled' } } }` |
-
-### `$and`
-
-All conditions in the array must be true. Note that multiple keys at the same level are implicitly AND-ed, so `$and` is only needed when you have multiple conditions on the same column.
-
-```typescript
-// Implicit AND (multiple keys)
-where: {
-  status: { $eq: 'active' },
-  amount: { $gte: 100 },
-}
-// SQL: WHERE status = 'active' AND amount >= 100
-
-// Explicit $and (multiple conditions on same column or complex logic)
-where: {
-  $and: [
-    { amount: { $gte: 100 } },
-    { amount: { $lte: 1000 } },
-  ],
-}
-// SQL: WHERE amount >= 100 AND amount <= 1000
-```
-
-### `$or`
-
-At least one condition in the array must be true.
-
-```typescript
-where: {
-  $or: [
-    { status: { $eq: 'active' } },
-    { status: { $eq: 'pending' } },
-    { priority: { $eq: 'critical' } },
-  ],
-}
-// SQL: WHERE status = 'active' OR status = 'pending' OR priority = 'critical'
-```
-
-### `$not`
-
-Negates the enclosed condition.
-
-```typescript
-where: {
-  $not: {
-    status: { $in: ['cancelled', 'archived'] },
-  },
-}
-// SQL: WHERE NOT (status IN ('cancelled', 'archived'))
-```
-
-## Combining Operators
-
-Operators can be nested and combined for complex queries.
-
-```typescript
-// Active high-value orders OR critical priority orders that are not cancelled
-where: {
-  $or: [
-    {
-      status: { $eq: 'active' },
-      amount: { $gte: 1000 },
-    },
-    {
-      priority: { $eq: 'critical' },
-      $not: { status: { $eq: 'cancelled' } },
-    },
-  ],
-}
-// SQL: WHERE (status = 'active' AND amount >= 1000)
-//         OR (priority = 'critical' AND NOT (status = 'cancelled'))
-```
-
-```typescript
-// Orders from last 30 days, either high value or flagged
-where: {
-  created_at: { $gte: '2025-01-01T00:00:00Z' },
-  $or: [
-    { amount: { $gte: 5000 } },
-    { flagged: { $eq: true } },
-  ],
-}
-// SQL: WHERE created_at >= '2025-01-01T00:00:00Z'
-//        AND (amount >= 5000 OR flagged = true)
-```
-
-## Using Operators in Permissions
-
-The same operators work in permission `filter` and `check` definitions. In permissions, you can also use `$user.*` substitution.
-
-```typescript
-// Permission filter — same syntax
-permissions: {
-  view_own_orders: {
-    table: 'main.orders',
-    operations: { select: true },
-    filter: {
-      organization_id: { $in: '$user.org_ids' },
-      status: { $ne: 'archived' },
-    },
-  },
-}
-
-// Permission check — validates incoming data
-permissions: {
-  create_order: {
-    table: 'main.orders',
-    operations: { insert: true },
-    check: {
-      amount: { $gte: 0, $lte: 1_000_000 },
-      status: { $in: ['draft', 'pending'] },
-    },
-  },
-}
-```
-
-## Operator Quick Reference
-
-| Operator | Usage | Accepts `$user.*` |
+| Function | Description | SQL Equivalent |
 |---|---|---|
-| `$eq` | `{ column: { $eq: value } }` | Yes (in permissions) |
-| `$ne` | `{ column: { $ne: value } }` | Yes (in permissions) |
-| `$gt` | `{ column: { $gt: value } }` | Yes (in permissions) |
-| `$gte` | `{ column: { $gte: value } }` | Yes (in permissions) |
-| `$lt` | `{ column: { $lt: value } }` | Yes (in permissions) |
-| `$lte` | `{ column: { $lte: value } }` | Yes (in permissions) |
-| `$in` | `{ column: { $in: [values] } }` | Yes (in permissions) |
-| `$nin` | `{ column: { $nin: [values] } }` | Yes (in permissions) |
-| `$like` | `{ column: { $like: 'pattern' } }` | No |
-| `$ilike` | `{ column: { $ilike: 'pattern' } }` | No |
-| `$is_null` | `{ column: { $is_null: boolean } }` | No |
-| `$and` | `{ $and: [conditions] }` | N/A (structural) |
-| `$or` | `{ $or: [conditions] }` | N/A (structural) |
-| `$not` | `{ $not: condition }` | N/A (structural) |
+| `and(...conds)` | All conditions must match | `cond1 AND cond2` |
+| `or(...conds)` | At least one must match | `cond1 OR cond2` |
+| `not(cond)` | Negate a condition | `NOT (condition)` |
+
+### and()
+
+```typescript
+import { and, eq, gte } from 'drizzle-orm'
+
+db.select().from(schema.orders).where(and(
+  eq(schema.orders.status, 'active'),
+  gte(schema.orders.amount, 100)
+))
+```
+
+### or()
+
+```typescript
+import { or, eq } from 'drizzle-orm'
+
+db.select().from(schema.orders).where(or(
+  eq(schema.orders.status, 'active'),
+  eq(schema.orders.status, 'pending')
+))
+```
+
+### not()
+
+```typescript
+import { not, inArray } from 'drizzle-orm'
+
+db.select().from(schema.orders).where(
+  not(inArray(schema.orders.status, ['cancelled', 'archived']))
+)
+```
+
+## Complex Combinations
+
+```typescript
+import { and, or, eq, gte, isNull } from 'drizzle-orm'
+
+// Active or shipped, high value, not deleted
+db.select().from(schema.orders).where(and(
+  or(
+    eq(schema.orders.status, 'active'),
+    eq(schema.orders.status, 'shipped')
+  ),
+  gte(schema.orders.amount, 1000),
+  isNull(schema.orders.deletedAt)
+))
+```
+
+## Server-Side Permission Operators
+
+The backend permission system uses a separate MongoDB-style operator syntax (not Drizzle functions). See [Permission Operators](/docs/backend/permissions/operators) for the server-side reference.
+
+## Quick Reference
+
+| Function | Import | Usage |
+|---|---|---|
+| `eq` | `drizzle-orm` | `eq(col, value)` |
+| `ne` | `drizzle-orm` | `ne(col, value)` |
+| `gt` | `drizzle-orm` | `gt(col, value)` |
+| `gte` | `drizzle-orm` | `gte(col, value)` |
+| `lt` | `drizzle-orm` | `lt(col, value)` |
+| `lte` | `drizzle-orm` | `lte(col, value)` |
+| `between` | `drizzle-orm` | `between(col, min, max)` |
+| `inArray` | `drizzle-orm` | `inArray(col, [values])` |
+| `notInArray` | `drizzle-orm` | `notInArray(col, [values])` |
+| `like` | `drizzle-orm` | `like(col, pattern)` |
+| `ilike` | `drizzle-orm` | `ilike(col, pattern)` |
+| `isNull` | `drizzle-orm` | `isNull(col)` |
+| `isNotNull` | `drizzle-orm` | `isNotNull(col)` |
+| `and` | `drizzle-orm` | `and(...conditions)` |
+| `or` | `drizzle-orm` | `or(...conditions)` |
+| `not` | `drizzle-orm` | `not(condition)` |

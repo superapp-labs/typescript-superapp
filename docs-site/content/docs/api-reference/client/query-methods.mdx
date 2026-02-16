@@ -1,299 +1,190 @@
 ---
 title: Query Methods
-description: "All available query methods with type signatures."
+description: "All Drizzle query methods available through the superapp client."
 ---
 
-Every table accessor on the client exposes seven query methods. All methods return promises and send structured JSON to the server's `/data` endpoint.
+The superapp client exposes standard Drizzle ORM query methods. All methods return promises and queries are executed via the HTTP driver.
 
 ```typescript
-const db = createClient<SuperAppSchema>({ url, userToken })
+import { drizzle } from '@superapp/db'
+import { eq, desc, count, sum } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-// Access pattern: db.{connection}.{table}.{method}(options)
-db.main.orders.findMany({ ... })
-db.main.orders.findOne({ ... })
-db.main.orders.create({ ... })
-db.main.orders.update({ ... })
-db.main.orders.delete({ ... })
-db.main.orders.count({ ... })
-db.main.orders.aggregate({ ... })
+const db = drizzle({ connection, token, schema })
 ```
 
 ## Method Reference
 
-### `findMany`
+### `db.select()`
 
-Retrieve multiple rows with optional filtering, sorting, and pagination.
+Select rows from a table with optional filtering, sorting, joins, and pagination.
 
 ```typescript
-findMany(options?: FindManyOptions): Promise<Row[]>
+// All columns
+const orders = await db.select().from(schema.orders)
+
+// Specific columns
+const orders = await db.select({
+  id: schema.orders.id,
+  amount: schema.orders.amount,
+}).from(schema.orders)
 ```
 
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `select` | `string[]` | No | Columns to return. Omit to return all permitted columns. |
-| `where` | `FilterObject` | No | Filter conditions. See [Filter Operators](/docs/api-reference/client/filter-operators). |
-| `include` | `IncludeObject` | No | Related tables to include (join). |
-| `orderBy` | `Record<string, 'asc' \| 'desc'>` | No | Sort order. Multiple keys are applied in order. |
-| `limit` | `number` | No | Maximum number of rows to return. |
-| `offset` | `number` | No | Number of rows to skip (for pagination). |
+**Chainable methods:**
+
+| Method | Description |
+|---|---|
+| `.from(table)` | Table to select from |
+| `.where(condition)` | Filter condition |
+| `.orderBy(column)` | Sort order (`asc()` or `desc()`) |
+| `.limit(n)` | Maximum rows to return |
+| `.offset(n)` | Rows to skip |
+| `.leftJoin(table, on)` | Left join another table |
+| `.innerJoin(table, on)` | Inner join another table |
+| `.groupBy(column)` | Group results |
 
 ```typescript
-const orders = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status', 'created_at'],
-  where: {
-    status: { $eq: 'active' },
-    amount: { $gte: 100 },
-  },
-  include: {
-    customer: {
-      select: ['id', 'name', 'email'],
-    },
-  },
-  orderBy: { created_at: 'desc' },
+import { eq, desc } from 'drizzle-orm'
+
+const orders = await db.select({
+  id: schema.orders.id,
+  amount: schema.orders.amount,
+  customerName: schema.customers.name,
+}).from(schema.orders)
+  .leftJoin(schema.customers, eq(schema.orders.customerId, schema.customers.id))
+  .where(eq(schema.orders.status, 'active'))
+  .orderBy(desc(schema.orders.createdAt))
+  .limit(50)
+  .offset(0)
+```
+
+### `db.query.*.findMany()`
+
+Relational queries with eager loading. Similar to Prisma's `include`.
+
+```typescript
+const orders = await db.query.orders.findMany({
+  with: { customer: true },
+  where: eq(schema.orders.status, 'active'),
+  orderBy: desc(schema.orders.createdAt),
   limit: 50,
-  offset: 0,
 })
-// Return type: {
-//   id: string; amount: number; status: string; created_at: string;
-//   customer: { id: string; name: string; email: string }
-// }[]
+// { id, amount, status, customer: { id, name, email } }[]
 ```
 
-### `findOne`
+| Option | Type | Description |
+|---|---|---|
+| `with` | `object` | Relations to eager load |
+| `where` | `SQL` | Filter condition |
+| `orderBy` | `SQL` | Sort order |
+| `limit` | `number` | Maximum rows |
+| `offset` | `number` | Rows to skip |
+| `columns` | `object` | Columns to include/exclude |
 
-Retrieve a single row matching a condition. Returns `null` if no row matches.
+### `db.query.*.findFirst()`
+
+Find a single record. Returns `undefined` if no match.
 
 ```typescript
-findOne(options: FindOneOptions): Promise<Row | null>
-```
-
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `where` | `FilterObject` | Yes | Filter conditions to match a single row. |
-| `select` | `string[]` | No | Columns to return. Omit to return all permitted columns. |
-| `include` | `IncludeObject` | No | Related tables to include. |
-
-```typescript
-const order = await db.main.orders.findOne({
-  where: { id: { $eq: 'ord_abc123' } },
-  select: ['id', 'amount', 'status'],
-  include: {
-    customer: {
-      select: ['id', 'name'],
-    },
-  },
+const order = await db.query.orders.findFirst({
+  where: eq(schema.orders.id, 'ord_abc123'),
+  with: { customer: true },
 })
-// Return type: {
-//   id: string; amount: number; status: string;
-//   customer: { id: string; name: string }
-// } | null
-
-if (!order) {
-  console.log('Not found')
-  return
-}
+// { id, amount, status, customer: { ... } } | undefined
 ```
 
-### `create`
+### `db.insert()`
 
-Insert a new row and return the created record.
+Insert one or more rows.
 
 ```typescript
-create(options: CreateOptions): Promise<Row>
+// Single row
+const [order] = await db.insert(schema.orders).values({
+  amount: 250,
+  status: 'pending',
+  customerId: 'cust_abc123',
+}).returning()
+
+// Multiple rows
+await db.insert(schema.orders).values([
+  { amount: 100, status: 'pending', customerId: 'cust_1' },
+  { amount: 200, status: 'pending', customerId: 'cust_2' },
+])
+
+// Upsert
+await db.insert(schema.customers)
+  .values({ id: 'cust_1', name: 'Acme', email: 'a@acme.com' })
+  .onConflictDoNothing()
 ```
 
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `data` | `Record<string, any>` | Yes | The row data to insert. Only columns allowed by the permission are accepted. |
-| `select` | `string[]` | No | Columns to return in the created record. |
+**Chainable methods:**
+
+| Method | Description |
+|---|---|
+| `.values(data)` | Row data to insert |
+| `.returning()` | Return inserted rows |
+| `.onConflictDoNothing()` | Skip on conflict |
+| `.onConflictDoUpdate({ target, set })` | Update on conflict |
+
+### `db.update()`
+
+Update rows matching a condition.
 
 ```typescript
-const newOrder = await db.main.orders.create({
-  data: {
-    amount: 250,
-    status: 'draft',
-    notes: 'New order from API',
-  },
-  select: ['id', 'amount', 'status', 'created_at'],
-})
-// Return type: { id: string; amount: number; status: string; created_at: string }
+const [updated] = await db.update(schema.orders)
+  .set({ status: 'shipped' })
+  .where(eq(schema.orders.id, 'ord_abc123'))
+  .returning()
 ```
 
-Server-side presets (like `created_by`, `organization_id`) are injected automatically by the permission engine. Any client-provided values for preset columns are overridden.
+**Chainable methods:**
 
-### `update`
+| Method | Description |
+|---|---|
+| `.set(data)` | New values to set |
+| `.where(condition)` | Filter condition |
+| `.returning()` | Return updated rows |
 
-Update rows matching a condition and return the updated records.
+### `db.delete()`
+
+Delete rows matching a condition.
 
 ```typescript
-update(options: UpdateOptions): Promise<Row[]>
+await db.delete(schema.orders)
+  .where(eq(schema.orders.id, 'ord_abc123'))
 ```
 
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `where` | `FilterObject` | Yes | Filter conditions to select rows to update. Permission filters are applied on top. |
-| `data` | `Record<string, any>` | Yes | The new values to set. Only columns allowed by the permission are accepted. |
-| `select` | `string[]` | No | Columns to return in the updated records. |
+**Chainable methods:**
+
+| Method | Description |
+|---|---|
+| `.where(condition)` | Filter condition |
+| `.returning()` | Return deleted rows |
+
+### Aggregations
+
+Use Drizzle's aggregation functions with `db.select()`.
 
 ```typescript
-const updated = await db.main.orders.update({
-  where: { id: { $eq: 'ord_abc123' } },
-  data: {
-    status: 'active',
-    notes: 'Approved by manager',
-  },
-  select: ['id', 'status', 'updated_at'],
-})
-// Return type: { id: string; status: string; updated_at: string }[]
+import { count, sum, avg, min, max } from 'drizzle-orm'
+
+// Count
+const [{ total }] = await db.select({ total: count() }).from(schema.orders)
+
+// Sum with filter
+const [{ revenue }] = await db.select({
+  revenue: sum(schema.orders.amount),
+}).from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+
+// Group by
+const byStatus = await db.select({
+  status: schema.orders.status,
+  count: count(),
+  total: sum(schema.orders.amount),
+}).from(schema.orders)
+  .groupBy(schema.orders.status)
 ```
-
-The permission filter is always applied. If the user does not have permission to update the matched rows, zero rows are updated and an empty array is returned.
-
-### `delete`
-
-Delete rows matching a condition and return the count of deleted rows.
-
-```typescript
-delete(options: DeleteOptions): Promise<{ count: number }>
-```
-
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `where` | `FilterObject` | Yes | Filter conditions to select rows to delete. Permission filters are applied on top. |
-
-```typescript
-const result = await db.main.orders.delete({
-  where: { id: { $eq: 'ord_abc123' } },
-})
-// Return type: { count: number }
-// result.count === 1 if the row existed and was permitted
-// result.count === 0 if the row didn't exist or wasn't permitted
-```
-
-### `count`
-
-Count rows matching an optional condition.
-
-```typescript
-count(options?: CountOptions): Promise<number>
-```
-
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `where` | `FilterObject` | No | Filter conditions. If omitted, counts all permitted rows. |
-
-```typescript
-const total = await db.main.orders.count()
-// Return type: number
-
-const activeCount = await db.main.orders.count({
-  where: { status: { $eq: 'active' } },
-})
-// Return type: number
-```
-
-Permission filters are always applied. The count reflects only rows the user is permitted to see.
-
-### `aggregate`
-
-Perform aggregate calculations on columns.
-
-```typescript
-aggregate(options: AggregateOptions): Promise<AggregateResult>
-```
-
-| Option | Type | Required | Description |
-|---|---|---|---|
-| `where` | `FilterObject` | No | Filter conditions applied before aggregation. |
-| `operations` | `AggregateOperation[]` | Yes | Array of aggregate operations to perform. |
-| `groupBy` | `string[]` | No | Columns to group by. |
-
-Each aggregate operation has the shape:
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `fn` | `'sum' \| 'avg' \| 'min' \| 'max' \| 'count'` | Yes | Aggregate function. |
-| `column` | `string` | Yes (except `count`) | Column to aggregate. For `count`, use `'*'`. |
-| `alias` | `string` | No | Name for the result field. Defaults to `fn_column`. |
-
-```typescript
-const stats = await db.main.orders.aggregate({
-  where: { status: { $eq: 'active' } },
-  operations: [
-    { fn: 'sum', column: 'amount', alias: 'total_amount' },
-    { fn: 'avg', column: 'amount', alias: 'avg_amount' },
-    { fn: 'count', column: '*', alias: 'order_count' },
-    { fn: 'max', column: 'amount', alias: 'max_order' },
-  ],
-})
-// Return type: {
-//   total_amount: number;
-//   avg_amount: number;
-//   order_count: number;
-//   max_order: number;
-// }
-```
-
-With `groupBy`:
-
-```typescript
-const byStatus = await db.main.orders.aggregate({
-  operations: [
-    { fn: 'count', column: '*', alias: 'count' },
-    { fn: 'sum', column: 'amount', alias: 'total' },
-  ],
-  groupBy: ['status'],
-})
-// Return type: {
-//   status: string;
-//   count: number;
-//   total: number;
-// }[]
-```
-
-## `include` (Relations)
-
-The `include` option loads related data in a single request. The server resolves the join using the defined relationships.
-
-```typescript
-interface IncludeObject {
-  [relationName: string]: {
-    /** Columns to return from the related table */
-    select?: string[]
-    /** Filter the related rows */
-    where?: FilterObject
-    /** Sort the related rows */
-    orderBy?: Record<string, 'asc' | 'desc'>
-    /** Limit related rows */
-    limit?: number
-    /** Nested includes (up to maxIncludeDepth) */
-    include?: IncludeObject
-  }
-}
-```
-
-```typescript
-const orders = await db.main.orders.findMany({
-  select: ['id', 'amount'],
-  include: {
-    customer: {
-      select: ['name', 'email'],
-    },
-    line_items: {
-      select: ['product_name', 'quantity', 'unit_price'],
-      orderBy: { quantity: 'desc' },
-      limit: 10,
-      include: {
-        product: {
-          select: ['id', 'sku', 'category'],
-        },
-      },
-    },
-  },
-})
-```
-
-The user must have SELECT permission on all included tables. If a permission is missing for a related table, that include is silently omitted from the response.
 
 ## Error Handling
 
@@ -301,12 +192,18 @@ All methods throw on server errors. Catch errors to handle permission denials, v
 
 ```typescript
 try {
-  const order = await db.main.orders.create({
-    data: { amount: -100, status: 'invalid' },
+  await db.insert(schema.orders).values({
+    amount: -100,
+    status: 'invalid',
   })
 } catch (error) {
   // error.message: "You do not have permission to perform this action."
-  // error.code: "PERMISSION_DENIED"
-  // error.correlationId: "req_abc123"
 }
 ```
+
+## Permission Notes
+
+- Permission filters are applied transparently on all queries
+- Column restrictions are enforced — selecting restricted columns returns an error
+- Server-side presets (like `createdBy`, `organizationId`) are injected automatically on inserts
+- The count and aggregation results reflect only rows the user is permitted to see
