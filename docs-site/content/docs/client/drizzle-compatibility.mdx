@@ -1,0 +1,111 @@
+---
+title: Drizzle ORM Compatibility
+description: The superapp client SDK is real Drizzle ORM with an HTTP driver — use the same syntax you already know.
+---
+
+## Real Drizzle, Different Transport
+
+The `@superapp/db` client isn't a Drizzle-like wrapper. It **is** Drizzle ORM, configured with a custom HTTP driver plugin that routes queries through the superapp backend. The backend enforces permissions transparently — your query code is identical to standard Drizzle.
+
+## Side-by-Side Comparison
+
+| Aspect | Standard Drizzle | superapp Drizzle |
+|--------|-----------------|-----------------|
+| **Transport** | Direct database connection (TCP) | HTTP driver → superapp backend |
+| **Permissions** | None (raw access) | Row-level security enforced automatically |
+| **Auth** | Not included | JWT token passed to driver |
+| **Setup** | `drizzle(postgres(url))` | `drizzle({ connection, token, schema })` |
+| **Query syntax** | `db.select().from(table)` | `db.select().from(table)` — identical |
+| **Schema** | Define with `pgTable()` | Auto-generated from backend |
+| **Raw SQL** | `` sql`...` `` | Blocked (security) |
+| **Transactions** | `db.transaction()` | Not supported |
+
+## Setup Comparison
+
+### Standard Drizzle
+
+```typescript
+import { drizzle } from 'drizzle-orm/postgres-js'
+import postgres from 'postgres'
+import * as schema from './schema'
+
+const client = postgres('postgres://...')
+const db = drizzle(client, { schema })
+
+const orders = await db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+```
+
+### superapp Drizzle
+
+```typescript
+import { drizzle } from '@superapp/db'
+import { eq } from 'drizzle-orm'
+import * as schema from './generated/schema'
+
+const db = drizzle({
+  connection: 'http://localhost:3001',
+  token: session.token,
+  schema,
+})
+
+// Identical query syntax — permissions enforced transparently
+const orders = await db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+```
+
+## What's Supported
+
+All Drizzle query builder methods work:
+
+**Select queries:**
+- `db.select().from(table)` — select all columns
+- `db.select({ id, name }).from(table)` — select specific columns
+- `.where(eq(table.col, value))` — filter rows
+- `.orderBy(desc(table.createdAt))` — sort results
+- `.limit(50).offset(10)` — pagination
+- `.leftJoin(other, eq(table.id, other.tableId))` — joins
+- `.groupBy(table.status)` — grouping
+
+**Relational queries:**
+- `db.query.orders.findMany()` — find multiple records
+- `db.query.orders.findFirst()` — find one record
+- `{ with: { customer: true } }` — eager load relations
+- `{ where: eq(table.status, 'active') }` — filter
+- `{ orderBy: desc(table.createdAt) }` — sort
+- `{ limit: 50 }` — pagination
+
+**Mutations:**
+- `db.insert(table).values({ ... })` — insert rows
+- `db.insert(table).values([...]).onConflictDoNothing()` — upsert
+- `db.update(table).set({ ... }).where(eq(...))` — update rows
+- `db.delete(table).where(eq(...))` — delete rows
+
+**Aggregations:**
+- `db.select({ count: count() }).from(table)` — count
+- `db.select({ total: sum(table.amount) }).from(table)` — sum
+- `db.select({ average: avg(table.price) }).from(table)` — average
+
+**All filter operators from `drizzle-orm`:**
+- `eq()`, `ne()`, `gt()`, `gte()`, `lt()`, `lte()`
+- `inArray()`, `notInArray()`
+- `like()`, `ilike()`
+- `isNull()`, `isNotNull()`
+- `and()`, `or()`, `not()`
+- `between()`
+- `sql` template (only in `.where()` with approved patterns)
+
+## What's Restricted
+
+| Feature | Status | Reason |
+|---------|--------|--------|
+| Raw SQL (`` sql`...` ``) | Blocked | Security — prevents SQL injection bypass |
+| Transactions (`db.transaction()`) | Not supported | HTTP driver is stateless |
+| DDL (`CREATE TABLE`, etc.) | Blocked | Schema managed by backend |
+| Direct connection strings | N/A | HTTP driver only |
+
+## Why This Matters
+
+If you know Drizzle ORM, you already know the superapp client SDK. There's no new query API to learn — just import from `@superapp/db` instead of `drizzle-orm/postgres-js` and permissions are enforced automatically.

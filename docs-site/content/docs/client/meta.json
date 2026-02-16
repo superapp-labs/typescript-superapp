@@ -3,6 +3,7 @@
   "pages": [
     "overview",
     "create-client",
+    "drizzle-compatibility",
     "queries",
     "auth",
     "components",
