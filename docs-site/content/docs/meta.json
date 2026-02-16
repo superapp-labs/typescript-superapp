@@ -3,7 +3,7 @@
   "pages": [
     "index",
     "getting-started",
-    "server",
+    "backend",
     "client",
     "advanced",
     "examples",

@@ -83,7 +83,7 @@ serve({ fetch: app.fetch, port: 3001 }, (info) => {
 ```
 
 <Callout>
-Not using Hono? superapp ships adapters for [Next.js](/docs/server/adapters), [Express](/docs/server/adapters), and a [generic handler](/docs/server/adapters) for Cloudflare Workers, Deno, and Bun.
+Not using Hono? superapp ships adapters for [Next.js](/docs/backend/adapters), [Express](/docs/backend/adapters), and a [generic handler](/docs/backend/adapters) for Cloudflare Workers, Deno, and Bun.
 </Callout>
 
 ### Step 3: Set Up the Client SDK
@@ -236,6 +236,6 @@ Browser                       Backend                        Database
 
 ## What's Next
 
-- [Backend Configuration](/docs/server) — Full reference for `createEngine` options, connections, DuckDB tuning, and security settings.
+- [Backend Configuration](/docs/backend) — Full reference for `createEngine` options, connections, DuckDB tuning, and security settings.
 - [Client Queries](/docs/client/queries) — All query methods: `db.select()`, `db.insert()`, `db.update()`, `db.delete()`.
-- [Permissions](/docs/server/permissions) — Row-level filters, column restrictions, write checks, and preset values.
+- [Permissions](/docs/backend/permissions) — Row-level filters, column restrictions, write checks, and preset values.
