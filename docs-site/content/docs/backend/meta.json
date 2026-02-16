@@ -6,8 +6,14 @@
     "configuration",
     "databases",
     "auth",
-    "permissions",
+    "adapters",
     "roles",
-    "adapters"
+    "---Permissions---",
+    "permissions-overview",
+    "filters",
+    "checks",
+    "presets",
+    "operators",
+    "custom-sql"
   ]
 }

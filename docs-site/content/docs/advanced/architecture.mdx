@@ -9,33 +9,33 @@ superapp is two npm packages: `@superapp/backend` (server) and `@superapp/db` (c
 ## System Diagram
 
 ```text
-  Browser / Frontend
-  ┌─────────────────────────────────────────┐
-  │  AuthCard (sign-in, sign-up)            │──── POST /auth/* ────┐
-  │  drizzle() — Drizzle ORM client         │──── POST /data + JWT ┐│
-  └─────────────────────────────────────────┘                      ││
-                                                                   ││
-  @superapp/backend                                                ▼▼
-  ┌─────────────────────────────────────────┐
-  │  HTTP Adapter (Hono / Express / Next.js)│
-  │    │                                    │
-  │    ▼                                    │
-  │  Auth Layer (better-auth / custom)      │
-  │    │                                    │
-  │    ▼                                    │
-  │  Permission Engine (CASL)               │
-  │    │                                    │
-  │    ▼                                    │
-  │  Query Builder (Kysely)                 │
-  │    │                                    │
-  │    ▼                                    │
-  │  DuckDB (in-process)                    │
-  │  Metadata Store (Turso / SQLite)        │
-  └──────────────┬──────────────────────────┘
-                 │
-    ┌────────────┼────────────┬─────────────┐
-    ▼            ▼            ▼             ▼
-  Postgres    MySQL       SQLite          CSV
+  @superapp/db (Client)
+  ┌───────────────────────────────────┐
+  │  AuthCard · drizzle()             │
+  │  Sends JSON over HTTP (no raw SQL)│
+  └──────────────┬────────────────────┘
+                 │  POST /data + JWT
+                 ▼
+  @superapp/backend (Server)
+  ┌───────────────────────────────────┐
+  │  HTTP Adapter (Hono/Express/Next) │
+  │         │                         │
+  │         ▼                         │
+  │  Auth (better-auth / custom)      │
+  │         │                         │
+  │         ▼                         │
+  │  Permissions (CASL)               │
+  │         │                         │
+  │         ▼                         │
+  │  Query Builder (Kysely)           │
+  │         │                         │
+  │         ▼                         │
+  │  DuckDB (in-process)              │
+  └─────────┬─────────────────────────┘
+            │
+    ┌───────┼───────┬───────┐
+    ▼       ▼       ▼       ▼
+  Postgres MySQL  SQLite   CSV
 ```
 
 ## Two Packages

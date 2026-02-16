@@ -1,7 +1,7 @@
 ---
 title: Authentication
+icon: KeyRound
 description: How auth providers work, the resolveSession interface, and session enrichment.
-icon: Shield
 ---
 
 Auth providers handle JWT verification and session resolution. They turn a raw JWT token into an enriched user object that the permission system can reference.
@@ -74,7 +74,7 @@ resolveSession: async (user, db) => {
 }
 ```
 
-Any property you return becomes available as a `$user.*` variable in [filters](/docs/backend/permissions/filters), [checks](/docs/backend/permissions/checks), and [presets](/docs/backend/permissions/presets).
+Any property you return becomes available as a `$user.*` variable in [filters](/docs/backend/filters), [checks](/docs/backend/checks), and [presets](/docs/backend/presets).
 
 ## Available Providers
 
