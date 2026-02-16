@@ -1,6 +1,7 @@
 ---
 title: Introduction
 description: A thin, secure data access layer between any database and any frontend.
+icon: Home
 ---
 
 One library to connect your frontend to any database — with auth, permissions, and type safety built in.
@@ -10,36 +11,22 @@ One library to connect your frontend to any database — with auth, permissions,
 superapp is two packages that form a complete data access layer:
 
 - **`@superapp/backend`** — The server engine. Connects to Postgres, MySQL, SQLite, or CSV files through DuckDB, enforces row-level permissions, handles auth via better-auth, and ships with an admin UI for managing everything visually.
-- **`@superapp/db`** — The client SDK. A type-safe query builder for your frontend with zero server dependencies. Includes pre-built auth UI components (sign-in, sign-up, user button) so you never write login forms again.
+- **`@superapp/db`** — The client SDK. Real Drizzle ORM with an HTTP driver plugin. Full type safety, pre-built auth UI components, zero server dependencies.
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  Frontend (React, Next.js, etc.)                                 │
-│                                                                  │
-│  @superapp/db                                                    │
-│  ├── createClient()  →  type-safe queries (findMany, create...)  │
-│  ├── createAuth()    →  session management                       │
-│  └── <AuthCard />    →  pre-built auth UI                        │
-└──────────────────────┬───────────────────────────────────────────┘
-                       │  HTTP + JWT (structured JSON)
-                       ▼
-┌──────────────────────────────────────────────────────────────────┐
-│  @superapp/backend                                               │
-│                                                                  │
-│  ┌─────────┐   ┌─────────────┐   ┌───────────────┐              │
-│  │  Auth    │ → │ Permissions │ → │ Query Builder │              │
-│  │ (JWT)    │   │ (row-level) │   │ (JSON→SQL)    │              │
-│  └─────────┘   └─────────────┘   └───────┬───────┘              │
-│                                          │                       │
-│                                    ┌─────▼─────┐                │
-│                                    │  DuckDB    │                │
-│                                    └─────┬─────┘                │
-│                          ┌───────┬───────┼───────┬───────┐      │
-│                          ▼       ▼       ▼       ▼       ▼      │
-│                       Postgres MySQL  SQLite    CSV    (more)    │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    A["Frontend (React, Next.js)"] --> B["@superapp/db (Drizzle ORM)"]
+    B -->|"HTTP + JWT"| C["@superapp/backend"]
+    C --> D["Auth (JWT)"]
+    D --> E["Permissions (row-level)"]
+    E --> F["Query Builder"]
+    F --> G["DuckDB"]
+    G --> H["Postgres"]
+    G --> I["MySQL"]
+    G --> J["SQLite"]
+    G --> K["CSV"]
 ```
 
 ## Key Features
@@ -102,16 +89,17 @@ serve({ fetch: app.fetch, port: 3001 })
 **Client** (`lib/superapp.ts`):
 
 ```typescript
-import { createClient } from '@superapp/db'
+import { drizzle } from '@superapp/db'
 import { createAuth } from '@superapp/db/auth'
-import type { SuperAppSchema } from '../generated/schema'
+import * as schema from '../generated/schema'
 
 export const authClient = createAuth('http://localhost:3001')
 
 export function createDb(token: string) {
-  return createClient<SuperAppSchema>({
-    url: 'http://localhost:3001/data',
-    userToken: token,
+  return drizzle({
+    connection: 'http://localhost:3001',
+    token,
+    schema,
   })
 }
 ```
@@ -119,12 +107,13 @@ export function createDb(token: string) {
 **Query** (anywhere in your frontend):
 
 ```typescript
-const orders = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status'],
-  where: { status: { $eq: 'active' } },
-  orderBy: { created_at: 'desc' },
-  limit: 50,
-})
+import { eq, desc } from 'drizzle-orm'
+
+const orders = await db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+  .orderBy(desc(schema.orders.createdAt))
+  .limit(50)
 ```
 
 ## What's Next

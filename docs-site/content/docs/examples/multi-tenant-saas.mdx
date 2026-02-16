@@ -1,6 +1,7 @@
 ---
 title: Multi-Tenant SaaS
 description: Organization-scoped permissions setup.
+icon: Building2
 ---
 
 A complete multi-tenant configuration where users belong to organizations and can only access data within their org. Includes role hierarchy, session enrichment, and client-side usage.
@@ -219,6 +220,8 @@ The frontend code is identical to any other superapp project. The org-scoping ha
 import { useEffect, useState } from 'react'
 import { useDb } from '@/hooks/use-db'
 import { useSession } from '@superapp/db/auth'
+import { desc } from 'drizzle-orm'
+import * as schema from '@/generated/schema'
 
 export default function OrdersPage() {
   const { data: session } = useSession()
@@ -228,13 +231,11 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!db) return
     // No org filter needed — the server injects it automatically
-    db.main.orders
-      .findMany({
-        select: ['id', 'amount', 'status', 'created_at'],
-        include: { customer: { select: ['name', 'email'] } },
-        orderBy: { created_at: 'desc' },
-        limit: 50,
-      })
+    db.query.orders.findMany({
+      with: { customer: true },
+      orderBy: desc(schema.orders.createdAt),
+      limit: 50,
+    })
       .then(setOrders)
   }, [db])
 
@@ -259,13 +260,11 @@ The client sends `findMany` with no filter on `organization_id`. The server's pe
 Editors and above can create orders. The `check` rule ensures the `organization_id` in the insert matches one of the user's orgs:
 
 ```typescript
-await db.main.orders.create({
-  data: {
-    amount: 149.99,
-    status: 'pending',
-    customer_id: 42,
-    organization_id: 1, // must be in user's organizationIds
-  },
+await db.insert(schema.orders).values({
+  amount: 149.99,
+  status: 'pending',
+  customerId: 42,
+  organizationId: 1, // must be in user's organizationIds
 })
 ```
 

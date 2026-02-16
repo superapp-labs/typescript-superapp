@@ -1,6 +1,7 @@
 ---
 title: Quick Start
 description: Get running in 5 minutes.
+icon: Zap
 ---
 
 From zero to querying your database with auth and permissions in five steps.
@@ -90,19 +91,19 @@ Not using Hono? superapp ships adapters for [Next.js](/docs/backend/adapters), [
 In your frontend project, create `lib/superapp.ts`:
 
 ```typescript
-import { createClient } from '@superapp/db'
+import { drizzle } from '@superapp/db'
 import { createAuth } from '@superapp/db/auth'
-import type { SuperAppSchema } from '../generated/schema'
+import * as schema from '../generated/schema'
 
 const SUPERAPP_URL = process.env.NEXT_PUBLIC_SUPERAPP_URL!
-// e.g. 'http://localhost:3001'
 
 export const authClient = createAuth(SUPERAPP_URL)
 
 export function createDb(token: string) {
-  return createClient<SuperAppSchema>({
-    url: SUPERAPP_URL + '/data',
-    userToken: token,
+  return drizzle({
+    connection: SUPERAPP_URL,
+    token,
+    schema,
   })
 }
 ```
@@ -162,11 +163,11 @@ This gives you `/auth/sign-in`, `/auth/sign-up`, and `/auth/forgot-password` —
 
 Create a hook to get a typed database client, then query:
 
-```tsx
+```typescript
 // hooks/use-db.ts
 import { useMemo } from 'react'
 import { useSession } from '@superapp/db/auth'
-import { createDb } from '@/lib/superapp'
+import { createDb } from '@/lib/db'
 
 export function useDb() {
   const { data: session } = useSession()
@@ -183,6 +184,8 @@ export function useDb() {
 
 import { useEffect, useState } from 'react'
 import { useDb } from '@/hooks/use-db'
+import { eq, desc } from 'drizzle-orm'
+import * as schema from '@/generated/schema'
 
 export default function DashboardPage() {
   const db = useDb()
@@ -190,12 +193,12 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!db) return
-    db.main.orders.findMany({
-      select: ['id', 'amount', 'status', 'created_at'],
-      where: { status: { $eq: 'active' } },
-      orderBy: { created_at: 'desc' },
-      limit: 50,
-    }).then(setOrders)
+    db.select()
+      .from(schema.orders)
+      .where(eq(schema.orders.status, 'active'))
+      .orderBy(desc(schema.orders.createdAt))
+      .limit(50)
+      .then(setOrders)
   }, [db])
 
   if (!db) return <p>Please sign in.</p>
@@ -212,30 +215,27 @@ export default function DashboardPage() {
 
 ## What You Just Built
 
-```
-Browser                                      Server
-──────                                       ──────
-AuthCard (sign in)
-  │
-  ├─ POST /auth/sign-in ──────────────────→  better-auth verifies credentials
-  ← JWT token ────────────────────────────   returns session + JWT
-  │
-db.main.orders.findMany(...)
-  │
-  ├─ POST /data ──────────────────────────→  1. JWT verified
-  │  Authorization: Bearer <jwt>             2. resolveSession() → $user
-  │  Body: { action, table, where, ... }     3. Permission check:
-  │                                             - table: main.orders ✓
-  │                                             - operation: select ✓
-  │                                             - columns: stripped to allowed
-  │                                             - WHERE: org filter injected
-  │                                          4. JSON → Kysely → SQL
-  │                                          5. DuckDB → Postgres
-  ← [{ id, amount, status, created_at }]     6. Results returned
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Backend
+    participant Database
+
+    Browser->>Backend: POST /auth/sign-in
+    Backend-->>Browser: JWT token
+
+    Browser->>Backend: POST /data (JWT + Drizzle query)
+    Backend->>Backend: Verify JWT
+    Backend->>Backend: Resolve session ($user)
+    Backend->>Backend: Check permissions
+    Backend->>Backend: Inject WHERE filters
+    Backend->>Database: Execute SQL via DuckDB
+    Database-->>Backend: Results
+    Backend-->>Browser: Typed response
 ```
 
 ## What's Next
 
 - [Backend Configuration](/docs/backend) — Full reference for `createEngine` options, connections, DuckDB tuning, and security settings.
-- [Client Queries](/docs/client/queries) — All query methods: `findMany`, `findOne`, `create`, `update`, `delete`, `count`, `aggregate`.
+- [Client Queries](/docs/client/queries) — All query methods: `db.select()`, `db.insert()`, `db.update()`, `db.delete()`.
 - [Permissions](/docs/backend/permissions) — Row-level filters, column restrictions, write checks, and preset values.
