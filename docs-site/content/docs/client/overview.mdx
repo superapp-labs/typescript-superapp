@@ -40,14 +40,14 @@ const orders = await db.select()
 
 | Method | Description |
 | --- | --- |
-| [`db.select()`](/docs/client/queries/find-many) | Select rows with filtering, sorting, joins, and pagination |
-| [`db.query.*.findMany()`](/docs/client/queries/find-many) | Relational queries with eager loading |
-| [`db.query.*.findFirst()`](/docs/client/queries/find-one) | Find a single record with relations |
-| [`db.insert()`](/docs/client/queries/create) | Insert one or more rows |
+| [`db.select()`](/docs/client/queries/select) | Select rows with filtering, sorting, joins, and pagination |
+| [`db.query.*.findMany()`](/docs/client/queries/select) | Relational queries with eager loading |
+| [`db.query.*.findFirst()`](/docs/client/queries/select) | Find a single record with relations |
+| [`db.insert()`](/docs/client/queries/insert) | Insert one or more rows |
 | [`db.update()`](/docs/client/queries/update) | Update rows matching a condition |
 | [`db.delete()`](/docs/client/queries/delete) | Delete rows matching a condition |
-| [`db.select({ count: count() })`](/docs/client/queries/count) | Count rows |
-| [`db.select({ total: sum() })`](/docs/client/queries/aggregate) | Aggregations (sum, avg, min, max) |
+| [`db.select({ count: count() })`](/docs/client/queries/aggregations) | Count rows |
+| [`db.select({ total: sum() })`](/docs/client/queries/aggregations) | Aggregations (sum, avg, min, max) |
 
 ## Imports Summary
 
@@ -64,6 +64,6 @@ const orders = await db.select()
 
 ## What's Next
 
-- [Setting Up the Client](/docs/client/create-client) — Configure `drizzle()` with your backend URL and schema.
+- [Setting Up the Client](/docs/client/setup) — Configure `drizzle()` with your backend URL and schema.
 - [Drizzle Compatibility](/docs/client/drizzle-compatibility) — Side-by-side comparison with standard Drizzle.
 - [Auth Setup](/docs/client/auth/setup) — Configure authentication in your frontend.

@@ -31,7 +31,7 @@ Authorization: Bearer <jwt_token>
 | `action` | `string` | Yes | All | The operation to perform. One of: `findMany`, `findOne`, `create`, `update`, `delete`, `count`, `aggregate`. |
 | `table` | `string` | Yes | All | Fully qualified table name in `connection.table` format (e.g., `main.orders`). |
 | `select` | `string[]` | No | `findMany`, `findOne`, `create`, `update` | Columns to return. If omitted, returns all permitted columns. |
-| `where` | `object` | Conditional | `findMany`, `findOne`, `update`, `delete`, `count`, `aggregate` | Filter conditions using [filter operators](/docs/api-reference/client/filter-operators). Required for `findOne`, `update`, and `delete`. |
+| `where` | `object` | Conditional | `findMany`, `findOne`, `update`, `delete`, `count`, `aggregate` | Filter conditions using [filter operators](/docs/reference/client-api/filter-operators). Required for `findOne`, `update`, and `delete`. |
 | `include` | `object` | No | `findMany`, `findOne` | Related tables to load in the same request. |
 | `orderBy` | `object` | No | `findMany` | Sort order. Keys are column names, values are `"asc"` or `"desc"`. |
 | `limit` | `number` | No | `findMany` | Maximum number of rows to return. Capped by server's `limits.maxLimit`. |

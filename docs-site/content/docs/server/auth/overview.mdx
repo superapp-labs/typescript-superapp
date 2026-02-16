@@ -74,9 +74,9 @@ resolveSession: async (user, db) => {
 }
 ```
 
-Any property you return becomes available as a `$user.*` variable in [filters](/docs/backend/permissions/filter), [checks](/docs/backend/permissions/check), and [presets](/docs/backend/permissions/preset).
+Any property you return becomes available as a `$user.*` variable in [filters](/docs/server/permissions/filters), [checks](/docs/server/permissions/checks), and [presets](/docs/server/permissions/presets).
 
 ## Available Providers
 
-- [better-auth](/docs/backend/auth/better-auth) — Built-in provider with session management (recommended)
-- [Custom Provider](/docs/backend/auth/custom-provider) — Implement your own auth logic
+- [better-auth](/docs/server/auth/better-auth) — Built-in provider with session management (recommended)
+- [Custom Provider](/docs/server/auth/custom-provider) — Implement your own auth logic
