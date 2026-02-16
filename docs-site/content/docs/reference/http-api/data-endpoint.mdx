@@ -4,9 +4,11 @@ icon: Send
 description: "Query endpoint request and response format."
 ---
 
-The `/data` endpoint is the single entry point for all data operations. It accepts structured JSON and returns query results. Every request must include a valid JWT.
+The `/data` endpoint is the single entry point for all data operations. It receives parameterized SQL + params from the [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) client and returns query results. Every request must include a valid JWT.
 
 ## Request Format
+
+The client sends parameterized SQL built by Drizzle ORM on the client side:
 
 ```
 POST /data HTTP/1.1
@@ -14,210 +16,130 @@ Content-Type: application/json
 Authorization: Bearer <jwt_token>
 
 {
-  "action": "findMany",
-  "table": "main.orders",
-  "select": ["id", "amount", "status"],
-  "where": { "status": { "$eq": "active" } },
-  "orderBy": { "created_at": "desc" },
-  "limit": 50,
-  "offset": 0
+  "sql": "SELECT \"id\", \"amount\", \"status\" FROM \"main\".\"orders\" WHERE \"status\" = $1 ORDER BY \"created_at\" DESC LIMIT $2",
+  "params": ["active", 50],
+  "method": "all"
 }
 ```
 
 ### Request Body Fields
 
-| Field | Type | Required | Applies To | Description |
-|---|---|---|---|---|
-| `action` | `string` | Yes | All | The operation to perform. One of: `findMany`, `findOne`, `create`, `update`, `delete`, `count`, `aggregate`. |
-| `table` | `string` | Yes | All | Fully qualified table name in `connection.table` format (e.g., `main.orders`). |
-| `select` | `string[]` | No | `findMany`, `findOne`, `create`, `update` | Columns to return. If omitted, returns all permitted columns. |
-| `where` | `object` | Conditional | `findMany`, `findOne`, `update`, `delete`, `count`, `aggregate` | Filter conditions using [filter operators](/docs/reference/client-api/filter-operators). Required for `findOne`, `update`, and `delete`. |
-| `include` | `object` | No | `findMany`, `findOne` | Related tables to load in the same request. |
-| `orderBy` | `object` | No | `findMany` | Sort order. Keys are column names, values are `"asc"` or `"desc"`. |
-| `limit` | `number` | No | `findMany` | Maximum number of rows to return. Capped by server's `limits.maxLimit`. |
-| `offset` | `number` | No | `findMany` | Number of rows to skip for pagination. |
-| `data` | `object` | Conditional | `create`, `update` | The row data for write operations. Required for `create` and `update`. |
-| `operations` | `object[]` | Conditional | `aggregate` | Aggregate operations to perform. Required for `aggregate`. |
-| `groupBy` | `string[]` | No | `aggregate` | Columns to group by for aggregation. |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `sql` | `string` | Yes | Parameterized SQL query built by Drizzle ORM. Uses `$1`, `$2`, etc. as placeholders. |
+| `params` | `any[]` | Yes | Parameter values corresponding to the SQL placeholders. |
+| `method` | `string` | Yes | Query execution method. One of: `all` (returns rows as arrays), `get` (single row), `values` (raw values), or `run` (execute without returning rows). |
 
 ## Request Examples
 
-### findMany
+### SELECT (method: "all")
 
 ```json
 {
-  "action": "findMany",
-  "table": "main.orders",
-  "select": ["id", "amount", "status", "created_at"],
-  "where": {
-    "status": { "$eq": "active" },
-    "amount": { "$gte": 100 }
-  },
-  "include": {
-    "customer": {
-      "select": ["id", "name", "email"]
-    }
-  },
-  "orderBy": { "created_at": "desc" },
-  "limit": 20,
-  "offset": 0
+  "sql": "SELECT \"id\", \"amount\", \"status\", \"created_at\" FROM \"main\".\"orders\" WHERE \"status\" = $1 AND \"amount\" >= $2 ORDER BY \"created_at\" DESC LIMIT $3 OFFSET $4",
+  "params": ["active", 100, 20, 0],
+  "method": "all"
 }
 ```
 
-### findOne
+### SELECT single row (method: "get")
 
 ```json
 {
-  "action": "findOne",
-  "table": "main.orders",
-  "where": { "id": { "$eq": "ord_abc123" } },
-  "select": ["id", "amount", "status"],
-  "include": {
-    "customer": {
-      "select": ["name", "email"]
-    }
-  }
+  "sql": "SELECT \"id\", \"amount\", \"status\" FROM \"main\".\"orders\" WHERE \"id\" = $1 LIMIT $2",
+  "params": ["ord_abc123", 1],
+  "method": "get"
 }
 ```
 
-### create
+### INSERT (method: "run")
 
 ```json
 {
-  "action": "create",
-  "table": "main.orders",
-  "data": {
-    "amount": 250,
-    "status": "draft",
-    "notes": "New order"
-  },
-  "select": ["id", "amount", "status", "created_at"]
+  "sql": "INSERT INTO \"main\".\"orders\" (\"amount\", \"status\", \"notes\") VALUES ($1, $2, $3) RETURNING \"id\", \"amount\", \"status\", \"created_at\"",
+  "params": [250, "draft", "New order"],
+  "method": "run"
 }
 ```
 
-### update
+### UPDATE (method: "run")
 
 ```json
 {
-  "action": "update",
-  "table": "main.orders",
-  "where": { "id": { "$eq": "ord_abc123" } },
-  "data": {
-    "status": "active",
-    "notes": "Approved"
-  },
-  "select": ["id", "status", "updated_at"]
+  "sql": "UPDATE \"main\".\"orders\" SET \"status\" = $1, \"notes\" = $2 WHERE \"id\" = $3 RETURNING \"id\", \"status\", \"updated_at\"",
+  "params": ["active", "Approved", "ord_abc123"],
+  "method": "run"
 }
 ```
 
-### delete
+### DELETE (method: "run")
 
 ```json
 {
-  "action": "delete",
-  "table": "main.orders",
-  "where": { "id": { "$eq": "ord_abc123" } }
+  "sql": "DELETE FROM \"main\".\"orders\" WHERE \"id\" = $1",
+  "params": ["ord_abc123"],
+  "method": "run"
 }
 ```
 
-### count
+### COUNT (method: "get")
 
 ```json
 {
-  "action": "count",
-  "table": "main.orders",
-  "where": { "status": { "$eq": "active" } }
+  "sql": "SELECT count(*) AS \"count\" FROM \"main\".\"orders\" WHERE \"status\" = $1",
+  "params": ["active"],
+  "method": "get"
 }
 ```
 
-### aggregate
+### Aggregation (method: "all")
 
 ```json
 {
-  "action": "aggregate",
-  "table": "main.orders",
-  "where": { "status": { "$eq": "active" } },
-  "operations": [
-    { "fn": "sum", "column": "amount", "alias": "total" },
-    { "fn": "count", "column": "*", "alias": "count" },
-    { "fn": "avg", "column": "amount", "alias": "average" }
-  ],
-  "groupBy": ["status"]
+  "sql": "SELECT \"status\", sum(\"amount\") AS \"total\", count(*) AS \"count\", avg(\"amount\") AS \"average\" FROM \"main\".\"orders\" WHERE \"status\" = $1 GROUP BY \"status\"",
+  "params": ["active"],
+  "method": "all"
 }
 ```
 
 ## Response Format
 
-### Success Responses
+The response follows the [Drizzle Proxy protocol](https://orm.drizzle.team/docs/connect-drizzle-proxy). The format depends on the `method` field in the request.
 
-**findMany** -- Returns an array of rows:
+### method: "all"
+
+Returns rows as arrays of values:
 
 ```json
 {
-  "data": [
-    { "id": "ord_001", "amount": 250, "status": "active", "created_at": "2025-03-15T10:00:00Z" },
-    { "id": "ord_002", "amount": 100, "status": "active", "created_at": "2025-03-14T09:00:00Z" }
+  "rows": [
+    ["ord_001", 250, "active", "2025-03-15T10:00:00Z"],
+    ["ord_002", 100, "active", "2025-03-14T09:00:00Z"]
   ]
 }
 ```
 
-**findOne** -- Returns a single row or `null`:
+### method: "get"
+
+Returns a single row as an array:
 
 ```json
 {
-  "data": { "id": "ord_001", "amount": 250, "status": "active" }
+  "rows": ["ord_001", 250, "active"]
 }
 ```
+
+### method: "run"
+
+Returns an empty result (used for writes):
 
 ```json
 {
-  "data": null
+  "rows": []
 }
 ```
 
-**create** -- Returns the created row:
-
-```json
-{
-  "data": { "id": "ord_003", "amount": 250, "status": "draft", "created_at": "2025-03-16T12:00:00Z" }
-}
-```
-
-**update** -- Returns the updated rows:
-
-```json
-{
-  "data": [
-    { "id": "ord_001", "status": "active", "updated_at": "2025-03-16T12:05:00Z" }
-  ]
-}
-```
-
-**delete** -- Returns the count of deleted rows:
-
-```json
-{
-  "data": { "count": 1 }
-}
-```
-
-**count** -- Returns the count:
-
-```json
-{
-  "data": { "count": 42 }
-}
-```
-
-**aggregate** -- Returns the aggregation result:
-
-```json
-{
-  "data": [
-    { "status": "active", "total": 15000, "count": 42, "average": 357.14 }
-  ]
-}
-```
+Drizzle ORM on the client maps these raw arrays back into typed objects automatically.
 
 ## Authentication
 
@@ -258,7 +180,7 @@ interface ErrorResponse {
 
 | HTTP Status | Error Code | Description |
 |---|---|---|
-| `400` | `BAD_REQUEST` | Invalid request body, missing required fields, or malformed filter. |
+| `400` | `BAD_REQUEST` | Invalid request body, missing required fields, or malformed SQL. |
 | `401` | `UNAUTHORIZED` | Missing, invalid, or expired JWT token. |
 | `403` | `PERMISSION_DENIED` | The user does not have permission for this table/operation. |
 | `404` | `TABLE_NOT_FOUND` | The specified table does not exist in any connection. |
@@ -297,34 +219,33 @@ In development mode (`NODE_ENV !== 'production'`), the response includes additio
 ## cURL Examples
 
 ```bash
-# findMany
+# SELECT query
 curl -X POST http://localhost:3001/data \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
-    "action": "findMany",
-    "table": "main.orders",
-    "select": ["id", "amount", "status"],
-    "limit": 10
+    "sql": "SELECT \"id\", \"amount\", \"status\" FROM \"main\".\"orders\" LIMIT $1",
+    "params": [10],
+    "method": "all"
   }'
 
-# create
+# INSERT query
 curl -X POST http://localhost:3001/data \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
-    "action": "create",
-    "table": "main.orders",
-    "data": { "amount": 250, "status": "draft" }
+    "sql": "INSERT INTO \"main\".\"orders\" (\"amount\", \"status\") VALUES ($1, $2) RETURNING *",
+    "params": [250, "draft"],
+    "method": "run"
   }'
 
-# count
+# COUNT query
 curl -X POST http://localhost:3001/data \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
-    "action": "count",
-    "table": "main.orders",
-    "where": { "status": { "$eq": "active" } }
+    "sql": "SELECT count(*) AS \"count\" FROM \"main\".\"orders\" WHERE \"status\" = $1",
+    "params": ["active"],
+    "method": "get"
   }'
 ```

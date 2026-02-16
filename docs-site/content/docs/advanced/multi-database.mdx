@@ -91,16 +91,13 @@ db.main.orders.findMany({
 The permission engine does not care which database type backs a table. Every query -- whether it hits Postgres, MySQL, SQLite, or a CSV file -- passes through the same pipeline:
 
 ```
-Client request
+Client request (Drizzle Proxy: SQL + params)
   │
   ▼
 JWT verification
   │
   ▼
-Permission evaluation (filter, columns, check, preset)
-  │
-  ▼
-Query builder (JSON → SQL via Kysely)
+Permission evaluation (validate SQL, inject filters, restrict columns, check, preset)
   │
   ▼
 DuckDB execution → routes to correct database

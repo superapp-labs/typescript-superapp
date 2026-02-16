@@ -4,7 +4,7 @@ icon: Settings
 description: Configure the Drizzle ORM client with your superapp backend connection and generated schema.
 ---
 
-The `drizzle()` function creates a Drizzle ORM instance configured with an HTTP driver that connects to your superapp backend.
+The `drizzle()` function creates a Drizzle ORM instance using [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) under the hood. Drizzle builds parameterized SQL on the client, and the proxy driver sends SQL + params to your superapp backend over HTTP.
 
 ```typescript
 import { drizzle } from '@superapp/db'
@@ -106,11 +106,11 @@ export function OrdersList() {
 
 ## How It Works
 
-When you call a Drizzle query method, the HTTP driver:
+When you call a Drizzle query method, the proxy driver:
 
-1. Serializes the query to a structured format.
-2. POSTs it to the backend with the JWT in the `Authorization` header.
-3. The backend validates the token, applies row-level permissions, and executes the query.
-4. Returns the typed result.
+1. **Drizzle builds parameterized SQL** on the client (e.g., `SELECT ... FROM orders WHERE status = $1`).
+2. **POSTs SQL + params** to the backend's `/data` endpoint with the JWT in the `Authorization` header.
+3. **The server validates** the token, applies row-level permissions to the SQL, and executes through DuckDB.
+4. **Returns typed results** as JSON, deserialized into the expected TypeScript type.
 
-The query syntax is identical to standard Drizzle ORM — the only difference is the transport layer.
+This is standard [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) — the query syntax is identical to any other Drizzle setup, only the transport layer differs.

@@ -13,7 +13,7 @@ superapp is three packages:
 | Package | What it does |
 |---|---|
 | `@superapp/backend` | Connects to Postgres, MySQL, SQLite, or CSV through DuckDB. Handles auth, enforces row-level permissions, runs queries. |
-| `@superapp/db` | Drizzle ORM client with an HTTP driver. You write standard Drizzle queries — the data you get back is already filtered, restricted, and validated by the backend's permission engine. |
+| `@superapp/db` | Drizzle ORM client built on [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy). You write standard Drizzle queries — the data you get back is already filtered, restricted, and validated by the backend's permission engine. |
 | `@superapp/auth` | Client-side authentication. Uses [better-auth](https://www.better-auth.com) by default, but supports custom adapters. Provides session management, React hooks, and pre-built auth UI components. |
 
 ```text
@@ -22,14 +22,14 @@ superapp is three packages:
   │                                                           │
   │   ┌────────────────────┐   ┌────────────────────────┐     │
   │   │  @superapp/db       │  │  @superapp/auth         │    │
-  │   │  Drizzle ORM        │  │  Session management     │    │
+  │   │  Drizzle Proxy      │  │  Session management     │    │
   │   │  db.select(...)     │  │  useSession()           │    │
   │   │  db.insert(...)     │  │  AuthCard               │    │
   │   └─────────┬──────────┘   └───────────┬────────────┘     │
   │             └──────────┬───────────────┘                  │
   └────────────────────────┼──────────────────────────────────┘
                            │
-                           │ HTTP + JWT user token
+                           │ SQL + params + JWT (Drizzle Proxy)
                            ▼
   ┌───────────────────────────────────────────────────────────┐
   │  @superapp/backend                                        │
@@ -42,7 +42,7 @@ superapp is three packages:
   │         │          • restrict columns to allowed set      │
   │         │          • validate writes against rules        │
   │         ▼                                                 │
-  │  3. Execute ────── build SQL → run through DuckDB         │
+  │  3. Execute ────── run permission-filtered SQL via DuckDB  │
   └───────────────────────────┬───────────────────────────────┘
                               │
                 ┌─────────────┼─────────────┐
@@ -50,7 +50,7 @@ superapp is three packages:
              Postgres      MySQL       SQLite / CSV
 ```
 
-**Every request from your frontend goes through this pipeline.** You write normal Drizzle ORM queries — `db.select()`, `db.insert()`, etc. — but the backend intercepts each one, verifies who the user is, and automatically filters the data so that **each user can only access their own data**. The client never builds SQL and never bypasses the permission layer.
+**Every request from your frontend goes through this pipeline.** You write normal Drizzle ORM queries — `db.select()`, `db.insert()`, etc. — and the [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) driver sends the parameterized SQL to the backend. The server verifies who the user is, applies permission filters to the SQL, and automatically scopes the data so that **each user can only access their own data**.
 
 ## How it works
 

@@ -4,7 +4,7 @@ icon: Monitor
 description: "Drizzle client configuration reference."
 ---
 
-`drizzle()` creates a Drizzle ORM instance with an HTTP driver that connects to your superapp backend. It returns a standard Drizzle `db` object with all query methods.
+`drizzle()` creates a Drizzle ORM instance using [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) that connects to your superapp backend. Drizzle builds parameterized SQL on the client, and the proxy driver sends SQL + params over HTTP. It returns a standard Drizzle `db` object with all query methods.
 
 ```typescript
 import { drizzle } from '@superapp/db'
@@ -21,7 +21,7 @@ const db = drizzle({
 
 | Option | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `connection` | `string` | Yes | -- | Your superapp backend URL. The HTTP driver sends queries to this endpoint. |
+| `connection` | `string` | Yes | -- | Your superapp backend URL. The proxy driver sends SQL + params to this endpoint. |
 | `token` | `string` | Yes | -- | A valid JWT obtained from the auth client. Sent as `Authorization: Bearer <token>` on every request. |
 | `schema` | `object` | Yes | -- | Your generated Drizzle schema object containing table definitions and relations. |
 
@@ -138,11 +138,11 @@ export function OrdersList() {
 
 ## How It Works
 
-When you call a Drizzle query method, the HTTP driver:
+When you call a Drizzle query method, the proxy driver:
 
-1. **Serializes the query** into a structured format.
-2. **POSTs the request** to the backend with the JWT in the `Authorization: Bearer` header.
-3. **The server validates** the token, applies row-level permissions, builds SQL, and executes the query.
+1. **Drizzle builds parameterized SQL** on the client (e.g., `SELECT ... FROM orders WHERE status = $1`).
+2. **POSTs SQL + params** to the backend's `/data` endpoint with the JWT in the `Authorization: Bearer` header.
+3. **The server validates** the token, applies row-level permissions to the SQL, and executes through DuckDB.
 4. **Returns typed results** as JSON, deserialized into the expected TypeScript type.
 
-The query syntax is identical to standard Drizzle ORM — the only difference is the transport layer.
+This is standard [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) — the query syntax is identical to any other Drizzle setup, only the transport layer differs.

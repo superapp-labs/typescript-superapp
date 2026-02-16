@@ -1,19 +1,19 @@
 ---
 title: Request Pipeline
-description: The complete 10-step request pipeline from incoming request to JSON response.
+description: The complete 9-step request pipeline from incoming request to JSON response.
 icon: GitBranch
 ---
 
-Every `POST /data` request passes through a 10-step pipeline. Understanding this pipeline helps you debug permission issues, optimize queries, and reason about security.
+Every `POST /data` request passes through a 9-step pipeline. The client sends parameterized SQL + params via [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy), and the server validates, applies permissions, and executes. Understanding this pipeline helps you debug permission issues, optimize queries, and reason about security.
 
 ```text
-  Incoming Request — POST /data + Bearer JWT
+  Incoming Request — POST /data + Bearer JWT + SQL + params
     │
     ▼
   1. Rate Limiting — Per-user (200/min) and per-IP (500/min)
     │
     ▼
-  2. Body Validation — Parse JSON, validate structure
+  2. Body Validation — Parse SQL + params, validate structure
     │
     ▼
   3. JWT Extraction — Decode token from Authorization header
@@ -25,19 +25,16 @@ Every `POST /data` request passes through a 10-step pipeline. Understanding this
   5. Role Injection — Map user.role → permission slugs
     │
     ▼
-  6. Permission Check — Table → Operation → Columns → Filter → Check → Preset
+  6. Permission Check — Validate SQL → Inject filters → Restrict columns → Check → Preset
     │
     ▼
-  7. Query Builder — JSON request → Kysely → SQL
+  7. DuckDB Execution — Run permission-filtered SQL against attached databases
     │
     ▼
-  8. DuckDB Execution — Run SQL against attached databases
+  8. Audit Log — Record query, params, duration, user
     │
     ▼
-  9. Audit Log — Record query, params, duration, user
-    │
-    ▼
-  10. Response — Return JSON result to client
+  9. Response — Return JSON result to client
 ```
 
 ## Step-by-Step
@@ -57,19 +54,17 @@ If exceeded, returns `429 Too Many Requests`.
 
 ### 2. Body Validation
 
-The JSON request body is parsed and validated against the expected schema:
+The request body contains parameterized SQL + params sent by the Drizzle Proxy client:
 
 ```json
 {
-  "table": "main.orders",
-  "operation": "select",
-  "columns": ["id", "amount", "status"],
-  "filter": { "status": "active" },
-  "limit": 100
+  "sql": "SELECT \"id\", \"amount\", \"status\" FROM \"main\".\"orders\" WHERE \"status\" = $1 LIMIT $2",
+  "params": ["active", 100],
+  "method": "all"
 }
 ```
 
-Invalid structure returns `400 Bad Request`.
+The `method` field indicates the query type: `all` (returns rows as arrays), `get` (single row), `values` (raw values), or `run` (no return). Invalid structure returns `400 Bad Request`.
 
 ### 3. JWT Extraction
 
@@ -105,29 +100,17 @@ The engine looks up `user.role` in the `roles` config and resolves the list of a
 
 ### 6. Permission Check
 
-The engine evaluates each active permission against the request in order:
+The engine parses the incoming SQL and evaluates each active permission against it:
 
-1. **Table match** — Does any permission cover the requested table?
-2. **Operation match** — Does that permission allow the requested operation (select/insert/update/delete)?
-3. **Column match** — Are the requested columns in the allowed list?
-4. **Filter injection** — Add WHERE clauses from the permission's `filter`
+1. **Table match** — Does any permission cover the tables in the SQL?
+2. **Operation match** — Does that permission allow the detected operation (SELECT/INSERT/UPDATE/DELETE)?
+3. **Column match** — Are the referenced columns in the allowed list?
+4. **Filter injection** — Inject WHERE clauses from the permission's `filter` into the SQL
 5. **FK traversal** — Resolve relationship paths in filters to subqueries
-6. **Check validation** — For writes, validate request values against `check` rules
-7. **Preset injection** — For writes, inject `preset` values into the request body
+6. **Check validation** — For writes, validate parameter values against `check` rules
+7. **Preset injection** — For writes, inject `preset` values into the SQL
 
-If any check fails, returns `403 Forbidden`.
-
-### 7. Query Builder
-
-The validated request is converted to SQL through Kysely:
-
-```
-JSON request + permission filters + presets
-  → Kysely query builder
-  → Parameterized SQL
-```
-
-Query limits are enforced at this stage:
+Query limits are also enforced at this stage:
 
 ```typescript
 limits: {
@@ -137,9 +120,11 @@ limits: {
 }
 ```
 
-### 8. DuckDB Execution
+If any check fails, returns `403 Forbidden`.
 
-The parameterized SQL is executed against DuckDB, which routes the query to the appropriate attached database (Postgres, MySQL, etc.):
+### 7. DuckDB Execution
+
+The permission-filtered SQL is executed against DuckDB, which routes the query to the appropriate attached database (Postgres, MySQL, etc.):
 
 ```typescript
 duckdb: {
@@ -149,7 +134,7 @@ duckdb: {
 
 Timeout returns `408 Request Timeout`.
 
-### 9. Audit Log
+### 8. Audit Log
 
 If audit logging is enabled, the engine records:
 
@@ -159,7 +144,7 @@ If audit logging is enabled, the engine records:
 - Execution duration
 - Success or error status
 
-### 10. Response
+### 9. Response
 
 The query results are returned as JSON:
 
@@ -177,7 +162,7 @@ The query results are returned as JSON:
 
 | Status | Step | Cause |
 |---|---|---|
-| `400` | Body Validation | Invalid JSON or request structure |
+| `400` | Body Validation | Invalid request structure or malformed SQL |
 | `401` | JWT / Session | Invalid token or user not found |
 | `403` | Permission Check | No permission for table, operation, or column |
 | `408` | DuckDB Execution | Query timeout exceeded |

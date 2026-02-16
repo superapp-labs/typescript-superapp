@@ -28,7 +28,7 @@ DuckDB instances are hardened by disabling capabilities that could be used for d
 | System functions | `current_setting()`, `pg_read_file()` |
 | Unsafe extensions | Loading arbitrary extensions at runtime |
 
-All data access goes through the engine's query builder, which generates SQL from the validated JSON request. Users cannot inject or execute arbitrary SQL.
+All data access goes through the engine's permission layer, which validates and modifies the parameterized SQL received from the Drizzle Proxy client. Users cannot bypass permission filters or access unauthorized tables.
 
 ## Instance Pooling
 

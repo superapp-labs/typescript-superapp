@@ -4,24 +4,23 @@ icon: Shield
 description: Defense-in-depth security architecture.
 ---
 
-`@superapp/backend` is built on the principle that no raw SQL ever reaches the server from the client, and no query executes without passing through a permission check. There is no god mode.
+`@superapp/backend` is built on the principle that no query executes without passing through a permission check. The client sends parameterized SQL via [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy), and the server validates, applies permissions, and executes. There is no god mode.
 
 ```
-Client Request
+Client Request (Drizzle Proxy: SQL + params + JWT)
   │
   ├─ 1. Rate Limiting ─────── per-user and per-IP throttle
   ├─ 2. JWT Validation ────── algorithm allowlist, issuer, audience, expiry
-  ├─ 3. Permission Check ──── table, operation, columns, row-level filters
-  ├─ 4. Query Builder ─────── JSON → Kysely → SQL (no raw SQL accepted)
-  ├─ 5. DuckDB Isolation ──── ephemeral per-session instance, sandboxed
-  └─ 6. Audit Log ─────────── query, params, duration, user, IP
+  ├─ 3. Permission Check ──── validate SQL, table, operation, columns, row-level filters
+  ├─ 4. DuckDB Isolation ──── ephemeral per-session instance, sandboxed
+  └─ 5. Audit Log ─────────── query, params, duration, user, IP
 ```
 
 ## Defense Layers
 
-### No Raw SQL
+### Parameterized SQL Only
 
-Clients send JSON query objects, never SQL strings. The engine translates JSON into SQL through Kysely, a type-safe query builder. SQL injection is structurally impossible because user input never interpolates into query strings.
+Clients send parameterized SQL built by Drizzle ORM (via [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy)), never raw interpolated strings. All user values are passed as parameters (`$1`, `$2`, ...), never concatenated into the query string. SQL injection is structurally impossible because user input never interpolates into query strings.
 
 ### No God Mode
 

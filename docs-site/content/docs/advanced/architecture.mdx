@@ -4,7 +4,7 @@ description: "How the pieces fit together."
 icon: Building
 ---
 
-superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (data client), and `@superapp/auth` (auth client). The server owns all data access, auth, and permissions. The client packages are thin typed HTTP layers that never generate SQL.
+superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (data client), and `@superapp/auth` (auth client). The server owns all data access, auth, and permissions. The data client uses [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) to send parameterized SQL to the server, where permissions are applied before execution.
 
 ## System Diagram
 
@@ -12,8 +12,8 @@ superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (da
   @superapp/db (Data)          @superapp/auth (Auth)
   ┌────────────────────────┐   ┌──────────────────────────┐
   │  drizzle()             │   │  createAuth()            │
-  │  Sends JSON over HTTP  │   │  AuthCard · AuthProvider │
-  │  (no raw SQL)          │   │  useSession · UserButton │
+  │  Drizzle Proxy driver  │   │  AuthCard · AuthProvider │
+  │  Sends SQL + params    │   │  useSession · UserButton │
   └────────────┬───────────┘   └────────────┬─────────────┘
                │  POST /data + JWT          │  POST /auth/*
                └────────────┬───────────────┘
@@ -27,9 +27,7 @@ superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (da
   │         │                         │
   │         ▼                         │
   │  Permissions (CASL)               │
-  │         │                         │
-  │         ▼                         │
-  │  Query Builder (Kysely)           │
+  │  Validate SQL + inject filters    │
   │         │                         │
   │         ▼                         │
   │  DuckDB (in-process)              │
@@ -46,10 +44,10 @@ superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (da
 
 The backend is the single source of truth for all data access. It:
 
-- **Accepts structured JSON requests** over HTTP (never raw SQL from clients).
+- **Receives parameterized SQL** from the Drizzle Proxy client over HTTP.
 - **Verifies JWTs** through a pluggable auth provider.
-- **Enforces permissions** using CASL-based rules that inject row filters, restrict columns, validate writes, and preset values.
-- **Translates JSON to SQL** via Kysely and executes through DuckDB, which fans out to attached databases.
+- **Enforces permissions** using CASL-based rules that validate the SQL, inject row filters, restrict columns, validate writes, and preset values.
+- **Executes the permission-filtered SQL** through DuckDB, which fans out to attached databases.
 - **Stores metadata** (sessions, roles, audit logs) in a Turso or local SQLite database via Drizzle ORM.
 
 ```typescript
@@ -59,10 +57,10 @@ import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 
 ### `@superapp/db` (Data Client)
 
-The data client is real Drizzle ORM with an HTTP driver. You write standard Drizzle queries — the data you get back is already filtered, restricted, and validated by the backend's permission engine. It:
+The data client is real Drizzle ORM built on [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy). Drizzle builds parameterized SQL on the client, and the proxy driver sends SQL + params to the server. The data you get back is already filtered, restricted, and validated by the backend's permission engine. It:
 
 - **Exposes standard Drizzle ORM query syntax** that mirrors your schema.
-- **Sends structured JSON** to the server's `/data` endpoint.
+- **Sends parameterized SQL + params** to the server's `/data` endpoint via Drizzle Proxy.
 - **Returns permission-filtered data** — row filters, column restrictions, and write validations are applied transparently by the backend before results reach the client.
 - **Generates TypeScript types** from your server's `/schema` endpoint for full autocomplete.
 
@@ -94,9 +92,8 @@ import { AuthCard, AuthProvider, UserButton } from '@superapp/auth/components'
 | Metadata store | Turso + Drizzle | Sessions, roles, audit logs, admin configuration |
 | Authentication | better-auth | JWT-based auth with session management |
 | Authorization | CASL | Attribute-based permission evaluation |
-| SQL builder | Kysely | Type-safe SQL generation from JSON |
 | Admin UI | React + Vite | Visual permission and connection management |
-| Data client | @superapp/db | Typed Drizzle ORM over HTTP, returns permission-filtered data |
+| Data client | @superapp/db | Drizzle Proxy over HTTP, returns permission-filtered data |
 | Auth client | @superapp/auth | Session management, auth UI components (better-auth default, custom adapters) |
 
 ## Dependency Graph
@@ -124,11 +121,10 @@ import { AuthCard, AuthProvider, UserButton } from '@superapp/auth/components'
 
 Every query follows this exact path:
 
-1. **HTTP** -- Adapter receives `POST /data` with JWT in `Authorization` header.
+1. **HTTP** -- Adapter receives `POST /data` with JWT in `Authorization` header. The body contains parameterized SQL + params from the Drizzle Proxy client.
 2. **Auth** -- `verifyToken()` validates the JWT signature. `findUser()` retrieves the user record. `resolveSession()` enriches with roles and org memberships.
-3. **Permissions** -- CASL evaluates which permissions apply based on the user's role. Filters are injected into WHERE clauses. Columns are stripped to the allowed set. For writes, `check` validates the data and `preset` injects server-side values.
-4. **Query Builder** -- Kysely translates the JSON request into a parameterized SQL statement.
-5. **DuckDB** -- Executes the SQL against the attached database (Postgres, MySQL, SQLite, or CSV).
-6. **Response** -- Results are serialized to JSON and returned to the client.
+3. **Permissions** -- CASL evaluates which permissions apply based on the user's role. The engine validates the incoming SQL, injects WHERE filters, strips unauthorized columns, and for writes, validates data against `check` rules and injects `preset` values.
+4. **DuckDB** -- Executes the permission-filtered SQL against the attached database (Postgres, MySQL, SQLite, or CSV).
+5. **Response** -- Results are serialized to JSON and returned to the client.
 
-No step can be skipped. There is no "bypass" mode in production. The client never sees raw SQL, and the server never executes unvalidated queries.
+No step can be skipped. There is no "bypass" mode in production. All SQL is parameterized (preventing injection), and the server validates and modifies every query before execution.
