@@ -41,19 +41,26 @@ import { drizzle } from '@superapp/db'
 import { eq, desc } from 'drizzle-orm'
 import * as schema from './generated/schema'
 
+// The token ties this Drizzle instance to a specific user.
+// Every query through this `db` will only return that user's data.
 const db = drizzle({
   connection: 'http://localhost:3001',
-  token: session.token,
+  token: session.token,  // ← JWT identifies the logged-in user
   schema,
 })
 
-// Standard Drizzle queries — data returned is already filtered by permissions
+// This looks like a normal Drizzle query — no user_id filter needed.
+// The backend reads the JWT, resolves the user, and automatically
+// scopes results so this user can only see their own orders.
 const orders = await db.select()
   .from(schema.orders)
   .where(eq(schema.orders.status, 'active'))
   .orderBy(desc(schema.orders.createdAt))
   .limit(10)
-// orders: { id: string; amount: number; status: string; createdAt: Date }[]
+
+// If Alice is logged in:  returns only Alice's active orders
+// If Bob is logged in:    returns only Bob's active orders
+// Same code, different data — enforced by the backend, not the client
 ```
 
 ## Available Methods

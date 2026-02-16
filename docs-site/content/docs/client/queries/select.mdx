@@ -15,16 +15,22 @@ import * as schema from './generated/schema'
 
 const db = drizzle({ connection, token, schema })
 
+// No need to filter by user_id — the backend automatically scopes
+// results to the logged-in user based on the JWT token above.
 const orders = await db.select()
   .from(schema.orders)
   .where(eq(schema.orders.status, 'active'))
   .orderBy(desc(schema.orders.createdAt))
   .limit(10)
+// → Returns only the current user's active orders
 ```
 
 ## Select Specific Columns
 
 ```typescript
+// Even when selecting specific columns, the backend still scopes rows
+// to the current user — and may further restrict which columns are visible
+// based on the user's role and permission configuration.
 const orders = await db.select({
   id: schema.orders.id,
   amount: schema.orders.amount,

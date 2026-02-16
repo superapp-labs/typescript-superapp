@@ -13,6 +13,9 @@ import * as schema from './generated/schema'
 
 const db = drizzle({ connection, token, schema })
 
+// The backend scopes this to the logged-in user's data.
+// You can only delete your own rows — attempting to delete
+// another user's order simply won't match any rows.
 await db.delete(schema.orders)
   .where(eq(schema.orders.id, 'ord_abc123'))
 ```

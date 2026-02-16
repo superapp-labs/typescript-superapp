@@ -81,6 +81,10 @@ const engine = createEngine({
       table: 'main.orders',
       operations: { select: true },
       columns: ['id', 'amount', 'status', 'created_at'],
+
+      // ⬇️ THIS IS THE KEY LINE — it scopes every query to the logged-in user.
+      // '$user.id' is replaced at runtime with the authenticated user's ID.
+      // The backend injects: WHERE customer_id = '<current user id>'
       filter: { customer_id: { $eq: '$user.id' } },
     },
   },
@@ -117,14 +121,30 @@ export function createDb(token: string) {
 ```typescript
 import { eq, desc } from 'drizzle-orm'
 
+// Looks like a normal Drizzle query — but the backend automatically
+// injects WHERE customer_id = <logged-in user's id> before executing.
+// User A only gets User A's orders. User B only gets User B's.
 const orders = await db.select()
   .from(schema.orders)
   .where(eq(schema.orders.status, 'active'))
   .orderBy(desc(schema.orders.createdAt))
   .limit(50)
+
+// ✅ Alice sees her orders:
+//    [{ id: 'ord_1', amount: 49.99, status: 'active', created_at: '2025-01-15' },
+//     { id: 'ord_3', amount: 149.00, status: 'active', created_at: '2025-01-10' }]
+//
+// ✅ Bob sees his orders (completely different rows, same query):
+//    [{ id: 'ord_7', amount: 89.50, status: 'active', created_at: '2025-01-14' }]
+//
+// ❌ Alice can NEVER see Bob's orders — the backend enforces it
 ```
 
 **What happens here:** The client asks for active orders, but the `filter: { customer_id: { $eq: '$user.id' } }` in the server config automatically injects `WHERE customer_id = ?` into every query. The logged-in user only sees **their own orders**, filtered by active status — without the client writing any authorization logic. The backend enforces it in the middleware before any data leaves the server.
+
+<Callout type="info">
+**The same Drizzle code, different results per user.** Two users running the exact same `db.select()` query will get completely different rows — each scoped to their own data. You never write `WHERE user_id = currentUser.id` in your frontend. The backend handles it.
+</Callout>
 
 <Callout>
 Because the authorization layer lives entirely in the backend middleware, you can safely use Drizzle ORM directly from the client side — the data returned is always scoped to the user's permissions. That said, we still recommend keeping Drizzle queries in your backend (e.g. Next.js server actions, API routes) for better control over caching, error handling, and request batching.

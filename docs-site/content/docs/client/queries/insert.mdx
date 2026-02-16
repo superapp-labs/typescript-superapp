@@ -12,6 +12,8 @@ import * as schema from './generated/schema'
 
 const db = drizzle({ connection, token, schema })
 
+// The backend validates that the logged-in user has insert permission
+// and may auto-set fields like customerId from the user's session.
 const [order] = await db.insert(schema.orders).values({
   amount: 250,
   status: 'pending',

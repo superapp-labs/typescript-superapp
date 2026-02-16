@@ -13,6 +13,10 @@ import * as schema from './generated/schema'
 
 const db = drizzle({ connection, token, schema })
 
+// The backend ensures you can only update your own rows.
+// Even if you pass someone else's order ID, the permission filter
+// scopes the UPDATE to rows owned by the logged-in user — so it
+// simply won't match and nothing gets modified.
 await db.update(schema.orders)
   .set({ status: 'shipped' })
   .where(eq(schema.orders.id, 'ord_abc123'))

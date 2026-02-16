@@ -10,9 +10,11 @@ The `drizzle()` function creates a Drizzle ORM instance configured with an HTTP 
 import { drizzle } from '@superapp/db'
 import * as schema from './generated/schema'
 
+// Each user gets their own Drizzle instance tied to their JWT.
+// All queries through this `db` are automatically scoped to this user's data.
 const db = drizzle({
   connection: 'http://localhost:3001',
-  token: session.token,
+  token: session.token,  // ← identifies who this user is
   schema,
 })
 ```
@@ -91,6 +93,8 @@ export function OrdersList() {
 
   async function loadOrders() {
     if (!db) return
+    // No user_id filter needed — the backend scopes results automatically.
+    // Each user only sees their own orders.
     const orders = await db.select()
       .from(schema.orders)
       .where(eq(schema.orders.status, 'active'))
