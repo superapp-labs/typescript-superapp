@@ -4,18 +4,20 @@ description: "How the pieces fit together."
 icon: Building
 ---
 
-superapp is two npm packages: `@superapp/backend` (server) and `@superapp/db` (client). The server owns all data access, auth, and permissions. The client is a thin typed HTTP layer that never generates SQL.
+superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (data client), and `@superapp/auth` (auth client). The server owns all data access, auth, and permissions. The client packages are thin typed HTTP layers that never generate SQL.
 
 ## System Diagram
 
 ```text
-  @superapp/db (Client)
-  ┌───────────────────────────────────┐
-  │  AuthCard · drizzle()             │
-  │  Sends JSON over HTTP (no raw SQL)│
-  └──────────────┬────────────────────┘
-                 │  POST /data + JWT
-                 ▼
+  @superapp/db (Data)          @superapp/auth (Auth)
+  ┌────────────────────────┐   ┌──────────────────────────┐
+  │  drizzle()             │   │  createAuth()            │
+  │  Sends JSON over HTTP  │   │  AuthCard · AuthProvider │
+  │  (no raw SQL)          │   │  useSession · UserButton │
+  └────────────┬───────────┘   └────────────┬─────────────┘
+               │  POST /data + JWT          │  POST /auth/*
+               └────────────┬───────────────┘
+                            ▼
   @superapp/backend (Server)
   ┌───────────────────────────────────┐
   │  HTTP Adapter (Hono/Express/Next) │
@@ -38,7 +40,7 @@ superapp is two npm packages: `@superapp/backend` (server) and `@superapp/db` (c
   Postgres MySQL  SQLite   CSV
 ```
 
-## Two Packages
+## Three Packages
 
 ### `@superapp/backend` (Server)
 
@@ -55,19 +57,32 @@ import { createEngine } from '@superapp/backend'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 ```
 
-### `@superapp/db` (Client)
+### `@superapp/db` (Data Client)
 
-The client is real Drizzle ORM with an HTTP driver. It:
+The data client is real Drizzle ORM with an HTTP driver. You write standard Drizzle queries — the data you get back is already filtered, restricted, and validated by the backend's permission engine. It:
 
 - **Exposes standard Drizzle ORM query syntax** that mirrors your schema.
 - **Sends structured JSON** to the server's `/data` endpoint.
-- **Ships auth UI components** (`AuthCard`, `AuthProvider`) built with React.
+- **Returns permission-filtered data** — row filters, column restrictions, and write validations are applied transparently by the backend before results reach the client.
 - **Generates TypeScript types** from your server's `/schema` endpoint for full autocomplete.
 
 ```typescript
 import { drizzle } from '@superapp/db'
-import { createAuth } from '@superapp/db/auth'
-import { AuthCard, AuthProvider } from '@superapp/db/components'
+```
+
+### `@superapp/auth` (Auth Client)
+
+The auth client handles session management and ships pre-built auth UI components. It uses [better-auth](https://www.better-auth.com) by default, but supports custom adapters for any auth provider. It:
+
+- **Manages JWT sessions** — sign-in, sign-up, token refresh, sign-out.
+- **Ships auth UI components** (`AuthCard`, `AuthProvider`, `UserButton`) built with React.
+- **Provides React hooks** (`useSession`) for accessing the current session.
+- **Supports custom adapters** — swap the default better-auth adapter for Firebase, Auth0, Clerk, or any custom auth system.
+
+```typescript
+import { createAuth } from '@superapp/auth'
+import { useSession } from '@superapp/auth'
+import { AuthCard, AuthProvider, UserButton } from '@superapp/auth/components'
 ```
 
 ## Tech Stack
@@ -81,7 +96,8 @@ import { AuthCard, AuthProvider } from '@superapp/db/components'
 | Authorization | CASL | Attribute-based permission evaluation |
 | SQL builder | Kysely | Type-safe SQL generation from JSON |
 | Admin UI | React + Vite | Visual permission and connection management |
-| Client SDK | TypeScript | Typed query builder over HTTP |
+| Data client | @superapp/db | Typed Drizzle ORM over HTTP, returns permission-filtered data |
+| Auth client | @superapp/auth | Session management, auth UI components (better-auth default, custom adapters) |
 
 ## Dependency Graph
 

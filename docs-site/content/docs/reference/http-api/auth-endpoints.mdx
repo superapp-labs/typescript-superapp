@@ -276,10 +276,10 @@ Verify an email address using the token sent during sign-up.
 
 ## Client SDK Usage
 
-The `@superapp/db` client SDK wraps these endpoints for convenience:
+The `@superapp/auth` client SDK wraps these endpoints for convenience:
 
 ```typescript
-import { createAuth } from '@superapp/db/auth'
+import { createAuth } from '@superapp/auth'
 
 const auth = createAuth('http://localhost:3001')
 
@@ -318,7 +318,7 @@ await auth.verifyEmail({ token: 'vrf_abc123def456' })
 ### React Hook
 
 ```typescript
-import { useSession } from '@superapp/db/auth'
+import { useSession } from '@superapp/auth'
 
 function MyComponent() {
   const { data: session, isPending, error } = useSession()

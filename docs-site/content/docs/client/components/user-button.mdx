@@ -7,7 +7,7 @@ description: Navbar dropdown component with user avatar and sign-out action.
 `UserButton` renders a clickable avatar that opens a dropdown with the user's info and a sign-out button. Drop it into your navbar for instant user management.
 
 ```tsx
-import { UserButton } from '@superapp/db/components'
+import { UserButton } from '@superapp/auth/components'
 
 export function Navbar() {
   return (
@@ -29,7 +29,7 @@ export function Navbar() {
 `UserButton` requires an [`AuthProvider`](/docs/client/components/auth-provider) ancestor. It reads the current session from context.
 
 ```tsx
-import { AuthProvider } from '@superapp/db/components'
+import { AuthProvider } from '@superapp/auth/components'
 import { authClient } from '@/lib/superapp'
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -44,8 +44,8 @@ export function Providers({ children }: { children: React.ReactNode }) {
 ## Full Navbar Example
 
 ```tsx
-import { UserButton } from '@superapp/db/components'
-import { useSession } from '@superapp/db/auth'
+import { UserButton } from '@superapp/auth/components'
+import { useSession } from '@superapp/auth'
 import Link from 'next/link'
 
 export function Navbar() {

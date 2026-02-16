@@ -7,7 +7,7 @@ icon: CreditCard
 `AuthCard` renders a complete authentication form that automatically switches between sign-in, sign-up, and forgot-password views based on the current URL.
 
 ```tsx
-import { AuthCard } from '@superapp/db/components'
+import { AuthCard } from '@superapp/auth/components'
 
 export default function AuthPage() {
   return <AuthCard />
@@ -33,7 +33,7 @@ Create a catch-all route to handle all auth paths.
 **`app/(auth)/sign-in/page.tsx`**
 
 ```tsx
-import { AuthCard } from '@superapp/db/components'
+import { AuthCard } from '@superapp/auth/components'
 
 export default function SignInPage() {
   return (
@@ -47,7 +47,7 @@ export default function SignInPage() {
 **`app/(auth)/sign-up/page.tsx`**
 
 ```tsx
-import { AuthCard } from '@superapp/db/components'
+import { AuthCard } from '@superapp/auth/components'
 
 export default function SignUpPage() {
   return (
@@ -61,7 +61,7 @@ export default function SignUpPage() {
 **`app/(auth)/forgot-password/page.tsx`**
 
 ```tsx
-import { AuthCard } from '@superapp/db/components'
+import { AuthCard } from '@superapp/auth/components'
 
 export default function ForgotPasswordPage() {
   return (

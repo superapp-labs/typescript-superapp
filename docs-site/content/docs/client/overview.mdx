@@ -1,17 +1,23 @@
 ---
 title: Overview
 icon: BookOpen
-description: Drizzle ORM for the frontend — real Drizzle with an HTTP driver that enforces permissions transparently.
+description: Drizzle ORM for the frontend — real Drizzle with an HTTP driver that returns permission-filtered data.
 ---
 
-`@superapp/db` gives your frontend **real Drizzle ORM** connected to any database through the superapp backend. Same API you already know — permissions enforced automatically.
+`@superapp/db` gives your frontend **real Drizzle ORM** connected to any database through the superapp backend. Same API you already know — the data you get back is already filtered, restricted, and validated by the backend's permission engine.
 
 ## How It Works
 
-The client uses a Drizzle HTTP driver plugin that sends queries to the superapp backend. The server validates your JWT, applies row-level permissions, and executes against your database.
+The client uses a Drizzle HTTP driver plugin that sends queries to the superapp backend. The server validates your JWT, applies row-level permissions, and executes against your database. The data returned to the client has already been filtered and restricted by the permission engine — the client consumes Drizzle ORM, but with all data scoped to the user's configured permissions.
 
 ```text
 Client (Drizzle ORM) --> HTTP Driver --> superapp Backend --> Permission Engine --> Database
+                                                                    │
+                                                          Filters, restricts,
+                                                          validates data
+                                                                    │
+                                                                    ▼
+                                                          Returns scoped results
 ```
 
 ## Quick Example
@@ -27,7 +33,7 @@ const db = drizzle({
   schema,
 })
 
-// Standard Drizzle queries — permissions enforced transparently
+// Standard Drizzle queries — data returned is already filtered by permissions
 const orders = await db.select()
   .from(schema.orders)
   .where(eq(schema.orders.status, 'active'))
@@ -56,11 +62,11 @@ const orders = await db.select()
 | `drizzle` | `@superapp/db` | Create a Drizzle client with HTTP driver |
 | `eq`, `gt`, `desc`, ... | `drizzle-orm` | Standard Drizzle filter and sort operators |
 | `schema` | `./generated/schema` | Auto-generated Drizzle schema from your database |
-| `createAuth` | `@superapp/db/auth` | Auth client for session management |
-| `useSession` | `@superapp/db/auth` | React hook for current session |
-| `AuthProvider` | `@superapp/db/components` | Root layout wrapper for auth context |
-| `AuthCard` | `@superapp/db/components` | Pre-built sign-in/sign-up/forgot-password UI |
-| `UserButton` | `@superapp/db/components` | Navbar dropdown with avatar and sign out |
+| `createAuth` | `@superapp/auth` | Auth client for session management |
+| `useSession` | `@superapp/auth` | React hook for current session |
+| `AuthProvider` | `@superapp/auth/components` | Root layout wrapper for auth context |
+| `AuthCard` | `@superapp/auth/components` | Pre-built sign-in/sign-up/forgot-password UI |
+| `UserButton` | `@superapp/auth/components` | Navbar dropdown with avatar and sign out |
 
 ## What's Next
 

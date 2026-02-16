@@ -44,7 +44,7 @@ Request → Rate Limit → Validate → JWT → Session → Roles → Permission
 ## Key Concepts
 
 - **Databases** -- Named database sources (Postgres, MySQL, SQLite, CSV) attached to DuckDB
-- **Auth Providers** -- Pluggable authentication (better-auth or custom)
+- **Auth Providers** -- Pluggable authentication (better-auth or custom); client-side auth lives in `@superapp/auth`
 - **Permissions** -- Row-level security with filters, checks, and presets
 - **Roles** -- Named groups of permissions assigned to users
 - **Adapters** -- Framework bindings for Hono, Next.js, Express, and generic handlers

@@ -7,7 +7,7 @@ icon: Clock
 The auth client manages JWT sessions automatically — storing tokens, refreshing them before expiry, and clearing them on sign out.
 
 ```tsx
-import { useSession } from '@superapp/db/auth'
+import { useSession } from '@superapp/auth'
 
 export function Dashboard() {
   const { data: session, isPending } = useSession()
@@ -44,7 +44,7 @@ export function Dashboard() {
 Use the `useSession` hook inside an [`AuthProvider`](/docs/client/components/auth-provider).
 
 ```tsx
-import { useSession } from '@superapp/db/auth'
+import { useSession } from '@superapp/auth'
 
 export function UserGreeting() {
   const { data: session, isPending } = useSession()
@@ -81,7 +81,7 @@ export function OrdersList() {
 Use the `onSessionChange` callback on [`AuthProvider`](/docs/client/components/auth-provider) to run side effects when the session changes (sign in, sign out, token refresh).
 
 ```tsx
-import { AuthProvider } from '@superapp/db/components'
+import { AuthProvider } from '@superapp/auth/components'
 import { authClient } from '@/lib/superapp'
 import { useRouter } from 'next/navigation'
 
@@ -106,7 +106,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 Check the session to gate access to authenticated pages.
 
 ```tsx
-import { useSession } from '@superapp/db/auth'
+import { useSession } from '@superapp/auth'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
 

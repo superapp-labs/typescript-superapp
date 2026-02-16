@@ -1,41 +1,49 @@
 ---
 title: Introduction
 description: A thin, secure data layer between your frontend and any database.
-icon: Home
+icon: House
 ---
+
+<Callout type="warn" title="This project is not yet implemented">
+superapp is currently in the **speccing phase**. We are designing the architecture and API surface before writing implementation code. Your feedback is highly appreciated — [join the discussion on GitHub](https://github.com/superapp-labs/typescript-superapp/discussions).
+</Callout>
 
 One library to connect your frontend to any database -- with authentication, row-level permissions, and type safety built in.
 
 ## What is superapp?
 
-superapp is two packages:
+superapp is three packages:
 
 | Package | What it does |
 |---|---|
 | `@superapp/backend` | Connects to Postgres, MySQL, SQLite, or CSV through DuckDB. Handles auth, enforces row-level permissions, runs queries. |
-| `@superapp/db` | Drizzle ORM client with an HTTP driver. Full type safety, auth UI components, zero server dependencies. |
+| `@superapp/db` | Drizzle ORM client with an HTTP driver. You write standard Drizzle queries — the data you get back is already filtered, restricted, and validated by the backend's permission engine. |
+| `@superapp/auth` | Client-side authentication. Uses [better-auth](https://www.better-auth.com) by default, but supports custom adapters. Provides session management, React hooks, and pre-built auth UI components. |
 
 ```text
   Frontend (React, Next.js)
         │
-        ▼
-  @superapp/db (Drizzle ORM)
-        │
-        │ HTTP + JWT
-        ▼
-  @superapp/backend
-        │
-    ┌───┼───────────────┐
-    │   │               │
-    ▼   ▼               ▼
-  Auth  Permissions   Query Builder
-                        │
-                        ▼
-                      DuckDB
-                        │
-          ┌─────┬───────┼────────┐
-          ▼     ▼       ▼        ▼
-       Postgres MySQL  SQLite   CSV
+  ┌─────┴─────┐
+  ▼            ▼
+  @superapp/db  @superapp/auth
+  (Drizzle ORM) (Session + UI)
+        │            │
+        │ HTTP + JWT │
+        └─────┬──────┘
+              ▼
+        @superapp/backend
+              │
+    ┌─────────┼───────────────┐
+    │         │               │
+    ▼         ▼               ▼
+  Auth   Permissions    Query Builder
+                              │
+                              ▼
+                            DuckDB
+                              │
+            ┌─────┬───────────┼────────┐
+            ▼     ▼           ▼        ▼
+         Postgres MySQL     SQLite    CSV
 ```
 
 ## How it works
@@ -84,7 +92,7 @@ serve({ fetch: app.fetch, port: 3001 })
 
 ```typescript
 import { drizzle } from '@superapp/db'
-import { createAuth } from '@superapp/db/auth'
+import { createAuth } from '@superapp/auth'
 import * as schema from '../generated/schema'
 
 export const authClient = createAuth('http://localhost:3001')
@@ -110,7 +118,7 @@ const orders = await db.select()
   .limit(50)
 ```
 
-The `filter: { customer_id: { $eq: '$user.id' } }` in the server config injects a WHERE clause into every query -- the client never sees it, and cannot bypass it.
+The `filter: { customer_id: { $eq: '$user.id' } }` in the server config injects a WHERE clause into every query -- the client never sees it, and cannot bypass it. The Drizzle ORM instance in `@superapp/db` returns data that has already been filtered and validated by the backend's permission engine.
 
 ## What's Next
 

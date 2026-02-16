@@ -7,7 +7,7 @@ description: Root layout wrapper that provides auth context to all child compone
 `AuthProvider` wraps your application root and provides auth context (session, sign-in state) to all child components. Required for `useSession`, `AuthCard`, and `UserButton` to work.
 
 ```tsx
-import { AuthProvider } from '@superapp/db/components'
+import { AuthProvider } from '@superapp/auth/components'
 import { authClient } from '@/lib/superapp'
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 ```tsx
 'use client'
 
-import { AuthProvider } from '@superapp/db/components'
+import { AuthProvider } from '@superapp/auth/components'
 import { authClient } from '@/lib/superapp'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'

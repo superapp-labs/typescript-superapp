@@ -39,7 +39,7 @@ const auth = betterAuthProvider({
 })
 
 export const engine = createEngine({
-  database: './superapp.db',
+  superapp_db: './superapp.db',
   integrations: [postgresProvider],
   connections: {
     main: { type: 'postgres', url: process.env.PG_URL! },
@@ -92,7 +92,7 @@ In your frontend project, create `lib/superapp.ts`:
 
 ```typescript
 import { drizzle } from '@superapp/db'
-import { createAuth } from '@superapp/db/auth'
+import { createAuth } from '@superapp/auth'
 import * as schema from '../generated/schema'
 
 const SUPERAPP_URL = process.env.NEXT_PUBLIC_SUPERAPP_URL!
@@ -118,7 +118,7 @@ Wrap your app with `AuthProvider` and drop in `AuthCard` for sign-in/sign-up:
 
 ```tsx
 // app/layout.tsx
-import { AuthProvider } from '@superapp/db/components'
+import { AuthProvider } from '@superapp/auth/components'
 import { authClient } from '@/lib/superapp'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -146,7 +146,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
 ```tsx
 // app/auth/[[...slug]]/page.tsx
-import { AuthCard } from '@superapp/db/components'
+import { AuthCard } from '@superapp/auth/components'
 
 export default function AuthPage() {
   return (
@@ -166,7 +166,7 @@ Create a hook to get a typed database client, then query:
 ```typescript
 // hooks/use-db.ts
 import { useMemo } from 'react'
-import { useSession } from '@superapp/db/auth'
+import { useSession } from '@superapp/auth'
 import { createDb } from '@/lib/db'
 
 export function useDb() {
