@@ -4,44 +4,49 @@ icon: ShoppingCart
 description: Full page example with data table and queries.
 ---
 
-A complete orders dashboard — backend permissions and a Next.js client page.
+A complete orders dashboard — auth, row-level filtering, and a Next.js client page. Each user only sees their own orders.
 
 ## Backend
 
 ```typescript title="engine.ts"
 import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const auth = betterAuthProvider({
+  secret: process.env.AUTH_SECRET!,
+  userTable: {
+    table: 'main.users',
+    matchOn: { column: 'id', jwtField: 'id' },
+  },
+})
 
 const engine = createEngine({
   connections: {
     main: { type: 'postgres', url: process.env.PG_URL! },
   },
+  auth,
 
-  // Define what each permission can access
   permissions: {
     read_orders: {
       table: 'main.orders',
       operations: { select: true },
-      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
-    },
-    read_customers: {
-      table: 'main.customers',
-      operations: { select: true },
-      columns: ['id', 'name', 'email'],
+      columns: ['id', 'amount', 'status', 'created_at'],
+      // Each user only sees orders they created
+      filter: { created_by: { $eq: '$user.id' } },
     },
   },
 
-  // Assign permissions to roles
   roles: {
-    viewer: ['read_orders', 'read_customers'],
-    editor: ['read_orders', 'read_customers'],
-    admin: ['read_orders', 'read_customers'],
+    viewer: ['read_orders'],
+    editor: ['read_orders'],
+    admin: ['read_orders'],
   },
 })
 ```
 
-## Client
+The `filter` injects a `WHERE created_by = ?` clause into every query — the client never sees it, and cannot bypass it.
 
-Types are inferred from Drizzle — no manual `interface` needed.
+## Client
 
 ```tsx title="app/orders/page.tsx"
 'use client'
@@ -49,7 +54,7 @@ Types are inferred from Drizzle — no manual `interface` needed.
 import { useEffect, useState } from 'react'
 import { useSession } from '@superapp/db/auth'
 import { useDb } from '@/hooks/use-db'
-import { ne, desc } from 'drizzle-orm'
+import { desc } from 'drizzle-orm'
 import * as schema from '@/generated/schema'
 
 // Type is inferred from the Drizzle schema
@@ -66,10 +71,9 @@ export default function OrdersDashboard() {
   useEffect(() => {
     if (!db) return
     setLoading(true)
+    // No need to filter by user — the backend handles it
     db.query.orders
       .findMany({
-        with: { customer: true },
-        where: ne(schema.orders.status, 'cancelled'),
         orderBy: desc(schema.orders.createdAt),
         limit: 50,
       })
@@ -86,7 +90,6 @@ export default function OrdersDashboard() {
       <thead>
         <tr>
           <th>ID</th>
-          <th>Customer</th>
           <th>Amount</th>
           <th>Status</th>
           <th>Date</th>
@@ -96,7 +99,6 @@ export default function OrdersDashboard() {
         {orders.map((order) => (
           <tr key={order.id}>
             <td>{order.id}</td>
-            <td>{order.customer.name}</td>
             <td>${order.amount.toFixed(2)}</td>
             <td>{order.status}</td>
             <td>{new Date(order.created_at).toLocaleDateString()}</td>
