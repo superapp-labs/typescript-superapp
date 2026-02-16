@@ -76,7 +76,7 @@ In `admin_ui` mode, the admin UI becomes the primary interface for managing perm
 ```typescript
 const engine = createEngine({
   mode: 'admin_ui',
-  database: process.env.TURSO_URL ?? './superapp.db',
+  superapp_db: process.env.TURSO_URL ?? './superapp.db',
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   auth: betterAuthProvider({ /* ... */ }),
   // No permissions or roles here — they live in the admin UI
