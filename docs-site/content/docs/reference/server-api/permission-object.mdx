@@ -46,7 +46,10 @@ interface Permission {
   customSql?: string
 
   /** Custom TypeScript that wraps query execution */
-  middleware?: (ctx: QueryContext, next: () => Promise<any[]>) => Promise<any[]>
+  middleware?: (
+    params: { user, db, table, operation, columns, query, input?, filter? },
+    next: (overrides?) => Promise<any[]>,
+  ) => Promise<any[]>
 }
 ```
 
@@ -265,18 +268,18 @@ customSql: "created_at >= CURRENT_DATE - INTERVAL '30 days'"
 
 | | |
 |---|---|
-| **Type** | `(ctx: QueryContext, next: () => Promise<any[]>) => Promise<any[]>` |
+| **Type** | `(params, next) => Promise<any[]>` |
 | **Required** | No |
 | **Applies to** | All operations |
 
-A function that wraps query execution. Receives the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Call `next()` to execute the query and get rows back. Mutate `ctx` before `next()` to modify the query. Transform rows after `next()` to shape results.
+A function that wraps query execution. Receives destructured parameters (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Pass overrides to `next({ filter, input, columns, db })` to modify the query. Transform rows after `next()` to shape results. Wrap in `db.transaction()` for atomic operations.
 
 ```typescript
-middleware: async (ctx, next) => {
+middleware: async ({ user, db, operation, input }, next) => {
   // Before: validate
-  if (ctx.operation === 'insert') {
-    const org = await ctx.db.query.organizations.findFirst({
-      where: eq(organizations.id, ctx.user.current_org_id),
+  if (operation === 'insert') {
+    const org = await db.query.organizations.findFirst({
+      where: eq(organizations.id, user.current_org_id),
     })
     if (org.order_count >= org.order_limit) {
       throw new PermissionError('Order limit reached')
@@ -286,7 +289,7 @@ middleware: async (ctx, next) => {
   const rows = await next()
 
   // After: redact
-  if (!ctx.user.roles.includes('admin')) {
+  if (!user.roles.includes('admin')) {
     return rows.map(({ ssn, ...row }) => row)
   }
   return rows

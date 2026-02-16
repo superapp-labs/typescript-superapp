@@ -4,23 +4,37 @@ icon: Code
 description: Run custom TypeScript that wraps query execution, with full access to the database, user session, and query data.
 ---
 
-When declarative filters, checks, and presets are not enough, `middleware` lets you wrap the query execution with custom TypeScript. You get full access to the database, the user session, and the client's query — and you control when (or if) the query runs.
+When declarative filters, checks, and presets are not enough, `middleware` lets you wrap the query execution with custom TypeScript. Every parameter is destructured — you work directly with `user`, `db`, `filter`, `input`, and pass overrides to `next()` to modify what gets executed.
 
 ```typescript
 permissions: {
-  view_orders: {
-    name: 'View orders',
+  create_order: {
+    name: 'Create order',
     table: 'main.orders',
-    operations: { select: true },
-    columns: '*',
-    middleware: async (ctx, next) => {
-      const subscription = await ctx.db.query.subscriptions.findFirst({
-        where: eq(subscriptions.userId, ctx.user.id),
+    operations: { insert: true },
+    columns: ['product_id', 'quantity'],
+    middleware: async ({ user, db, operation, input }, next) => {
+      // Look up the product to validate stock
+      const product = await db.query.products.findFirst({
+        where: eq(products.id, input.product_id),
       })
-      if (subscription?.status !== 'active') {
-        throw new PermissionError('Active subscription required')
+      if (!product || product.stock < input.quantity) {
+        throw new PermissionError('Insufficient stock')
       }
-      return next()
+
+      // Execute the insert inside a transaction so we can
+      // decrement stock atomically — if anything fails, both
+      // the insert and the stock update roll back
+      return db.transaction(async (tx) => {
+        const rows = await next({ db: tx })
+
+        await tx
+          .update(products)
+          .set({ stock: product.stock - input.quantity })
+          .where(eq(products.id, input.product_id))
+
+        return rows
+      })
     },
   },
 }
@@ -28,19 +42,20 @@ permissions: {
 
 ## How It Works
 
-The middleware function wraps the query execution. Call `next()` to execute the query and get the results back:
+The middleware function receives destructured query context and a `next()` function. Call `next()` to execute the query — pass overrides to modify what gets executed:
 
 ```typescript
-middleware: async (ctx, next) => {
-  // 1. Before query — validate, modify ctx.filter / ctx.input / ctx.columns
-  const rows = await next()
+middleware: async ({ user, db, table, operation, columns, query, input, filter }, next) => {
+  // 1. Before query — validate, compute new values
+  const rows = await next({ filter: { ...filter, status: { $ne: 'archived' } } })
   // 2. After query — transform rows, run side effects
   return rows
 }
 ```
 
-- **Before `next()`** — runs after permission checks (step 6) but before DuckDB execution (step 7)
-- **After `next()`** — runs after execution but before the response (step 9)
+- **Before `next()`** — validate access, look up data, compute overrides
+- **`next(overrides)`** — executes the query with any overrides applied
+- **After `next()`** — transform results, run side effects
 - **Skip `next()`** — throw to deny the request entirely
 
 ```text
@@ -59,111 +74,168 @@ middleware: async (ctx, next) => {
   8. Audit Log
 ```
 
-## Query Context
+## Parameters
 
-The `ctx` object contains everything you need:
+Every parameter is destructured — no wrapper object:
 
 ```typescript
-interface QueryContext {
-  /** Resolved user session (same as $user.* in filters) */
-  user: UserSession
-
-  /** Drizzle query builder — run any query against your database */
-  db: DrizzleInstance
-
-  /** Target table, e.g. 'main.orders' */
-  table: string
-
-  /** Detected operation */
-  operation: 'select' | 'insert' | 'update' | 'delete'
-
-  /** Columns the client is requesting or writing */
-  columns: string[]
-
-  /** The client's raw query */
-  query: {
-    /** Parameterized SQL sent by Drizzle Proxy */
-    sql: string
-    /** Parameter values */
-    params: any[]
-  }
-
-  /** Request body values (insert and update only) */
-  input?: Record<string, any>
-
-  /** Current resolved filter (after filter merging and $user.* substitution) */
-  filter?: Record<string, any>
-}
+middleware: async ({ user, db, table, operation, columns, query, input, filter }, next) => {
 ```
 
-### Modifying the Query
+| Parameter | Type | Description |
+|---|---|---|
+| `user` | `UserSession` | Resolved session (same as `$user.*` in filters) |
+| `db` | `DrizzleInstance` | Drizzle query builder — run any query |
+| `table` | `string` | Target table, e.g. `'main.orders'` |
+| `operation` | `'select' \| 'insert' \| 'update' \| 'delete'` | Detected operation |
+| `columns` | `string[]` | Columns the client is requesting or writing |
+| `query` | `{ sql: string, params: any[] }` | The client's raw parameterized SQL |
+| `input` | `Record<string, any> \| undefined` | Request body values (writes only) |
+| `filter` | `Record<string, any> \| undefined` | Resolved filter (after merging and `$user.*` substitution) |
 
-Mutate `ctx` properties before calling `next()` to change what gets executed:
+## Passing Overrides to next()
+
+Pass an object to `next()` to override any parameter before execution:
 
 ```typescript
-middleware: async (ctx, next) => {
-  // Add an extra filter condition
-  ctx.filter = {
-    ...ctx.filter,
-    status: { $ne: 'archived' },
-  }
-
-  // Restrict columns
-  ctx.columns = ['id', 'name', 'status']
-
-  // Normalize input before write
-  if (ctx.input?.email) {
-    ctx.input.email = ctx.input.email.toLowerCase().trim()
-  }
-
-  return next()
+middleware: async ({ filter, columns, input }, next) => {
+  return next({
+    // Extend the filter
+    filter: { ...filter, status: { $ne: 'archived' } },
+    // Restrict columns
+    columns: ['id', 'name', 'status'],
+    // Normalize input
+    input: { ...input, email: input?.email?.toLowerCase().trim() },
+  })
 },
 ```
+
+| Override | Effect |
+|---|---|
+| `filter` | Replaces the filter used in the WHERE clause |
+| `input` | Replaces the input data for writes |
+| `columns` | Replaces the column list |
+| `db` | Replaces the database instance (use for transactions) |
+
+If you call `next()` with no arguments, the query executes unchanged.
+
+## Transactions
+
+Wrap `next()` in `db.transaction()` and pass the transaction as `db` — if anything throws after the query, everything rolls back:
+
+```typescript
+middleware: async ({ user, db, input }, next) => {
+  return db.transaction(async (tx) => {
+    // The main query runs inside the transaction
+    const rows = await next({ db: tx })
+
+    // This runs after the query — if it throws, both the
+    // main query and this update are rolled back
+    await tx.insert(auditLogs).values({
+      userId: user.id,
+      action: 'order_created',
+      orderId: rows[0]?.id,
+      timestamp: new Date(),
+    })
+
+    return rows
+  })
+},
+```
+
+This is especially useful for writes that need atomic side effects — stock decrements, balance updates, counter increments, or any operation where partial completion is not acceptable.
 
 ## Examples
 
-### Validate Against External Data
+### Real-World: Order Creation with Stock Validation
 
-Check a related table before allowing the query:
+A complete example combining pre-validation, transactions, and post-query side effects:
 
 ```typescript
-middleware: async (ctx, next) => {
-  if (ctx.operation === 'insert') {
-    const org = await ctx.db.query.organizations.findFirst({
-      where: eq(organizations.id, ctx.user.current_org_id),
+create_order: {
+  name: 'Create order',
+  table: 'main.orders',
+  operations: { insert: true },
+  columns: ['product_id', 'quantity', 'shipping_address'],
+  preset: {
+    customer_id: '$user.id',
+    organization_id: '$user.current_org_id',
+    status: 'pending',
+  },
+  check: {
+    quantity: { $gte: 1, $lte: 100 },
+  },
+  middleware: async ({ user, db, input }, next) => {
+    // 1. Validate: check product exists and has stock
+    const product = await db.query.products.findFirst({
+      where: and(
+        eq(products.id, input.product_id),
+        eq(products.organizationId, user.current_org_id),
+      ),
     })
-    if (org.order_count >= org.order_limit) {
-      throw new PermissionError('Organization order limit reached')
+    if (!product) {
+      throw new PermissionError('Product not found')
     }
-  }
-  return next()
-},
+    if (product.stock < input.quantity) {
+      throw new PermissionError(
+        `Only ${product.stock} units available`,
+      )
+    }
+
+    // 2. Execute atomically: insert order + decrement stock
+    return db.transaction(async (tx) => {
+      const rows = await next({
+        db: tx,
+        input: {
+          ...input,
+          unit_price: product.price,
+          total: product.price * input.quantity,
+        },
+      })
+
+      await tx
+        .update(products)
+        .set({ stock: sql`stock - ${input.quantity}` })
+        .where(eq(products.id, input.product_id))
+
+      // 3. Side effect: notify warehouse (if this fails, order rolls back)
+      await tx.insert(warehouseJobs).values({
+        orderId: rows[0].id,
+        productId: input.product_id,
+        quantity: input.quantity,
+        status: 'queued',
+      })
+
+      return rows
+    })
+  },
+}
 ```
+
+This permission:
+1. Uses **declarative** `preset`, `check`, and `columns` for the simple stuff
+2. Uses **middleware** to validate stock, compute the price, atomically decrement inventory, and queue a warehouse job — all in one transaction
 
 ### Dynamic Filter Based on Lookup
 
 Add filters based on data only known at runtime:
 
 ```typescript
-middleware: async (ctx, next) => {
-  const teamIds = await ctx.db
+middleware: async ({ user, db, filter }, next) => {
+  const teamIds = await db
     .select({ id: teams.id })
     .from(teams)
     .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
     .where(
       and(
-        eq(teamMembers.userId, ctx.user.id),
+        eq(teamMembers.userId, user.id),
         eq(teamMembers.status, 'active'),
-        gte(teamMembers.joinedAt, subDays(new Date(), 90)),
       ),
     )
 
-  ctx.filter = {
-    ...ctx.filter,
-    team_id: { $in: teamIds.map(t => t.id) },
-  }
-
-  return next()
+  return next({
+    filter: { ...filter, team_id: { $in: teamIds.map(t => t.id) } },
+  })
 },
 ```
 
@@ -172,27 +244,13 @@ middleware: async (ctx, next) => {
 Dynamically limit visible columns based on the user's subscription:
 
 ```typescript
-middleware: async (ctx, next) => {
-  const sub = await ctx.db.query.subscriptions.findFirst({
-    where: eq(subscriptions.userId, ctx.user.id),
+middleware: async ({ user, db }, next) => {
+  const sub = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.userId, user.id),
     columns: { plan: true },
   })
   if (sub?.plan === 'free') {
-    ctx.columns = ['id', 'name', 'status', 'created_at']
-  }
-  return next()
-},
-```
-
-### Normalize Input on Write
-
-Clean up data before it hits the database:
-
-```typescript
-middleware: async (ctx, next) => {
-  if (ctx.operation === 'insert' && ctx.input) {
-    ctx.input.email = ctx.input.email?.toLowerCase().trim()
-    ctx.input.slug = ctx.input.name?.toLowerCase().replace(/\s+/g, '-')
+    return next({ columns: ['id', 'name', 'status', 'created_at'] })
   }
   return next()
 },
@@ -203,10 +261,10 @@ middleware: async (ctx, next) => {
 Mask data based on the user's role:
 
 ```typescript
-middleware: async (ctx, next) => {
+middleware: async ({ user }, next) => {
   const rows = await next()
 
-  if (!ctx.user.roles.includes('admin')) {
+  if (!user.roles.includes('admin')) {
     return rows.map(row => ({
       ...row,
       email: row.email ? `${row.email[0]}***@***` : null,
@@ -222,12 +280,12 @@ middleware: async (ctx, next) => {
 Attach data that isn't stored in the table:
 
 ```typescript
-middleware: async (ctx, next) => {
+middleware: async ({ db }, next) => {
   const rows = await next()
   if (rows.length === 0) return rows
 
   const orderIds = rows.map(r => r.id)
-  const counts = await ctx.db
+  const counts = await db
     .select({
       orderId: orderItems.orderId,
       itemCount: count(),
@@ -244,37 +302,30 @@ middleware: async (ctx, next) => {
 },
 ```
 
-### Log High-Value Operations
+### Transactional Write with Rollback
 
-Write custom audit entries for sensitive queries:
-
-```typescript
-middleware: async (ctx, next) => {
-  const rows = await next()
-
-  if (ctx.operation === 'select' && rows.length > 1000) {
-    await ctx.db.insert(auditLogs).values({
-      userId: ctx.user.id,
-      action: 'large_export',
-      table: ctx.table,
-      rowCount: rows.length,
-      timestamp: new Date(),
-    })
-  }
-  return rows
-},
-```
-
-### Inspect the Client Query
-
-Use `ctx.query` to make decisions based on the raw SQL:
+Ensure a write and its side effects succeed or fail together:
 
 ```typescript
-middleware: async (ctx, next) => {
-  if (!ctx.query.sql.includes('created_at')) {
-    throw new PermissionError('Query must include a created_at filter')
-  }
-  return next()
+middleware: async ({ user, db, operation }, next) => {
+  if (operation !== 'delete') return next()
+
+  return db.transaction(async (tx) => {
+    const rows = await next({ db: tx })
+
+    // Recalculate org usage — if this fails, the delete rolls back
+    const remaining = await tx
+      .select({ count: count() })
+      .from(orders)
+      .where(eq(orders.organizationId, user.current_org_id))
+
+    await tx
+      .update(organizations)
+      .set({ orderCount: remaining[0].count })
+      .where(eq(organizations.id, user.current_org_id))
+
+    return rows
+  })
 },
 ```
 
@@ -298,20 +349,15 @@ manage_orders: {
   name: 'Manage orders',
   table: 'main.orders',
   operations: { select: true, insert: true, update: true },
-  // Declarative: org scoping
   filter: { organization_id: { $in: '$user.org_ids' } },
-  // Declarative: value validation
   check: { amount: { $gte: 0 } },
-  // Declarative: audit columns
   preset: { updated_by: '$user.id' },
-  // Programmatic: business logic
-  middleware: async (ctx, next) => {
-    // Before: only managers can approve
-    if (ctx.operation === 'update' && ctx.input?.status === 'approved') {
-      const membership = await ctx.db.query.orgMembers.findFirst({
+  middleware: async ({ user, db, operation, input }, next) => {
+    if (operation === 'update' && input?.status === 'approved') {
+      const membership = await db.query.orgMembers.findFirst({
         where: and(
-          eq(orgMembers.userId, ctx.user.id),
-          eq(orgMembers.orgId, ctx.user.current_org_id),
+          eq(orgMembers.userId, user.id),
+          eq(orgMembers.orgId, user.current_org_id),
         ),
         columns: { role: true },
       })
@@ -322,8 +368,7 @@ manage_orders: {
 
     const rows = await next()
 
-    // After: strip internal_notes for non-managers
-    if (!ctx.user.roles.includes('manager')) {
+    if (!user.roles.includes('manager')) {
       return rows.map(({ internal_notes, ...row }) => row)
     }
     return rows
@@ -336,12 +381,12 @@ manage_orders: {
 Throw `PermissionError` to reject with `403 Forbidden`:
 
 ```typescript
-middleware: async (ctx, next) => {
+middleware: async (params, next) => {
   throw new PermissionError('Reason shown in error response')
 },
 ```
 
-Any other thrown error returns `500 Internal Server Error` and is logged but not exposed to the client.
+Any other thrown error returns `500 Internal Server Error` and is logged but not exposed to the client. When using transactions, any throw inside `db.transaction()` automatically rolls back all queries within that transaction.
 
 ## When to Use
 
@@ -355,6 +400,6 @@ Any other thrown error returns `500 Internal Server Error` and is logged but not
 | Business rule validation | Use `middleware` |
 | Input transformation | Use `middleware` |
 | Result transformation | Use `middleware` |
-| Side effects (audit, notifications) | Use `middleware` |
+| Atomic writes with side effects | Use `middleware` with `db.transaction()` |
 
 Prefer declarative rules when possible. Use `middleware` only when the built-in mechanisms cannot express your logic.

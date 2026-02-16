@@ -130,11 +130,12 @@ If any check fails, returns `403 Forbidden`.
 
 ### 6a. Middleware (before next)
 
-If the matching permission defines a `middleware` function, it runs now with the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Before calling `next()`, the middleware can:
+If the matching permission defines a `middleware` function, it runs now with destructured parameters (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Before calling `next()`, the middleware can:
 
 - **Throw** to reject the request with `403 Forbidden`
-- **Mutate `ctx`** to modify `filter`, `input`, or `columns` before execution
-- **Run queries** via `ctx.db` to look up related data
+- **Pass overrides** to `next({ filter, input, columns, db })` to modify the query
+- **Run queries** via `db` to look up related data
+- **Wrap in `db.transaction()`** for atomic operations
 
 See [Middleware](/docs/backend/permissions/middleware) for details.
 
