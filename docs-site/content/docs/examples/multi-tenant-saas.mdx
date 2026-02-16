@@ -4,268 +4,195 @@ description: Organization-scoped permissions setup.
 icon: Building2
 ---
 
-A complete multi-tenant configuration where users belong to organizations and can only access data within their org. Includes role hierarchy, session enrichment, and client-side usage.
+**Use case:** A SaaS app where users belong to organizations. Each user only sees data from their own orgs. Roles control what they can do within those orgs.
 
-## Database Schema
+## Backend
 
-```sql
-CREATE TABLE organizations (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  slug TEXT UNIQUE NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE members (
-  id SERIAL PRIMARY KEY,
-  user_id INTEGER NOT NULL REFERENCES users(id),
-  organization_id INTEGER NOT NULL REFERENCES organizations(id),
-  role TEXT NOT NULL DEFAULT 'viewer',
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, organization_id)
-);
-
-CREATE TABLE orders (
-  id SERIAL PRIMARY KEY,
-  amount DECIMAL(10,2) NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  customer_id INTEGER NOT NULL,
-  organization_id INTEGER NOT NULL REFERENCES organizations(id),
-  created_at TIMESTAMP DEFAULT NOW()
-);
-
-CREATE TABLE customers (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT NOT NULL,
-  organization_id INTEGER NOT NULL REFERENCES organizations(id),
-  created_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-## Server Configuration
-
-```typescript
+```typescript title="engine.ts"
 import { createEngine } from '@superapp/backend'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
-import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
-import { Hono } from 'hono'
-import { serve } from '@hono/node-server'
+
+const auth = betterAuthProvider({
+  secret: process.env.AUTH_SECRET!,
+  userTable: {
+    table: 'main.users',
+    matchOn: { column: 'id', jwtField: 'id' },
+  },
+})
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
     main: { type: 'postgres', url: process.env.PG_URL! },
   },
-  auth: betterAuthProvider({
-    secret: process.env.AUTH_SECRET!,
-    userTable: {
-      table: 'main.users',
-      matchOn: { column: 'id', jwtField: 'id' },
-      columns: ['id', 'email', 'name'],
-    },
-  }),
+  auth,
+
+  // Enrich session with the user's org memberships
   resolveSession: async (user, db) => {
-    // Fetch user's org memberships and attach to session
     const memberships = await db.main.members.findMany({
       select: ['organization_id', 'role'],
       where: { user_id: { $eq: user.id } },
     })
     return {
       ...user,
-      memberships,
-      organizationIds: memberships.map((m) => m.organization_id),
+      org_ids: memberships.map((m) => m.organization_id),
     }
   },
+
   permissions: {
-    // --- Viewer permissions ---
-    view_orders: {
-      name: 'View orders in own orgs',
+    // Read orders — scoped to user's orgs
+    read_org_orders: {
       table: 'main.orders',
       operations: { select: true },
-      columns: ['id', 'amount', 'status', 'customer_id', 'organization_id', 'created_at'],
-      filter: {
-        organization_id: { $in: '$user.organizationIds' },
-      },
+      columns: ['id', 'amount', 'status', 'organization_id', 'created_at'],
+      filter: { organization_id: { $in: '$user.org_ids' } },
     },
-    view_customers: {
-      name: 'View customers in own orgs',
-      table: 'main.customers',
-      operations: { select: true },
-      columns: ['id', 'name', 'email', 'organization_id', 'created_at'],
-      filter: {
-        organization_id: { $in: '$user.organizationIds' },
+
+    // Create orders — org_id must match user's orgs, amount must be positive
+    create_org_orders: {
+      table: 'main.orders',
+      operations: { insert: true },
+      columns: ['amount', 'status', 'organization_id'],
+      check: {
+        organization_id: { $in: '$user.org_ids' },
+        amount: { $gt: 0 },
+        status: { $eq: 'draft' },
+      },
+      preset: {
+        created_by: '$user.id',
+        created_at: '$now',
       },
     },
 
-    // --- Editor permissions ---
-    create_orders: {
-      name: 'Create orders in own orgs',
-      table: 'main.orders',
-      operations: { insert: true },
-      columns: ['amount', 'status', 'customer_id', 'organization_id'],
-      check: {
-        organization_id: { $in: '$user.organizationIds' },
-      },
-    },
-    update_orders: {
-      name: 'Update orders in own orgs',
+    // Update orders — only within user's orgs
+    update_org_orders: {
       table: 'main.orders',
       operations: { update: true },
       columns: ['amount', 'status'],
-      filter: {
-        organization_id: { $in: '$user.organizationIds' },
+      filter: { organization_id: { $in: '$user.org_ids' } },
+      check: {
+        amount: { $gt: 0 },
+        status: { $in: ['draft', 'active', 'cancelled'] },
       },
+      preset: { updated_at: '$now' },
     },
 
-    // --- Admin permissions ---
-    manage_customers: {
-      name: 'Full customer access in own orgs',
-      table: 'main.customers',
-      operations: { select: true, insert: true, update: true, delete: true },
-      columns: ['id', 'name', 'email', 'organization_id', 'created_at'],
+    // Delete draft orders — only within user's orgs
+    delete_org_draft_orders: {
+      table: 'main.orders',
+      operations: { delete: true },
       filter: {
-        organization_id: { $in: '$user.organizationIds' },
-      },
-      check: {
-        organization_id: { $in: '$user.organizationIds' },
-      },
-    },
-    manage_members: {
-      name: 'Manage org members',
-      table: 'main.members',
-      operations: { select: true, insert: true, update: true, delete: true },
-      columns: ['id', 'user_id', 'organization_id', 'role', 'created_at'],
-      filter: {
-        organization_id: { $in: '$user.organizationIds' },
-      },
-      check: {
-        organization_id: { $in: '$user.organizationIds' },
-      },
-    },
-
-    // --- Owner permissions ---
-    manage_organization: {
-      name: 'Manage organization settings',
-      table: 'main.organizations',
-      operations: { select: true, update: true },
-      columns: ['id', 'name', 'slug', 'created_at'],
-      filter: {
-        id: { $in: '$user.organizationIds' },
+        organization_id: { $in: '$user.org_ids' },
+        status: { $eq: 'draft' },
       },
     },
   },
+
   roles: {
-    viewer: ['view_orders', 'view_customers'],
-    editor: ['view_orders', 'view_customers', 'create_orders', 'update_orders'],
-    admin: [
-      'view_orders', 'view_customers',
-      'create_orders', 'update_orders',
-      'manage_customers', 'manage_members',
-    ],
-    owner: [
-      'view_orders', 'view_customers',
-      'create_orders', 'update_orders',
-      'manage_customers', 'manage_members',
-      'manage_organization',
-    ],
+    viewer: ['read_org_orders'],
+    editor: ['read_org_orders', 'create_org_orders', 'update_org_orders'],
+    admin: ['read_org_orders', 'create_org_orders', 'update_org_orders', 'delete_org_draft_orders'],
   },
-  masterKey: process.env.SUPERAPP_MASTER_KEY!,
 })
-
-const app = new Hono()
-app.route('/', createHonoMiddleware(engine))
-serve({ fetch: app.fetch, port: 3001 })
 ```
 
-## Role Hierarchy
+**How org scoping works:**
 
-Each role inherits the permissions of the roles below it:
+1. `resolveSession` fetches the user's org memberships and returns `org_ids`
+2. Every permission uses `filter: { organization_id: { $in: '$user.org_ids' } }` — injected as a WHERE clause
+3. On inserts, `check` validates the `organization_id` the client sends matches one of the user's orgs
+4. The client never filters by org — the server handles it automatically
 
-| Role | Capabilities |
-|---|---|
-| `viewer` | Read orders and customers in own orgs |
-| `editor` | Everything in viewer + create and update orders |
-| `admin` | Everything in editor + manage customers and org members |
-| `owner` | Everything in admin + manage organization settings |
+## Client
 
-## How Session Enrichment Works
-
-The `resolveSession` callback runs after JWT validation but before permission checks. It queries the database for the user's org memberships and attaches them to the session:
-
-```typescript
-resolveSession: async (user, db) => {
-  const memberships = await db.main.members.findMany({
-    select: ['organization_id', 'role'],
-    where: { user_id: { $eq: user.id } },
-  })
-  return {
-    ...user,
-    memberships,
-    organizationIds: memberships.map((m) => m.organization_id),
-  }
-}
-```
-
-The `$user.organizationIds` reference in permission filters resolves to the array returned here. Every query is automatically scoped to the user's organizations.
-
-## Client Usage
-
-The frontend code is identical to any other superapp project. The org-scoping happens server-side:
-
-```tsx
+```tsx title="app/orders/page.tsx"
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useDb } from '@/hooks/use-db'
 import { useSession } from '@superapp/db/auth'
+import { useDb } from '@/hooks/use-db'
 import { desc } from 'drizzle-orm'
 import * as schema from '@/generated/schema'
 
-export default function OrdersPage() {
-  const { data: session } = useSession()
+// Type is inferred from the Drizzle schema
+type Order = Awaited<
+  ReturnType<ReturnType<typeof useDb>['query']['orders']['findMany']>
+>[number]
+
+export default function OrdersDashboard() {
+  const { data: session, isPending } = useSession()
   const db = useDb()
-  const [orders, setOrders] = useState<any[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const loadOrders = () => {
     if (!db) return
+    setLoading(true)
     // No org filter needed — the server injects it automatically
-    db.query.orders.findMany({
-      with: { customer: true },
-      orderBy: desc(schema.orders.createdAt),
-      limit: 50,
-    })
+    db.query.orders
+      .findMany({
+        orderBy: desc(schema.orders.createdAt),
+        limit: 50,
+      })
       .then(setOrders)
-  }, [db])
+      .finally(() => setLoading(false))
+  }
 
-  if (!session) return <p>Please sign in.</p>
+  useEffect(loadOrders, [db])
+
+  // Create — backend validates org_id and enforces created_by
+  const createOrder = async (amount: number, organizationId: number) => {
+    await db!.insert(schema.orders).values({
+      amount,
+      status: 'draft',
+      organization_id: organizationId,
+    })
+    loadOrders()
+  }
+
+  // Update — backend scopes to user's orgs, validates status
+  const updateStatus = async (id: number, status: string) => {
+    await db!.update(schema.orders).set({ status }).where({ id })
+    loadOrders()
+  }
+
+  // Delete — backend only allows draft orders in user's orgs
+  const deleteOrder = async (id: number) => {
+    await db!.delete(schema.orders).where({ id })
+    loadOrders()
+  }
+
+  if (isPending) return <p>Loading session...</p>
+  if (!session) return <p>Please sign in to view orders.</p>
+  if (loading) return <p>Loading orders...</p>
 
   return (
-    <ul>
-      {orders.map((o) => (
-        <li key={o.id}>
-          Order #{o.id} - ${o.amount} - {o.status} - {o.customer.name}
-        </li>
-      ))}
-    </ul>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Amount</th>
+          <th>Status</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {orders.map((order) => (
+          <tr key={order.id}>
+            <td>{order.id}</td>
+            <td>${order.amount.toFixed(2)}</td>
+            <td>{order.status}</td>
+            <td>{new Date(order.created_at).toLocaleDateString()}</td>
+            <td>
+              <button onClick={() => updateStatus(order.id, 'cancelled')}>
+                Cancel
+              </button>
+              <button onClick={() => deleteOrder(order.id)}>Delete</button>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   )
 }
 ```
-
-The client sends `findMany` with no filter on `organization_id`. The server's permission filter (`organization_id: { $in: '$user.organizationIds' }`) is injected automatically, so the user only sees orders belonging to their organizations.
-
-## Creating Org-Scoped Records
-
-Editors and above can create orders. The `check` rule ensures the `organization_id` in the insert matches one of the user's orgs:
-
-```typescript
-await db.insert(schema.orders).values({
-  amount: 149.99,
-  status: 'pending',
-  customerId: 42,
-  organizationId: 1, // must be in user's organizationIds
-})
-```
-
-If the user tries to insert an order with an `organization_id` they do not belong to, the server returns `403 Forbidden`.
