@@ -28,13 +28,13 @@ Every `POST /data` request passes through a 9-step pipeline. The client sends pa
   6. Permission Check — Validate SQL → Inject filters → Restrict columns → Check → Preset
     │
     ▼
-  6a. Guard — Custom TypeScript logic (optional)
+  6a. Middleware (before next) — Custom TypeScript logic (optional)
     │
     ▼
-  7. DuckDB Execution — Run permission-filtered SQL against attached databases
+  7. DuckDB Execution — next() runs the permission-filtered SQL
     │
     ▼
-  7a. Transform — Custom TypeScript logic (optional)
+  7a. Middleware (after next) — Custom TypeScript logic (optional)
     │
     ▼
   8. Audit Log — Record query, params, duration, user
@@ -128,15 +128,15 @@ limits: {
 
 If any check fails, returns `403 Forbidden`.
 
-### 6a. Guard
+### 6a. Middleware (before next)
 
-If the matching permission defines a `guard` function, it runs now with the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`). The guard can:
+If the matching permission defines a `middleware` function, it runs now with the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Before calling `next()`, the middleware can:
 
 - **Throw** to reject the request with `403 Forbidden`
-- **Return** modified `filter`, `input`, or `columns` to alter the query
-- **Return nothing** to pass through unchanged
+- **Mutate `ctx`** to modify `filter`, `input`, or `columns` before execution
+- **Run queries** via `ctx.db` to look up related data
 
-See [Guard & Transform](/docs/backend/permissions/guard-and-transform) for details.
+See [Middleware](/docs/backend/permissions/middleware) for details.
 
 ### 7. DuckDB Execution
 
@@ -150,15 +150,15 @@ duckdb: {
 
 Timeout returns `408 Request Timeout`.
 
-### 7a. Transform
+### 7a. Middleware (after next)
 
-If the matching permission defines a `transform` function, it runs with the query results. The transform can:
+After `next()` returns the query results, the middleware can:
 
-- **Return an array** to replace the result set (transform, redact, or enrich rows)
-- **Return nothing** to pass results through unchanged
-- **Run side effects** like writing audit entries or triggering notifications
+- **Transform rows** — redact fields, add computed columns, filter results
+- **Run side effects** — write audit entries, trigger notifications
+- **Return rows unchanged** — pass through when no transformation is needed
 
-See [Guard & Transform](/docs/backend/permissions/guard-and-transform) for details.
+See [Middleware](/docs/backend/permissions/middleware) for details.
 
 ### 8. Audit Log
 

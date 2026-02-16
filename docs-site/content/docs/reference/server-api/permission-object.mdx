@@ -45,11 +45,8 @@ interface Permission {
   /** Custom SQL fragment for advanced filtering (use with caution) */
   customSql?: string
 
-  /** Programmatic gatekeeper — runs before query execution */
-  guard?: (ctx: QueryContext) => Promise<GuardResult | void>
-
-  /** Programmatic result shaping — runs after query execution */
-  transform?: (ctx: TransformContext) => Promise<any[] | void>
+  /** Custom TypeScript that wraps query execution */
+  middleware?: (ctx: QueryContext, next: () => Promise<any[]>) => Promise<any[]>
 }
 ```
 
@@ -264,48 +261,39 @@ customSql: "created_at >= CURRENT_DATE - INTERVAL '30 days'"
 `customSql` bypasses the filter operator validation. Use it sparingly and ensure the SQL is safe. Never interpolate user input directly.
 </Callout>
 
-### `guard`
+### `middleware`
 
 | | |
 |---|---|
-| **Type** | `(ctx: QueryContext) => Promise<GuardResult \| void>` |
+| **Type** | `(ctx: QueryContext, next: () => Promise<any[]>) => Promise<any[]>` |
 | **Required** | No |
 | **Applies to** | All operations |
 
-A function that runs after permission checks but before query execution. Receives the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`). Can deny the request by throwing, or modify the query by returning `{ filter, input, columns }`.
+A function that wraps query execution. Receives the full query context (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Call `next()` to execute the query and get rows back. Mutate `ctx` before `next()` to modify the query. Transform rows after `next()` to shape results.
 
 ```typescript
-guard: async ({ user, db, operation, input }) => {
-  if (operation === 'insert') {
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, user.current_org_id),
+middleware: async (ctx, next) => {
+  // Before: validate
+  if (ctx.operation === 'insert') {
+    const org = await ctx.db.query.organizations.findFirst({
+      where: eq(organizations.id, ctx.user.current_org_id),
     })
     if (org.order_count >= org.order_limit) {
       throw new PermissionError('Order limit reached')
     }
   }
-},
-```
 
-### `transform`
+  const rows = await next()
 
-| | |
-|---|---|
-| **Type** | `(ctx: TransformContext) => Promise<any[] \| void>` |
-| **Required** | No |
-| **Applies to** | All operations |
-
-A function that runs after query execution. Receives the query context plus `rows`. Return an array to replace the result set, or void to pass through.
-
-```typescript
-transform: async ({ user, rows }) => {
-  if (!user.roles.includes('admin')) {
+  // After: redact
+  if (!ctx.user.roles.includes('admin')) {
     return rows.map(({ ssn, ...row }) => row)
   }
+  return rows
 },
 ```
 
-See [Guard & Transform](/docs/backend/permissions/guard-and-transform) for full documentation and examples.
+See [Middleware](/docs/backend/permissions/middleware) for full documentation and examples.
 
 ## Complete Examples
 
