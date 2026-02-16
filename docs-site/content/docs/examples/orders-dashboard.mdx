@@ -1,10 +1,10 @@
 ---
 title: Orders Dashboard
 icon: ShoppingCart
-description: Full page example with data table and queries.
+description: Full CRUD example with auth, validation, and row-level security.
 ---
 
-A complete orders dashboard — auth, row-level filtering, and a Next.js client page. Each user only sees their own orders.
+**Use case:** A sales team app where each rep creates and manages their own orders. Reps can only see, edit, and delete their own orders. Admins can view all orders.
 
 ## Backend
 
@@ -27,24 +27,84 @@ const engine = createEngine({
   auth,
 
   permissions: {
-    read_orders: {
+    // Rep sees only orders they created
+    read_own_orders: {
       table: 'main.orders',
       operations: { select: true },
-      columns: ['id', 'amount', 'status', 'created_at'],
-      // Each user only sees orders they created
+      columns: ['id', 'amount', 'status', 'created_by', 'created_at'],
       filter: { created_by: { $eq: '$user.id' } },
+    },
+
+    // Admin sees all orders
+    read_all_orders: {
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'created_by', 'created_at'],
+    },
+
+    // Rep creates orders — ownership is enforced, amount must be positive,
+    // new orders can only start as draft
+    create_own_orders: {
+      table: 'main.orders',
+      operations: { insert: true },
+      columns: ['amount', 'status'],
+      check: {
+        amount: { $gt: 0 },
+        status: { $eq: 'draft' },
+      },
+      preset: {
+        created_by: '$user.id',
+        created_at: '$now',
+      },
+    },
+
+    // Rep updates only their own orders — amount stays positive,
+    // status transitions are restricted
+    update_own_orders: {
+      table: 'main.orders',
+      operations: { update: true },
+      columns: ['amount', 'status'],
+      filter: { created_by: { $eq: '$user.id' } },
+      check: {
+        amount: { $gt: 0 },
+        status: { $in: ['draft', 'active', 'cancelled'] },
+      },
+      preset: { updated_at: '$now' },
+    },
+
+    // Rep can only delete their own draft orders
+    delete_own_draft_orders: {
+      table: 'main.orders',
+      operations: { delete: true },
+      filter: {
+        created_by: { $eq: '$user.id' },
+        status: { $eq: 'draft' },
+      },
     },
   },
 
   roles: {
-    viewer: ['read_orders'],
-    editor: ['read_orders'],
-    admin: ['read_orders'],
+    sales_rep: [
+      'read_own_orders',
+      'create_own_orders',
+      'update_own_orders',
+      'delete_own_draft_orders',
+    ],
+    admin: [
+      'read_all_orders',
+      'create_own_orders',
+      'update_own_orders',
+      'delete_own_draft_orders',
+    ],
   },
 })
 ```
 
-The `filter` injects a `WHERE created_by = ?` clause into every query — the client never sees it, and cannot bypass it.
+**How it works:**
+
+- **`filter`** — injects a WHERE clause. A rep querying orders automatically gets `WHERE created_by = ?` — they never see other reps' orders.
+- **`check`** — validates incoming data. Sending `amount: -5` or `status: 'shipped'` is rejected with `403` before any SQL runs.
+- **`preset`** — auto-sets `created_by` and timestamps. The client cannot override these — ownership is enforced server-side.
 
 ## Client
 
@@ -57,7 +117,7 @@ import { useDb } from '@/hooks/use-db'
 import { desc } from 'drizzle-orm'
 import * as schema from '@/generated/schema'
 
-// Type is inferred from the Drizzle schema
+// Type is inferred from the Drizzle schema — no manual interface needed
 type Order = Awaited<
   ReturnType<ReturnType<typeof useDb>['query']['orders']['findMany']>
 >[number]
@@ -68,10 +128,10 @@ export default function OrdersDashboard() {
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  // Fetch orders — backend scopes to current user automatically
+  const loadOrders = () => {
     if (!db) return
     setLoading(true)
-    // No need to filter by user — the backend handles it
     db.query.orders
       .findMany({
         orderBy: desc(schema.orders.createdAt),
@@ -79,7 +139,27 @@ export default function OrdersDashboard() {
       })
       .then(setOrders)
       .finally(() => setLoading(false))
-  }, [db])
+  }
+
+  useEffect(loadOrders, [db])
+
+  // Create — backend enforces created_by and validates amount > 0
+  const createOrder = async (amount: number) => {
+    await db!.insert(schema.orders).values({ amount, status: 'draft' })
+    loadOrders()
+  }
+
+  // Update — backend only allows own orders, validates status transitions
+  const updateStatus = async (id: number, status: string) => {
+    await db!.update(schema.orders).set({ status }).where({ id })
+    loadOrders()
+  }
+
+  // Delete — backend only allows own draft orders
+  const deleteOrder = async (id: number) => {
+    await db!.delete(schema.orders).where({ id })
+    loadOrders()
+  }
 
   if (isPending) return <p>Loading session...</p>
   if (!session) return <p>Please sign in to view orders.</p>
@@ -93,6 +173,7 @@ export default function OrdersDashboard() {
           <th>Amount</th>
           <th>Status</th>
           <th>Date</th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -102,6 +183,12 @@ export default function OrdersDashboard() {
             <td>${order.amount.toFixed(2)}</td>
             <td>{order.status}</td>
             <td>{new Date(order.created_at).toLocaleDateString()}</td>
+            <td>
+              <button onClick={() => updateStatus(order.id, 'cancelled')}>
+                Cancel
+              </button>
+              <button onClick={() => deleteOrder(order.id)}>Delete</button>
+            </td>
           </tr>
         ))}
       </tbody>
