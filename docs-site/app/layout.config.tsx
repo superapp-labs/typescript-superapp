@@ -10,5 +10,10 @@ export const baseOptions: BaseLayoutProps = {
       url: '/docs',
       active: 'nested-url',
     },
+    {
+      text: 'GitHub',
+      url: 'https://github.com/user/superapp-backend',
+      external: true,
+    },
   ],
 }
