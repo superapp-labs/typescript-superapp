@@ -1,17 +1,19 @@
 ---
-title: createClient
-description: Create a type-safe query client connected to your superapp backend.
+title: Setting Up the Client
+description: Configure the Drizzle ORM client with your superapp backend connection and generated schema.
+icon: Plug
 ---
 
-`createClient` returns a typed query builder that sends structured JSON to your superapp backend over HTTP.
+The `drizzle()` function creates a Drizzle ORM instance configured with an HTTP driver that connects to your superapp backend.
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({
-  url: 'http://localhost:3001/data',
-  userToken: 'eyJhbG...',
+const db = drizzle({
+  connection: 'http://localhost:3001',
+  token: session.token,
+  schema,
 })
 ```
 
@@ -19,44 +21,44 @@ const db = createClient<SuperAppSchema>({
 
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
-| `url` | `string` | Yes | The full URL to your superapp `/data` endpoint |
-| `userToken` | `string` | Yes | A valid JWT obtained from the auth client |
+| `connection` | `string` | Yes | Your superapp backend URL |
+| `token` | `string` | Yes | A valid JWT obtained from the auth client |
+| `schema` | `object` | Yes | Your generated Drizzle schema object |
 
-## Type Parameter
+## Schema Import
 
-Pass your generated `SuperAppSchema` type to get full autocomplete for connection names, table names, column names, and return types.
+The schema is auto-generated from your database by the CLI. It contains standard Drizzle table definitions:
 
 ```typescript
-// With type parameter — full autocomplete
-const db = createClient<SuperAppSchema>({ url, userToken })
-db.main.orders.findMany({ select: ['id', 'amount'] })
-//                                   ^ autocomplete for column names
+import * as schema from './generated/schema'
 
-// Without type parameter — no autocomplete, no type checking
-const db = createClient({ url, userToken })
+// schema.orders → pgTable('orders', { ... })
+// schema.customers → pgTable('customers', { ... })
+// schema.ordersRelations → relations(orders, ({ one }) => ({ ... }))
 ```
 
-See [Type Generation](/docs/client/type-generation) for how to generate `SuperAppSchema`.
+See [Type Generation](/docs/client/type-generation) for how to generate the schema.
 
 ## Recommended Setup
 
 Create a shared setup file and a React hook for easy access across your app.
 
-**`lib/superapp.ts`**
+**`lib/db.ts`**
 
 ```typescript
-import { createClient } from '@superapp/db'
+import { drizzle } from '@superapp/db'
 import { createAuth } from '@superapp/db/auth'
-import type { SuperAppSchema } from '../generated/schema'
+import * as schema from '../generated/schema'
 
 const SUPERAPP_URL = process.env.NEXT_PUBLIC_SUPERAPP_URL!
 
 export const authClient = createAuth(SUPERAPP_URL)
 
-export function createDb(userToken: string) {
-  return createClient<SuperAppSchema>({
-    url: SUPERAPP_URL + '/data',
-    userToken,
+export function createDb(token: string) {
+  return drizzle({
+    connection: SUPERAPP_URL,
+    token,
+    schema,
   })
 }
 ```
@@ -66,7 +68,7 @@ export function createDb(userToken: string) {
 ```tsx
 import { useMemo } from 'react'
 import { useSession } from '@superapp/db/auth'
-import { createDb } from '@/lib/superapp'
+import { createDb } from '@/lib/db'
 
 export function useDb() {
   const { data: session } = useSession()
@@ -81,29 +83,30 @@ export function useDb() {
 
 ```tsx
 import { useDb } from '@/hooks/use-db'
+import { eq, desc } from 'drizzle-orm'
+import * as schema from '@/generated/schema'
 
 export function OrdersList() {
   const db = useDb()
 
   async function loadOrders() {
     if (!db) return
-    const orders = await db.main.orders.findMany({
-      select: ['id', 'amount', 'status'],
-      orderBy: { created_at: 'desc' },
-      limit: 50,
-    })
-    // orders: { id: string; amount: number; status: string }[]
+    const orders = await db.select()
+      .from(schema.orders)
+      .where(eq(schema.orders.status, 'active'))
+      .orderBy(desc(schema.orders.createdAt))
+      .limit(50)
   }
 }
 ```
 
 ## How It Works
 
-When you call a query method, the client:
+When you call a Drizzle query method, the HTTP driver:
 
-1. Builds a structured JSON request from your method call.
-2. POSTs the JSON to the `/data` endpoint with the JWT in the `Authorization` header.
-3. The server validates the token, applies row-level permissions, and executes the query.
+1. Serializes the query to a structured format.
+2. POSTs it to the backend with the JWT in the `Authorization` header.
+3. The backend validates the token, applies row-level permissions, and executes the query.
 4. Returns the typed result.
 
-No SQL is generated on the client. The server handles all query building and execution.
+The query syntax is identical to standard Drizzle ORM — the only difference is the transport layer.

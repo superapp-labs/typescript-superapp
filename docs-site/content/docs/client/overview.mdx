@@ -1,81 +1,73 @@
 ---
 title: Client SDK Overview
-description: Type-safe query builder and auth UI components for your frontend with zero server dependencies.
+description: Drizzle ORM for the frontend — real Drizzle with an HTTP driver that enforces permissions transparently.
+icon: Monitor
 ---
 
-`@superapp/db` connects your frontend to any database through the superapp backend — with full type safety, authentication, and pre-built UI components.
+`@superapp/db` gives your frontend **real Drizzle ORM** connected to any database through the superapp backend. Same API you already know — permissions enforced automatically.
 
 ## How It Works
 
-Your client builds structured JSON queries and POSTs them to the `/data` endpoint with a JWT. The server validates the token, applies row-level permissions, and executes the query against your database.
+The client uses a Drizzle HTTP driver plugin that sends queries to the superapp backend. The server validates your JWT, applies row-level permissions, and executes against your database.
 
-```
-Frontend (db.main.orders.findMany(...))
-    ↓  structured JSON + JWT
-POST /data
-    ↓  permissions applied
-Database → response
+```mermaid
+flowchart LR
+    A["Client (Drizzle ORM)"] --> B["HTTP Driver"]
+    B --> C["superapp Backend"]
+    C --> D["Permission Engine"]
+    D --> E["Database"]
 ```
 
 ## Quick Example
 
 ```typescript
-import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import { drizzle } from '@superapp/db'
+import { eq, desc } from 'drizzle-orm'
+import * as schema from './generated/schema'
 
-const db = createClient<SuperAppSchema>({
-  url: 'http://localhost:3001/data',
-  userToken: 'eyJhbG...',
+const db = drizzle({
+  connection: 'http://localhost:3001',
+  token: session.token,
+  schema,
 })
 
-const orders = await db.main.orders.findMany({
-  select: ['id', 'amount', 'status'],
-  where: { status: { $eq: 'active' } },
-  limit: 10,
-})
-// orders: { id: string; amount: number; status: string }[]
+// Standard Drizzle queries — permissions enforced transparently
+const orders = await db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+  .orderBy(desc(schema.orders.createdAt))
+  .limit(10)
+// orders: { id: string; amount: number; status: string; createdAt: Date }[]
 ```
-
-## Query Pattern
-
-Every query follows the same pattern:
-
-```
-db.{connection}.{table}.{method}(options)
-```
-
-- **connection** — The database connection name defined in your server config (e.g., `main`).
-- **table** — The table name in that database (e.g., `orders`, `customers`).
-- **method** — The query method to execute.
 
 ## Available Methods
 
 | Method | Description |
 | --- | --- |
-| [`findMany`](/docs/client/queries/find-many) | Fetch multiple rows with filtering, sorting, and pagination |
-| [`findOne`](/docs/client/queries/find-one) | Fetch a single row by condition |
-| [`create`](/docs/client/queries/create) | Insert a new row |
-| [`update`](/docs/client/queries/update) | Update one or more rows |
-| [`delete`](/docs/client/queries/delete) | Delete one or more rows |
-| [`count`](/docs/client/queries/count) | Count rows matching a filter |
-| [`aggregate`](/docs/client/queries/aggregate) | Sum, avg, min, max with groupBy |
+| [`db.select()`](/docs/client/queries/find-many) | Select rows with filtering, sorting, joins, and pagination |
+| [`db.query.*.findMany()`](/docs/client/queries/find-many) | Relational queries with eager loading |
+| [`db.query.*.findFirst()`](/docs/client/queries/find-one) | Find a single record with relations |
+| [`db.insert()`](/docs/client/queries/create) | Insert one or more rows |
+| [`db.update()`](/docs/client/queries/update) | Update rows matching a condition |
+| [`db.delete()`](/docs/client/queries/delete) | Delete rows matching a condition |
+| [`db.select({ count: count() })`](/docs/client/queries/count) | Count rows |
+| [`db.select({ total: sum() })`](/docs/client/queries/aggregate) | Aggregations (sum, avg, min, max) |
 
 ## Imports Summary
 
 | Import | Path | Description |
 | --- | --- | --- |
-| `createClient` | `@superapp/db` | Create a type-safe query client |
-| `createAuth` | `@superapp/db/auth` | Create an auth client for session management |
+| `drizzle` | `@superapp/db` | Create a Drizzle client with HTTP driver |
+| `eq`, `gt`, `desc`, ... | `drizzle-orm` | Standard Drizzle filter and sort operators |
+| `schema` | `./generated/schema` | Auto-generated Drizzle schema from your database |
+| `createAuth` | `@superapp/db/auth` | Auth client for session management |
 | `useSession` | `@superapp/db/auth` | React hook for current session |
 | `AuthProvider` | `@superapp/db/components` | Root layout wrapper for auth context |
 | `AuthCard` | `@superapp/db/components` | Pre-built sign-in/sign-up/forgot-password UI |
 | `UserButton` | `@superapp/db/components` | Navbar dropdown with avatar and sign out |
-| `SuperAppSchema` | `./generated/schema` | Generated types from your database schema |
-| `QueryRequest` | `@superapp/db/types` | Type for raw query requests |
-| `FilterOperators` | `@superapp/db/types` | Type for filter operator values |
 
 ## What's Next
 
-- [createClient](/docs/client/create-client) — Set up the query client with type generics.
+- [Setting Up the Client](/docs/client/create-client) — Configure `drizzle()` with your backend URL and schema.
+- [Drizzle Compatibility](/docs/client/drizzle-compatibility) — Side-by-side comparison with standard Drizzle.
 - [Auth Setup](/docs/client/auth/setup) — Configure authentication in your frontend.
-- [Type Generation](/docs/client/type-generation) — Generate TypeScript types from your database.
