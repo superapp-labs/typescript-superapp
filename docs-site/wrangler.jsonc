@@ -14,5 +14,11 @@
       "pattern": "typescript-superapp.bunnytech.app",
       "custom_domain": true
     }
-  ]
+  ],
+  "observability": {
+    "logs": {
+      "enabled": false,
+      "invocation_logs": true
+    }
+  }
 }
