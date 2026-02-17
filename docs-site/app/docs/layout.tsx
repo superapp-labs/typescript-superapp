@@ -21,7 +21,7 @@ export default function Layout({ children }: { children: ReactNode }) {
                 rel="noopener noreferrer"
                 className="underline"
               >
-                Share feedback
+                Propose spec changes
               </a>
             </p>
           </div>
