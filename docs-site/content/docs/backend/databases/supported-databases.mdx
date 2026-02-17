@@ -1,0 +1,90 @@
+---
+title: Supported Databases
+icon: List
+description: Every database supported through Drizzle ORM adapters.
+---
+
+`@superapp/backend` supports every database that [Drizzle ORM](https://orm.drizzle.team) supports. Each adapter is a thin wrapper around a JavaScript database driver, following the same [two-layer architecture](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/src) used by Drizzle itself.
+
+## PostgreSQL
+
+| Adapter | Package | Best for | Serverless |
+|---|---|---|---|
+| node-postgres | `pg` | Standard Node.js apps | No |
+| postgres-js | `postgres` | High-performance Node.js | No |
+| Neon (WebSocket) | `@neondatabase/serverless` | Neon with persistent connections | Yes |
+| Neon (HTTP) | `@neondatabase/serverless` | Neon on edge/serverless runtimes | Yes |
+| Vercel Postgres | `@vercel/postgres` | Vercel managed Postgres | Yes |
+| Supabase | `@supabase/supabase-js` | Supabase projects | Yes |
+| Xata | Xata HTTP API | Xata serverless database | Yes |
+| PGlite | `@electric-sql/pglite` | In-browser / WASM Postgres | Yes |
+| AWS Data API | AWS RDS Data API | Aurora Serverless | Yes |
+| Bun SQL | `Bun.sql` | Bun runtime | No |
+
+## MySQL
+
+| Adapter | Package | Best for | Serverless |
+|---|---|---|---|
+| mysql2 | `mysql2` | Standard Node.js apps | No |
+| PlanetScale | `@planetscale/database` | PlanetScale serverless | Yes |
+| TiDB Cloud | TiDB serverless driver | TiDB Cloud | Yes |
+
+## SQLite
+
+| Adapter | Package | Best for | Serverless |
+|---|---|---|---|
+| better-sqlite3 | `better-sqlite3` | Node.js (synchronous, fast) | No |
+| LibSQL / Turso | `@libsql/client` | Turso edge database | Yes |
+| Cloudflare D1 | Cloudflare D1 binding | Cloudflare Workers | Yes |
+| Durable Objects | Cloudflare DO SQLite | Durable Object storage | Yes |
+| Bun SQLite | `bun:sqlite` | Bun runtime | No |
+| Expo SQLite | `expo-sqlite` | React Native (Expo) | No |
+| OP-SQLite | `op-sqlite` | React Native (high-performance) | No |
+| sql.js | `sql.js` | In-browser WASM SQLite | Yes |
+
+## SingleStore
+
+| Adapter | Package | Best for | Serverless |
+|---|---|---|---|
+| SingleStore | SingleStore driver | Direct SingleStore connection | No |
+
+## Gel (formerly EdgeDB)
+
+| Adapter | Package | Best for | Serverless |
+|---|---|---|---|
+| Gel | Gel client | Gel database | No |
+
+## Choosing an Adapter
+
+Pick the adapter that matches your **runtime** and **hosting**:
+
+| You're deploying to... | Use |
+|---|---|
+| Node.js + self-hosted Postgres | `node-postgres` or `postgres-js` |
+| Vercel | `vercel-postgres` or `neon-http` |
+| Cloudflare Workers | `d1` (SQLite) or `neon-http` (Postgres) |
+| Supabase | `supabase` |
+| PlanetScale | `planetscale-serverless` |
+| Turso | `libsql` |
+| Bun | `bun-sql` (Postgres) or `bun-sqlite` (SQLite) |
+| React Native | `expo-sqlite` or `op-sqlite` |
+| Browser | `pglite` (Postgres) or `sql-js` (SQLite) |
+| AWS Lambda | `aws-data-api` or `neon-http` |
+
+## Using Non-Default Adapters
+
+The three built-in providers (`pg`, `mysql2`, `better-sqlite3`) work out of the box with a connection string. For any other adapter, register a [custom provider](/docs/backend/databases/custom-provider) following the Drizzle adapter pattern:
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { neonProvider } from './providers/neon'
+
+const engine = createEngine({
+  providers: [neonProvider],
+  connections: {
+    main: { type: 'neon', connectionString: process.env.NEON_URL! },
+  },
+})
+```
+
+See [Custom Providers](/docs/backend/databases/custom-provider) for full examples with Neon, Cloudflare D1, and HTTP APIs.
