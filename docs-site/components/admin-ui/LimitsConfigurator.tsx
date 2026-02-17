@@ -80,10 +80,10 @@ export function LimitsConfigurator() {
             <button
               key={p}
               onClick={() => applyPreset(p)}
-              className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium transition-colors h-8 capitalize ${
                 preset === p
-                  ? 'bg-fd-primary text-fd-primary-foreground'
-                  : 'text-fd-muted-foreground hover:bg-fd-accent'
+                  ? 'border-transparent bg-fd-primary text-fd-primary-foreground'
+                  : 'border-fd-border bg-fd-background text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-foreground'
               }`}
             >
               {p}

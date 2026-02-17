@@ -131,7 +131,7 @@ export function ActionRegistry() {
   }
 
   return (
-    <div className="not-prose rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+    <div className="not-prose rounded-xl border border-fd-border overflow-hidden">
       <div className="flex items-center justify-between border-b border-fd-border px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-fd-foreground">Actions</span>
@@ -146,7 +146,7 @@ export function ActionRegistry() {
             <button
               key={a.name}
               onClick={() => { setSelected(a.name); setTestMode(false); setTestResult(null); setTestValues({}) }}
-              className={`flex w-full items-start gap-2 border-b border-fd-border px-3 py-2.5 text-left transition-colors ${
+              className={`flex w-full items-start gap-2 border-b border-fd-border px-3 py-2.5 text-left transition-colors cursor-pointer ${
                 selected === a.name ? 'bg-fd-primary/10 border-l-2 border-l-fd-primary' : 'hover:bg-fd-accent/50'
               }`}
             >
@@ -172,10 +172,10 @@ export function ActionRegistry() {
             </div>
             <button
               onClick={() => { setTestMode(!testMode); setTestResult(null) }}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`inline-flex items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition-colors h-8 ${
                 testMode
-                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                  : 'bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/80'
+                  ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 px-2.5'
+                  : 'border border-transparent bg-fd-primary px-2.5 text-fd-primary-foreground hover:bg-fd-primary/80'
               }`}
             >
               {testMode ? 'Close Playground' : 'Test'}
@@ -184,7 +184,7 @@ export function ActionRegistry() {
 
           {/* Roles */}
           <div className="mt-3">
-            <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Allowed Roles</span>
+            <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Allowed Roles</span>
             <div className="mt-1 flex flex-wrap gap-1">
               {action.roles.map(role => (
                 <span key={role} className="rounded-full border border-fd-primary/30 bg-fd-primary/10 px-2 py-0.5 text-xs font-medium text-fd-primary">
@@ -196,8 +196,8 @@ export function ActionRegistry() {
 
           {/* Schema */}
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="rounded-md border border-fd-border p-3">
-              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Input Schema</span>
+            <div className="rounded-lg border border-fd-border p-3">
+              <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Input Schema</span>
               <div className="mt-1.5 space-y-1">
                 {action.inputFields.map(f => (
                   <div key={f.name} className="flex items-center gap-1.5 text-xs font-mono">
@@ -208,8 +208,8 @@ export function ActionRegistry() {
                 ))}
               </div>
             </div>
-            <div className="rounded-md border border-fd-border p-3">
-              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Output Schema</span>
+            <div className="rounded-lg border border-fd-border p-3">
+              <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Output Schema</span>
               <div className="mt-1.5 space-y-1">
                 {action.outputFields.map(f => (
                   <div key={f.name} className="flex items-center gap-1.5 text-xs font-mono">
@@ -223,7 +223,7 @@ export function ActionRegistry() {
 
           {/* Test Playground */}
           {testMode && (
-            <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
               <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Playground</span>
               <div className="mt-2 space-y-2">
                 {action.inputFields.map(f => (
@@ -234,14 +234,14 @@ export function ActionRegistry() {
                       placeholder={f.type}
                       value={testValues[f.name] ?? ''}
                       onChange={e => setTestValues({ ...testValues, [f.name]: e.target.value })}
-                      className="min-w-0 flex-1 rounded border border-fd-border bg-fd-background px-2 py-1 text-xs font-mono text-fd-foreground placeholder:text-fd-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      className="h-8 min-w-0 flex-1 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground/50 focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
                     />
                   </div>
                 ))}
                 <div className="flex justify-end">
                   <button
                     onClick={runTest}
-                    className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700"
+                    className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-2.5 text-sm font-medium text-white transition-colors hover:bg-amber-700 h-8"
                   >
                     Execute
                   </button>
@@ -249,8 +249,8 @@ export function ActionRegistry() {
               </div>
               {testResult && (
                 <div className="mt-2">
-                  <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Response</span>
-                  <pre className="mt-1 rounded bg-fd-background p-2 text-xs font-mono text-green-600 dark:text-green-400">{testResult}</pre>
+                  <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Response</span>
+                  <pre className="mt-1 rounded-lg bg-fd-accent p-2 text-xs font-mono text-green-600 dark:text-green-400">{testResult}</pre>
                 </div>
               )}
             </div>
@@ -258,15 +258,15 @@ export function ActionRegistry() {
 
           {/* Stats */}
           <div className="mt-3 flex gap-4">
-            <div className="rounded-md bg-fd-accent/50 px-3 py-2">
+            <div className="rounded-lg bg-fd-accent/50 px-3 py-2">
               <div className="text-xs text-fd-muted-foreground">Total Calls</div>
               <div className="text-sm font-semibold text-fd-foreground">{action.callCount.toLocaleString()}</div>
             </div>
-            <div className="rounded-md bg-fd-accent/50 px-3 py-2">
+            <div className="rounded-lg bg-fd-accent/50 px-3 py-2">
               <div className="text-xs text-fd-muted-foreground">Avg Duration</div>
               <div className="text-sm font-semibold text-fd-foreground">{action.avgDuration}ms</div>
             </div>
-            <div className="rounded-md bg-fd-accent/50 px-3 py-2">
+            <div className="rounded-lg bg-fd-accent/50 px-3 py-2">
               <div className="text-xs text-fd-muted-foreground">Endpoint</div>
               <div className="text-xs font-mono text-fd-foreground">POST /actions/{action.name}</div>
             </div>

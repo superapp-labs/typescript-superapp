@@ -48,19 +48,19 @@ export function SecurityPanel() {
   return (
     <div className="not-prose space-y-4">
       {/* JWT */}
-      <div className="rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+      <div className="rounded-xl border border-fd-border overflow-hidden">
         <div className="border-b border-fd-border px-4 py-3">
           <span className="text-sm font-medium text-fd-foreground">JWT Validation</span>
         </div>
         <div className="p-4 space-y-4">
           <div>
-            <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Allowed Algorithms</span>
+            <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Allowed Algorithms</span>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {allAlgorithms.map(alg => (
                 <button
                   key={alg}
                   onClick={() => toggleAlgorithm(alg)}
-                  className={`rounded-md border px-2.5 py-1 text-xs font-mono font-medium transition-colors ${
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-mono font-medium transition-colors ${
                     algorithms.includes(alg)
                       ? 'border-fd-primary bg-fd-primary/10 text-fd-primary'
                       : 'border-fd-border text-fd-muted-foreground hover:border-fd-primary/50'
@@ -79,27 +79,27 @@ export function SecurityPanel() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-fd-muted-foreground uppercase tracking-wide">Issuer</label>
+              <label className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Issuer</label>
               <input
                 type="text"
                 value={issuer}
                 onChange={e => setIssuer(e.target.value)}
-                className="mt-1 w-full rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+                className="mt-1 h-8 w-full rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
               />
             </div>
             <div>
-              <label className="text-xs text-fd-muted-foreground uppercase tracking-wide">Audience</label>
+              <label className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Audience</label>
               <input
                 type="text"
                 value={audience}
                 onChange={e => setAudience(e.target.value)}
-                className="mt-1 w-full rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+                className="mt-1 h-8 w-full rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs text-fd-muted-foreground uppercase tracking-wide">Clock Skew Tolerance</label>
+            <label className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Clock Skew Tolerance</label>
             <div className="mt-1 flex items-center gap-2">
               <input
                 type="range"
@@ -110,25 +110,25 @@ export function SecurityPanel() {
                 onChange={e => setClockSkew(Number(e.target.value))}
                 className="flex-1 h-1.5 appearance-none rounded-full bg-fd-accent [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fd-foreground"
               />
-              <span className="w-14 text-right text-xs font-mono text-fd-foreground">{clockSkew}s</span>
+              <span className="w-14 text-right text-sm font-mono text-fd-foreground">{clockSkew}s</span>
             </div>
           </div>
         </div>
       </div>
 
       {/* CORS */}
-      <div className="rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+      <div className="rounded-xl border border-fd-border overflow-hidden">
         <div className="border-b border-fd-border px-4 py-3">
           <span className="text-sm font-medium text-fd-foreground">CORS</span>
         </div>
         <div className="p-4 space-y-3">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Allowed Origins</span>
+              <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Allowed Origins</span>
             </div>
             <div className="mt-1.5 space-y-1.5">
               {corsOrigins.map(origin => (
-                <div key={origin} className="flex items-center justify-between rounded-md border border-fd-border bg-fd-background px-3 py-1.5">
+                <div key={origin} className="flex items-center justify-between rounded-lg border border-fd-border bg-fd-background px-3 py-1.5 cursor-pointer">
                   <span className="text-xs font-mono text-fd-foreground">{origin}</span>
                   <button
                     onClick={() => removeOrigin(origin)}
@@ -145,11 +145,11 @@ export function SecurityPanel() {
                   value={newOrigin}
                   onChange={e => setNewOrigin(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addOrigin()}
-                  className="min-w-0 flex-1 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+                  className="min-w-0 flex-1 h-8 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
                 />
                 <button
                   onClick={addOrigin}
-                  className="rounded-md bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground hover:bg-fd-primary/80"
+                  className="inline-flex items-center justify-center rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8"
                 >
                   Add
                 </button>
@@ -159,7 +159,7 @@ export function SecurityPanel() {
 
           <div className="flex items-center justify-between">
             <div>
-              <span className="text-xs text-fd-foreground">Allow Credentials</span>
+              <span className="text-xs font-medium text-fd-foreground">Allow Credentials</span>
               <p className="text-xs text-fd-muted-foreground">Send cookies and auth headers in cross-origin requests</p>
             </div>
             <button
@@ -173,7 +173,7 @@ export function SecurityPanel() {
       </div>
 
       {/* Audit */}
-      <div className="rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+      <div className="rounded-xl border border-fd-border overflow-hidden">
         <div className="flex items-center justify-between border-b border-fd-border px-4 py-3">
           <span className="text-sm font-medium text-fd-foreground">Audit Logging</span>
           <button
@@ -191,9 +191,9 @@ export function SecurityPanel() {
                 { key: 'logParams' as const, label: 'Log Parameters', desc: 'Record query bind parameters (may contain PII)' },
                 { key: 'logDuration' as const, label: 'Log Duration', desc: 'Record query execution time in milliseconds' },
               ].map(opt => (
-                <div key={opt.key} className="flex items-center justify-between rounded-md bg-fd-accent/30 px-3 py-2">
+                <div key={opt.key} className="flex items-center justify-between rounded-lg bg-fd-accent/30 px-3 py-2 cursor-pointer">
                   <div>
-                    <span className="text-xs text-fd-foreground">{opt.label}</span>
+                    <span className="text-xs font-medium text-fd-foreground">{opt.label}</span>
                     <p className="text-xs text-fd-muted-foreground">{opt.desc}</p>
                   </div>
                   <button
@@ -213,13 +213,13 @@ export function SecurityPanel() {
             )}
 
             <div>
-              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Retention Period</span>
+              <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Retention Period</span>
               <div className="mt-1.5 flex gap-1.5">
                 {retentionOptions.map(r => (
                   <button
                     key={r}
                     onClick={() => setAudit({ ...audit, retention: r })}
-                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-mono font-medium transition-colors ${
                       audit.retention === r
                         ? 'border-fd-primary bg-fd-primary/10 text-fd-primary'
                         : 'border-fd-border text-fd-muted-foreground hover:border-fd-primary/50'

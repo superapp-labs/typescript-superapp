@@ -68,7 +68,7 @@ export function ConnectionManager() {
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="rounded-md bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80"
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8"
         >
           + Add Connection
         </button>
@@ -82,24 +82,24 @@ export function ConnectionManager() {
               placeholder="Name (e.g. analytics)"
               value={newName}
               onChange={e => setNewName(e.target.value)}
-              className="w-36 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-sm text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-ring"
+              className="w-36 h-8 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
             />
             <input
               type="text"
               placeholder="postgres://user:pass@host:5432/db"
               value={newUrl}
               onChange={e => setNewUrl(e.target.value)}
-              className="min-w-0 flex-1 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-sm text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-ring"
+              className="min-w-0 flex-1 h-8 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
             />
             <button
               onClick={addConnection}
-              className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8"
             >
               Connect
             </button>
             <button
               onClick={() => setShowAdd(false)}
-              className="rounded-md border border-fd-border px-3 py-1.5 text-xs text-fd-muted-foreground transition-colors hover:bg-fd-accent"
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-fd-border bg-fd-background px-2.5 text-sm font-medium text-fd-foreground transition-colors hover:bg-fd-accent h-8"
             >
               Cancel
             </button>
@@ -114,13 +114,13 @@ export function ConnectionManager() {
 
       <div className="divide-y divide-fd-border">
         {connections.map(conn => (
-          <div key={conn.name} className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-fd-accent/30">
+          <div key={conn.name} className="flex items-center justify-between px-4 py-3 transition-colors hover:bg-fd-accent/30 cursor-pointer">
             <div className="flex items-center gap-3">
               <span className="text-lg">{typeIcon(conn.type)}</span>
               <div>
                 <div className="flex items-center gap-2">
                   <code className="text-sm font-semibold text-fd-foreground">{conn.name}</code>
-                  <span className="rounded bg-fd-accent px-1.5 py-0.5 text-xs font-medium text-fd-muted-foreground">{conn.type}</span>
+                  <span className="rounded-full bg-fd-accent px-2 py-0.5 text-xs text-fd-muted-foreground">{conn.type}</span>
                 </div>
                 <div className="mt-0.5 text-xs font-mono text-fd-muted-foreground">{conn.url}</div>
               </div>
@@ -140,7 +140,7 @@ export function ConnectionManager() {
               </span>
               <button
                 onClick={() => removeConnection(conn.name)}
-                className="rounded p-1 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
+                className="inline-flex items-center justify-center rounded-lg p-1 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500"
                 title="Remove connection"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>

@@ -71,7 +71,7 @@ const initialPermissions: Permission[] = [
 
 function XButton({ onClick, title }: { onClick: () => void; title?: string }) {
   return (
-    <button onClick={onClick} title={title} className="rounded p-0.5 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500">
+    <button onClick={onClick} title={title} className="rounded-lg p-0.5 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500">
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
     </button>
   )
@@ -83,15 +83,15 @@ function InlineWhereEditor({ clauses, onChange }: { clauses: WhereClause[]; onCh
       {clauses.map((c, i) => (
         <div key={i} className="flex items-center gap-1">
           <select value={c.column} onChange={e => { const n = [...clauses]; n[i] = { ...c, column: e.target.value }; onChange(n) }}
-            className="w-28 rounded border border-fd-border bg-fd-background px-1.5 py-0.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary">
+            className="w-28 rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50">
             {sampleColumns.map(col => <option key={col} value={col}>{col}</option>)}
           </select>
           <select value={c.operator} onChange={e => { const n = [...clauses]; n[i] = { ...c, operator: e.target.value }; onChange(n) }}
-            className="w-16 rounded border border-fd-border bg-fd-background px-1 py-0.5 text-xs font-mono text-purple-600 dark:text-purple-400 focus:outline-none focus:ring-1 focus:ring-fd-primary">
+            className="w-16 rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono text-purple-600 dark:text-purple-400 outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50">
             {operators.map(op => <option key={op} value={op}>{op}</option>)}
           </select>
           <input value={c.value} onChange={e => { const n = [...clauses]; n[i] = { ...c, value: e.target.value }; onChange(n) }}
-            className="w-24 rounded border border-fd-border bg-fd-background px-1.5 py-0.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary" />
+            className="w-24 rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50" />
           <XButton onClick={() => onChange(clauses.filter((_, j) => j !== i))} />
         </div>
       ))}
@@ -107,10 +107,10 @@ function KVEditor({ items, onChange, keyLabel, valueLabel }: { items: { key: str
       {items.map((item, i) => (
         <div key={i} className="flex items-center gap-1">
           <input value={item.key} placeholder={keyLabel} onChange={e => { const n = [...items]; n[i] = { ...item, key: e.target.value }; onChange(n) }}
-            className="w-28 rounded border border-fd-border bg-fd-background px-1.5 py-0.5 text-xs font-mono text-fd-muted-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary" />
+            className="w-28 rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50" />
           <span className="text-xs text-fd-muted-foreground">=</span>
           <input value={item.value} placeholder={valueLabel} onChange={e => { const n = [...items]; n[i] = { ...item, value: e.target.value }; onChange(n) }}
-            className="w-28 rounded border border-fd-border bg-fd-background px-1.5 py-0.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary" />
+            className="w-28 rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50" />
           <XButton onClick={() => onChange(items.filter((_, j) => j !== i))} />
         </div>
       ))}
@@ -126,9 +126,9 @@ function ColumnEditor({ columns, onChange }: { columns: string[]; onChange: (c: 
   return (
     <div className="flex flex-wrap items-center gap-1">
       {columns.map(col => (
-        <span key={col} className="inline-flex items-center gap-1 rounded bg-fd-accent px-1.5 py-0.5 text-xs font-mono text-fd-foreground">
+        <span key={col} className="inline-flex items-center gap-1 rounded-lg bg-fd-accent px-2 py-0.5 text-xs font-mono text-fd-foreground">
           {col}
-          <button onClick={() => onChange(columns.filter(c => c !== col))} className="text-fd-muted-foreground hover:text-red-500">
+          <button onClick={() => onChange(columns.filter(c => c !== col))} className="rounded-lg p-0.5 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
           </button>
         </span>
@@ -138,13 +138,13 @@ function ColumnEditor({ columns, onChange }: { columns: string[]; onChange: (c: 
           autoFocus
           onChange={e => { if (e.target.value) { onChange([...columns, e.target.value]); setAdding(false) } }}
           onBlur={() => setAdding(false)}
-          className="rounded border border-fd-primary bg-fd-background px-1 py-0.5 text-xs font-mono text-fd-foreground focus:outline-none"
+          className="rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50"
         >
           <option value="">select...</option>
           {available.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       ) : (
-        <button onClick={() => setAdding(true)} className="rounded border border-dashed border-fd-border px-1.5 py-0.5 text-xs text-fd-muted-foreground hover:border-fd-primary hover:text-fd-primary">+</button>
+        <button onClick={() => setAdding(true)} className="rounded-lg border border-dashed border-fd-border px-2 py-0.5 text-xs text-fd-muted-foreground hover:border-fd-primary hover:text-fd-primary">+</button>
       )}
     </div>
   )
@@ -214,11 +214,11 @@ export function PermissionBuilder() {
   }
 
   return (
-    <div className="not-prose rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+    <div className="not-prose rounded-xl border border-fd-border overflow-hidden">
       <div className="flex items-center justify-between border-b border-fd-border px-4 py-3">
         <span className="text-sm font-medium text-fd-foreground">Permission Rules</span>
         <button onClick={addPermission}
-          className="rounded-md bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80">
+          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8">
           + New Permission
         </button>
       </div>
@@ -230,7 +230,7 @@ export function PermissionBuilder() {
             <button
               key={p.name}
               onClick={() => { setSelected(p.name); setEditingRoles(false); setEditingName(false); setEditingTable(false) }}
-              className={`flex w-full items-start gap-2 border-b border-fd-border px-3 py-2.5 text-left transition-colors ${
+              className={`flex w-full items-start gap-2 border-b border-fd-border px-3 py-2.5 text-left transition-colors cursor-pointer ${
                 selected === p.name ? 'bg-fd-primary/10 border-l-2 border-l-fd-primary' : 'hover:bg-fd-accent/50'
               }`}
             >
@@ -248,7 +248,7 @@ export function PermissionBuilder() {
             </button>
           ))}
           {permissions.length === 0 && (
-            <div className="px-3 py-6 text-center text-xs text-fd-muted-foreground">No permissions yet</div>
+            <div className="px-3 py-6 text-center text-sm text-fd-muted-foreground">No permissions yet</div>
           )}
         </div>
 
@@ -262,7 +262,7 @@ export function PermissionBuilder() {
                   <input autoFocus defaultValue={selectedPerm.name}
                     onBlur={e => renamePerm(selectedPerm.name, e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') renamePerm(selectedPerm.name, (e.target as HTMLInputElement).value) }}
-                    className="w-full rounded border border-fd-primary bg-fd-background px-2 py-0.5 text-sm font-semibold text-fd-foreground focus:outline-none" />
+                    className="w-full rounded-lg border border-fd-primary bg-fd-background px-2 py-1 text-sm font-semibold text-fd-foreground outline-none transition-colors focus-visible:ring-3 focus-visible:ring-fd-ring/50" />
                 ) : (
                   <h4 className="cursor-pointer text-sm font-semibold text-fd-foreground hover:text-fd-primary" onClick={() => setEditingName(true)}>
                     {selectedPerm.name} <span className="text-xs font-normal text-fd-muted-foreground">(click to rename)</span>
@@ -272,7 +272,7 @@ export function PermissionBuilder() {
                   <input autoFocus defaultValue={selectedPerm.table}
                     onBlur={e => { updatePerm(selectedPerm.name, p => ({ ...p, table: e.target.value })); setEditingTable(false) }}
                     onKeyDown={e => { if (e.key === 'Enter') { updatePerm(selectedPerm.name, p => ({ ...p, table: (e.target as HTMLInputElement).value })); setEditingTable(false) } }}
-                    className="mt-0.5 w-full rounded border border-fd-primary bg-fd-background px-2 py-0.5 text-xs font-mono text-fd-foreground focus:outline-none" />
+                    className="mt-0.5 w-full rounded-lg border border-fd-primary bg-fd-background px-2 py-1 text-xs font-mono text-fd-foreground outline-none transition-colors focus-visible:ring-3 focus-visible:ring-fd-ring/50" />
                 ) : (
                   <div className="mt-0.5 cursor-pointer text-xs font-mono text-fd-muted-foreground hover:text-fd-primary" onClick={() => setEditingTable(true)}>
                     {selectedPerm.table}
@@ -280,7 +280,7 @@ export function PermissionBuilder() {
                 )}
               </div>
               <button onClick={() => removePermission(selectedPerm.name)}
-                className="ml-2 rounded p-1 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500" title="Delete permission">
+                className="ml-2 rounded-lg p-1 text-fd-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-500" title="Delete permission">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
               </button>
             </div>
@@ -315,38 +315,38 @@ export function PermissionBuilder() {
               <div className="mt-1.5 flex gap-1.5">
                 {(Object.keys(operationLabels) as (keyof typeof operationLabels)[]).map(op => (
                   <button key={op} onClick={() => toggleOperation(selectedPerm.name, op)}
-                    className={`rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                       selectedPerm.operations[op] ? operationColors[op] : 'border-fd-border text-fd-muted-foreground hover:border-fd-primary/50 opacity-40'
                     }`}>{operationLabels[op]}</button>
                 ))}
               </div>
             </div>
 
-            {/* Operation details — fully editable */}
+            {/* Operation details -- fully editable */}
             <div className="mt-4 space-y-3">
               {selectedPerm.operations.select && (() => {
                 const ops = selectedPerm.operations.select!
                 const update = (patch: Partial<typeof ops>) => updatePerm(selectedPerm.name, p => ({ ...p, operations: { ...p.operations, select: { ...p.operations.select!, ...patch } } }))
                 return (
-                  <div className="rounded-md border border-blue-500/20 bg-blue-500/5 p-3 space-y-2">
+                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 p-3 space-y-2">
                     <div className="text-xs font-medium text-blue-600 dark:text-blue-400">Read</div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Columns</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Columns</span>
                       <div className="mt-1">
                         <ColumnEditor columns={ops.columns} onChange={columns => update({ columns })} />
                       </div>
                     </div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Where</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Where</span>
                       <div className="mt-1">
                         <InlineWhereEditor clauses={ops.where} onChange={where => update({ where })} />
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Limit</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Limit</span>
                       <input type="number" value={ops.limit} min={1} max={100000}
                         onChange={e => update({ limit: Number(e.target.value) || 100 })}
-                        className="w-20 rounded border border-fd-border bg-fd-background px-1.5 py-0.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-1 focus:ring-fd-primary" />
+                        className="w-20 rounded-lg border border-fd-border bg-transparent px-2 py-1 text-xs font-mono outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-1 focus-visible:ring-fd-ring/50" />
                       <span className="text-xs text-fd-muted-foreground">rows</span>
                     </div>
                   </div>
@@ -357,18 +357,18 @@ export function PermissionBuilder() {
                 const ops = selectedPerm.operations.insert!
                 const update = (patch: Partial<typeof ops>) => updatePerm(selectedPerm.name, p => ({ ...p, operations: { ...p.operations, insert: { ...p.operations.insert!, ...patch } } }))
                 return (
-                  <div className="rounded-md border border-green-500/20 bg-green-500/5 p-3 space-y-2">
+                  <div className="rounded-lg border border-green-500/20 bg-green-500/5 p-3 space-y-2">
                     <div className="text-xs font-medium text-green-600 dark:text-green-400">Create</div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Columns</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Columns</span>
                       <div className="mt-1"><ColumnEditor columns={ops.columns} onChange={columns => update({ columns })} /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Validate</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Validate</span>
                       <div className="mt-1"><InlineWhereEditor clauses={ops.validate} onChange={validate => update({ validate })} /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Defaults</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Defaults</span>
                       <div className="mt-1"><KVEditor items={ops.defaults} onChange={defaults => update({ defaults })} keyLabel="column" valueLabel="value" /></div>
                     </div>
                   </div>
@@ -379,22 +379,22 @@ export function PermissionBuilder() {
                 const ops = selectedPerm.operations.update!
                 const update = (patch: Partial<typeof ops>) => updatePerm(selectedPerm.name, p => ({ ...p, operations: { ...p.operations, update: { ...p.operations.update!, ...patch } } }))
                 return (
-                  <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
                     <div className="text-xs font-medium text-amber-600 dark:text-amber-400">Update</div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Columns</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Columns</span>
                       <div className="mt-1"><ColumnEditor columns={ops.columns} onChange={columns => update({ columns })} /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Where</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Where</span>
                       <div className="mt-1"><InlineWhereEditor clauses={ops.where} onChange={where => update({ where })} /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Validate</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Validate</span>
                       <div className="mt-1"><InlineWhereEditor clauses={ops.validate} onChange={validate => update({ validate })} /></div>
                     </div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Overwrite</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Overwrite</span>
                       <div className="mt-1"><KVEditor items={ops.overwrite} onChange={overwrite => update({ overwrite })} keyLabel="column" valueLabel="$user.id, $now..." /></div>
                     </div>
                   </div>
@@ -405,14 +405,14 @@ export function PermissionBuilder() {
                 const ops = selectedPerm.operations.delete!
                 const update = (patch: Partial<typeof ops>) => updatePerm(selectedPerm.name, p => ({ ...p, operations: { ...p.operations, delete: { ...p.operations.delete!, ...patch } } }))
                 return (
-                  <div className="rounded-md border border-red-500/20 bg-red-500/5 p-3 space-y-2">
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 space-y-2">
                     <div className="text-xs font-medium text-red-600 dark:text-red-400">Delete</div>
                     <div>
-                      <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Where</span>
+                      <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Where</span>
                       <div className="mt-1"><InlineWhereEditor clauses={ops.where} onChange={where => update({ where })} /></div>
                     </div>
                     {ops.where.length === 0 && (
-                      <div className="text-xs text-red-600/70 dark:text-red-400/70">No row restrictions — any matching role can delete all rows</div>
+                      <div className="text-xs text-red-600/70 dark:text-red-400/70">No row restrictions -- any matching role can delete all rows</div>
                     )}
                   </div>
                 )

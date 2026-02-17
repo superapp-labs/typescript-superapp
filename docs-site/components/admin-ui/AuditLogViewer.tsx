@@ -53,7 +53,7 @@ export function AuditLogViewer() {
   }
 
   return (
-    <div className="not-prose rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+    <div className="not-prose rounded-xl border border-fd-border overflow-hidden">
       <div className="flex items-center justify-between border-b border-fd-border px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium text-fd-foreground">Audit Log</span>
@@ -65,12 +65,12 @@ export function AuditLogViewer() {
             placeholder="Filter by user..."
             value={searchUser}
             onChange={e => setSearchUser(e.target.value)}
-            className="w-40 rounded-md border border-fd-border bg-fd-background px-2.5 py-1 text-xs text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+            className="h-8 w-40 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
           />
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="rounded-md border border-fd-border bg-fd-background px-2 py-1 text-xs text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+            className="h-8 rounded-lg border border-fd-border bg-transparent px-2.5 text-sm outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
           >
             <option value="all">All status</option>
             <option value="success">Success</option>
@@ -85,10 +85,10 @@ export function AuditLogViewer() {
           <button
             key={op}
             onClick={() => setFilter(op)}
-            className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+            className={`inline-flex items-center justify-center rounded-lg px-2.5 text-sm font-medium transition-colors h-8 capitalize ${
               filter === op
                 ? 'bg-fd-primary text-fd-primary-foreground'
-                : 'text-fd-muted-foreground hover:bg-fd-accent'
+                : 'text-fd-muted-foreground hover:bg-fd-accent hover:text-fd-foreground'
             }`}
           >
             {op}
@@ -102,7 +102,7 @@ export function AuditLogViewer() {
           <div key={entry.id}>
             <button
               onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-fd-accent/30"
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-fd-accent/50 transition-colors cursor-pointer"
             >
               <span className="text-xs font-mono text-fd-muted-foreground w-16 shrink-0">{formatTime(entry.timestamp)}</span>
               <span className={`rounded px-1.5 py-0.5 text-xs font-medium uppercase w-14 text-center shrink-0 ${opColors[entry.operation]}`}>
@@ -123,26 +123,26 @@ export function AuditLogViewer() {
               <div className="border-t border-fd-border bg-fd-accent/20 px-4 py-3">
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <span className="text-fd-muted-foreground">User ID: </span>
+                    <span className="text-xs text-fd-muted-foreground">User ID: </span>
                     <span className="font-mono text-fd-foreground">{entry.userId}</span>
                   </div>
                   <div>
-                    <span className="text-fd-muted-foreground">Role: </span>
-                    <span className="font-medium text-fd-foreground">{entry.role}</span>
+                    <span className="text-xs text-fd-muted-foreground">Role: </span>
+                    <span className="font-mono text-fd-foreground">{entry.role}</span>
                   </div>
                   <div>
-                    <span className="text-fd-muted-foreground">IP: </span>
+                    <span className="text-xs text-fd-muted-foreground">IP: </span>
                     <span className="font-mono text-fd-foreground">{entry.ip}</span>
                   </div>
                   <div>
-                    <span className="text-fd-muted-foreground">Status: </span>
+                    <span className="text-xs text-fd-muted-foreground">Status: </span>
                     <span className={entry.status === 'success' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{entry.status}</span>
                   </div>
                 </div>
                 {entry.query && (
                   <div className="mt-2">
-                    <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Query</span>
-                    <pre className="mt-1 rounded-md bg-fd-background p-2 text-xs font-mono text-fd-foreground overflow-x-auto">{entry.query}</pre>
+                    <span className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Query</span>
+                    <pre className="mt-1 rounded-lg bg-fd-accent p-2 text-xs font-mono text-fd-foreground overflow-x-auto">{entry.query}</pre>
                   </div>
                 )}
                 {!entry.query && (

@@ -59,13 +59,13 @@ function EditableChipList({ items, allItems, onAdd, onRemove, emptyText, accentC
           <select autoFocus
             onChange={e => { if (e.target.value) { onAdd(e.target.value); setShowDropdown(false) } }}
             onBlur={() => setShowDropdown(false)}
-            className="rounded-md border border-fd-primary/50 bg-fd-background px-2 py-[3px] text-xs font-mono text-fd-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-fd-primary">
+            className="rounded-lg border border-fd-primary/50 bg-fd-background px-2 py-[3px] text-xs font-mono text-fd-foreground shadow-sm focus:outline-none focus:ring-1 focus:ring-fd-primary">
             <option value="">Add...</option>
             {remaining.map(i => <option key={i} value={i}>{i}</option>)}
           </select>
         ) : (
           <button onClick={() => setShowDropdown(true)}
-            className="inline-flex h-[22px] items-center gap-0.5 rounded-md border border-dashed border-fd-border px-2 text-xs font-medium text-fd-muted-foreground transition-colors hover:border-fd-primary hover:text-fd-primary">
+            className="inline-flex h-[22px] items-center gap-0.5 rounded-lg border border-dashed border-fd-border px-2 text-xs font-medium text-fd-muted-foreground transition-colors hover:border-fd-primary hover:text-fd-primary">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
             Add
           </button>
@@ -79,7 +79,7 @@ function EditableChipList({ items, allItems, onAdd, onRemove, emptyText, accentC
 
 function StatBadge({ icon, value, label }: { icon: React.ReactNode; value: number; label: string }) {
   return (
-    <div className="flex items-center gap-1.5 rounded-md bg-fd-accent/60 px-2 py-1">
+    <div className="flex items-center gap-1.5 rounded-lg bg-fd-accent/60 px-2 py-1">
       <span className="text-fd-muted-foreground">{icon}</span>
       <span className="text-xs font-semibold tabular-nums text-fd-foreground">{value.toLocaleString()}</span>
       <span className="text-xs text-fd-muted-foreground">{label}</span>
@@ -127,7 +127,7 @@ export function RoleOverview() {
   }
 
   return (
-    <div className="not-prose rounded-xl border border-fd-border bg-fd-card overflow-hidden shadow-sm">
+    <div className="not-prose rounded-xl border border-fd-border overflow-hidden shadow-sm">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-fd-border px-5 py-3.5">
         <div className="flex items-center gap-2.5">
@@ -146,7 +146,7 @@ export function RoleOverview() {
             </button>
           </div>
           <button onClick={() => setAddingRole(true)}
-            className="inline-flex items-center gap-1 rounded-md bg-fd-primary px-3 py-1.5 text-xs font-semibold text-fd-primary-foreground shadow-sm transition-colors hover:bg-fd-primary/80">
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
             Add Role
           </button>
@@ -159,11 +159,11 @@ export function RoleOverview() {
           <input autoFocus type="text" placeholder="Role name, e.g. support" value={newRoleName}
             onChange={e => setNewRoleName(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') addRole(); if (e.key === 'Escape') setAddingRole(false) }}
-            className="w-52 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary/50" />
+            className="w-52 h-8 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50" />
           <button onClick={addRole}
-            className="rounded-md bg-fd-primary px-3 py-1.5 text-xs font-semibold text-fd-primary-foreground shadow-sm hover:bg-fd-primary/80">Create</button>
+            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8">Create</button>
           <button onClick={() => { setAddingRole(false); setNewRoleName('') }}
-            className="rounded-md px-3 py-1.5 text-xs text-fd-muted-foreground hover:text-fd-foreground">Cancel</button>
+            className="rounded-lg px-2.5 text-xs text-fd-muted-foreground hover:text-fd-foreground h-8">Cancel</button>
         </div>
       )}
 
@@ -178,7 +178,7 @@ export function RoleOverview() {
                 {/* Collapsed row */}
                 <button
                   onClick={() => setExpanded(isExpanded ? null : role.name)}
-                  className={`group flex w-full items-center gap-0 px-0 py-0 text-left transition-colors hover:bg-fd-accent/40 ${isExpanded ? 'bg-fd-accent/20' : ''}`}
+                  className={`group flex w-full items-center gap-0 px-0 py-0 text-left transition-colors hover:bg-fd-accent/40 cursor-pointer ${isExpanded ? 'bg-fd-accent/20' : ''}`}
                 >
                   {/* Color accent bar */}
                   <div className={`w-1 self-stretch ${role.color} ${isExpanded ? 'opacity-100' : 'opacity-40 group-hover:opacity-70'} transition-opacity`} />
@@ -236,7 +236,7 @@ export function RoleOverview() {
                               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                             </svg>
                             <span className="text-xs font-semibold text-fd-foreground">Permissions</span>
-                            <span className="rounded bg-fd-accent px-1.5 py-0.5 text-xs font-medium tabular-nums text-fd-muted-foreground">{role.permissions.length}</span>
+                            <span className="rounded-lg bg-fd-accent px-1.5 py-0.5 text-xs font-medium tabular-nums text-fd-muted-foreground">{role.permissions.length}</span>
                           </div>
                           <EditableChipList
                             items={role.permissions}
@@ -255,7 +255,7 @@ export function RoleOverview() {
                               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
                             </svg>
                             <span className="text-xs font-semibold text-fd-foreground">Actions</span>
-                            <span className="rounded bg-fd-accent px-1.5 py-0.5 text-xs font-medium tabular-nums text-fd-muted-foreground">{role.actions.length}</span>
+                            <span className="rounded-lg bg-fd-accent px-1.5 py-0.5 text-xs font-medium tabular-nums text-fd-muted-foreground">{role.actions.length}</span>
                           </div>
                           <EditableChipList
                             items={role.actions}
@@ -279,9 +279,9 @@ export function RoleOverview() {
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-red-600 dark:text-red-400">Delete this role?</span>
                               <button onClick={() => removeRole(role.name)}
-                                className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700">Yes, delete</button>
+                                className="inline-flex items-center justify-center rounded-lg bg-red-600 px-2.5 text-xs font-semibold text-white hover:bg-red-700 h-8">Yes, delete</button>
                               <button onClick={() => setConfirmDelete(null)}
-                                className="rounded-md px-2.5 py-1 text-xs font-medium text-fd-muted-foreground hover:text-fd-foreground">Cancel</button>
+                                className="rounded-lg px-2.5 text-xs text-fd-muted-foreground hover:text-fd-foreground h-8">Cancel</button>
                             </div>
                           ) : (
                             <button onClick={() => setConfirmDelete(role.name)}
@@ -304,7 +304,7 @@ export function RoleOverview() {
               </svg>
               <p className="text-sm text-fd-muted-foreground">No roles defined</p>
               <button onClick={() => setAddingRole(true)}
-                className="mt-1 rounded-md bg-fd-primary px-4 py-2 text-xs font-semibold text-fd-primary-foreground shadow-sm hover:bg-fd-primary/80">
+                className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8">
                 Create your first role
               </button>
             </div>
@@ -313,7 +313,7 @@ export function RoleOverview() {
       ) : (
         /* Matrix view */
         <div className="overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-fd-border bg-fd-accent/30">
                 <th className="sticky left-0 z-10 bg-fd-accent/30 px-4 py-2.5 text-left text-xs font-semibold text-fd-muted-foreground uppercase tracking-wider">Access</th>
@@ -330,17 +330,17 @@ export function RoleOverview() {
             <tbody className="divide-y divide-fd-border">
               {allPermissions.length > 0 && (
                 <tr>
-                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-1.5 text-xs text-fd-muted-foreground uppercase tracking-wider font-semibold" colSpan={1}>Permissions</td>
+                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-1.5 text-xs font-semibold text-fd-muted-foreground uppercase tracking-wider" colSpan={1}>Permissions</td>
                   {roles.map(r => <td key={r.name} />)}
                 </tr>
               )}
               {allPermissions.map(p => (
-                <tr key={p} className="hover:bg-fd-accent/20 transition-colors">
-                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-2 font-mono text-xs text-fd-foreground">{p}</td>
+                <tr key={p} className="hover:bg-fd-accent/20 transition-colors cursor-pointer">
+                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-2 text-xs font-mono">{p}</td>
                   {roles.map(r => (
                     <td key={r.name} className="px-3 py-2 text-center">
                       <button onClick={() => toggleMatrixCell(r.name, p, 'permissions')}
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-all ${
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-lg transition-all ${
                           r.permissions.includes(p)
                             ? 'bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-red-500/15 hover:text-red-500'
                             : 'bg-fd-accent/60 text-fd-muted-foreground/30 hover:bg-green-500/10 hover:text-green-600'
@@ -355,17 +355,17 @@ export function RoleOverview() {
               ))}
               {allActions.length > 0 && (
                 <tr className="border-t-2 border-fd-border">
-                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-1.5 text-xs text-fd-muted-foreground uppercase tracking-wider font-semibold" colSpan={1}>Actions</td>
+                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-1.5 text-xs font-semibold text-fd-muted-foreground uppercase tracking-wider" colSpan={1}>Actions</td>
                   {roles.map(r => <td key={r.name} />)}
                 </tr>
               )}
               {allActions.map(a => (
-                <tr key={a} className="hover:bg-fd-accent/20 transition-colors">
-                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-2 font-mono text-xs text-fd-foreground">{a}</td>
+                <tr key={a} className="hover:bg-fd-accent/20 transition-colors cursor-pointer">
+                  <td className="sticky left-0 z-10 bg-fd-card px-4 py-2 text-xs font-mono">{a}</td>
                   {roles.map(r => (
                     <td key={r.name} className="px-3 py-2 text-center">
                       <button onClick={() => toggleMatrixCell(r.name, a, 'actions')}
-                        className={`inline-flex h-6 w-6 items-center justify-center rounded-md transition-all ${
+                        className={`inline-flex h-6 w-6 items-center justify-center rounded-lg transition-all ${
                           r.actions.includes(a)
                             ? 'bg-green-500/15 text-green-600 dark:text-green-400 hover:bg-red-500/15 hover:text-red-500'
                             : 'bg-fd-accent/60 text-fd-muted-foreground/30 hover:bg-green-500/10 hover:text-green-600'
