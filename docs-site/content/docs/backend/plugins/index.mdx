@@ -1,0 +1,211 @@
+---
+title: Plugins
+icon: Plug
+description: Extend the engine at every level with a single, composable interface.
+---
+
+Plugins let you bundle integrations, auth, permissions, roles, actions, middleware, routes, and lifecycle hooks into a single object. Install a plugin with one line — remove it with one line. No wiring, no boilerplate.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { auditTrailPlugin } from '@superapp/plugin-audit-trail'
+import { stripePlugin } from '@superapp/plugin-stripe'
+
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  plugins: [
+    auditTrailPlugin(),
+    stripePlugin({ apiKey: process.env.STRIPE_KEY! }),
+  ],
+})
+```
+
+That's it. Each plugin contributes whatever it needs — permissions, actions, routes — and the engine merges everything at startup.
+
+## Why Plugins
+
+Without plugins, extending the engine means scattering configuration across `permissions`, `roles`, `actions`, `integrations`, and middleware. A Stripe billing feature might touch five different config sections. Plugins group related concerns into one portable unit:
+
+```typescript
+// Without plugins — scattered across config
+const engine = createEngine({
+  integrations: [stripeProvider],
+  permissions: {
+    view_invoices: { /* ... */ },
+    manage_subscriptions: { /* ... */ },
+  },
+  roles: {
+    billing_admin: ['view_invoices', 'manage_subscriptions', 'action_createCheckout'],
+  },
+  actions: {
+    createCheckout: { /* ... */ },
+    cancelSubscription: { /* ... */ },
+  },
+})
+
+// With plugins — one line
+const engine = createEngine({
+  connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
+  plugins: [stripePlugin({ apiKey: process.env.STRIPE_KEY! })],
+})
+```
+
+## The Plugin Interface
+
+A plugin is a plain object with a `name` and optional contributions to each engine layer:
+
+```typescript
+interface Plugin {
+  name: string
+
+  // Data layer
+  integrations?: IntegrationProvider[]
+
+  // Auth layer
+  auth?: AuthProvider
+
+  // Access control layer
+  permissions?: Record<string, Permission>
+  roles?: Record<string, string[]>
+
+  // Business logic layer
+  actions?: Record<string, ActionDefinition>
+
+  // Request pipeline
+  middleware?: PipelineMiddleware[]
+
+  // HTTP layer
+  routes?: Record<string, RouteHandler>
+
+  // Lifecycle
+  onInit?: (ctx: EngineContext) => Promise<void> | void
+  onRequest?: (ctx: PipelineContext) => Promise<void> | void
+  onError?: (error: Error, ctx: PipelineContext) => Promise<void> | void
+  onShutdown?: () => Promise<void> | void
+}
+```
+
+Every field except `name` is optional. A plugin that only adds permissions is valid. A plugin that only adds middleware is valid. Provide what you need, skip what you don't.
+
+## How Merging Works
+
+The engine merges all plugins (and your own engine config) at startup. The rules are simple and predictable:
+
+| Field | Merge strategy | On conflict |
+|---|---|---|
+| `integrations` | Concatenated | — |
+| `auth` | Single provider | Error if two plugins both provide `auth` |
+| `permissions` | Merged by slug | Error if two plugins define the same slug |
+| `roles` | Merged by name | Permission arrays are unioned |
+| `actions` | Merged by name | Error if two plugins define the same action |
+| `middleware` | Concatenated in order | — |
+| `routes` | Merged by key | Error if two plugins define the same route |
+| Lifecycle hooks | All collected, called in order | — |
+
+Conflicts fail at startup with a clear error message naming both plugins. No silent overrides.
+
+## Ordering
+
+Plugins are processed in array order. This matters for two things:
+
+1. **Middleware** — the first plugin's middleware runs outermost (like Express middleware)
+2. **Lifecycle hooks** — `onInit` and `onRequest` fire in declaration order
+
+```typescript
+plugins: [
+  loggingPlugin(),   // middleware runs first (outermost)
+  authPlugin(),      // middleware runs second
+  billingPlugin(),   // middleware runs third (innermost)
+]
+```
+
+## Minimal Example
+
+A plugin that adds a health check route:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+
+export function healthPlugin() {
+  return definePlugin({
+    name: 'health',
+    routes: {
+      'GET /health': () => Response.json({ status: 'ok' }),
+    },
+  })
+}
+```
+
+## Full Example
+
+A plugin that adds Stripe billing with permissions, actions, roles, and webhook routes:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+import { z } from 'zod'
+import Stripe from 'stripe'
+
+export function stripePlugin(opts: { apiKey: string }) {
+  const stripe = new Stripe(opts.apiKey)
+
+  return definePlugin({
+    name: 'stripe',
+
+    permissions: {
+      view_invoices: {
+        name: 'View invoices',
+        table: 'main.invoices',
+        operations: { select: true },
+        filter: { organization_id: { $eq: '$user.current_org_id' } },
+      },
+    },
+
+    roles: {
+      billing_admin: ['view_invoices', 'action_createCheckout'],
+    },
+
+    actions: {
+      createCheckout: {
+        input: z.object({ priceId: z.string() }),
+        output: z.object({ url: z.string() }),
+        run: async ({ user }, { priceId }) => {
+          const session = await stripe.checkout.sessions.create({
+            line_items: [{ price: priceId, quantity: 1 }],
+            mode: 'subscription',
+            customer_email: user.email,
+            success_url: 'https://myapp.com/billing?success=true',
+          })
+          return { url: session.url! }
+        },
+      },
+    },
+
+    routes: {
+      'POST /stripe/webhook': async (req) => {
+        const body = await req.text()
+        const sig = req.headers.get('stripe-signature')!
+        const event = stripe.webhooks.constructEvent(body, sig, process.env.STRIPE_WEBHOOK_SECRET!)
+
+        if (event.type === 'checkout.session.completed') {
+          // handle successful checkout
+        }
+
+        return Response.json({ received: true })
+      },
+    },
+
+    onInit: () => {
+      // validate Stripe API key on startup
+      stripe.customers.list({ limit: 1 })
+    },
+  })
+}
+```
+
+## Next Steps
+
+- [Creating Plugins](/docs/backend/plugins/creating-plugins) — step-by-step guide for building plugins
+- [Lifecycle Hooks](/docs/backend/plugins/lifecycle) — `onInit`, `onRequest`, `onError`, `onShutdown`
+- [Configuration](/docs/backend/configuration) — the `plugins` option in `createEngine`

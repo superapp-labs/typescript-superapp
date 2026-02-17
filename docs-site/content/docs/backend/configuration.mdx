@@ -34,6 +34,9 @@ const engine = createEngine({
     main: { type: 'postgres', url: process.env.PG_URL! },
     warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
   },
+  plugins: [
+    // stripePlugin({ apiKey: process.env.STRIPE_KEY! }),
+  ],
   auth: betterAuthProvider({ /* ... */ }),
   duckdb: {
     maxMemory: '256MB',
@@ -78,6 +81,7 @@ const engine = createEngine({
 |---|---|---|---|
 | `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode |
 | `superapp_db` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables. Local file path for SQLite or a Turso URL. |
+| `plugins` | `Plugin[]` | `[]` | Plugins that extend the engine. See [Plugins](/docs/backend/plugins) |
 | `integrations` | `Provider[]` | `[]` | Database integration providers to load |
 | `connections` | `Record<string, Connection>` | `{}` | Named database connections |
 | `auth` | `AuthProvider` | — | Authentication provider |
@@ -105,6 +109,10 @@ const engine = createEngine({
 // Production — full access control
 const engine = createEngine({
   connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
+  plugins: [
+    stripePlugin({ apiKey: process.env.STRIPE_KEY! }),
+    metricsPlugin({ endpoint: 'https://metrics.myapp.com' }),
+  ],
   auth: betterAuthProvider({ /* ... */ }),
   permissions: { /* ... */ },
   roles: { /* ... */ },
@@ -112,3 +120,19 @@ const engine = createEngine({
   audit: { enabled: true },
 })
 ```
+
+## Plugins
+
+Plugins bundle integrations, auth, permissions, roles, actions, middleware, and routes into a single composable unit. Pass them in the `plugins` array — the engine merges their contributions at startup.
+
+```typescript
+import { stripePlugin } from '@superapp/plugin-stripe'
+import { metricsPlugin } from '@superapp/plugin-metrics'
+
+const engine = createEngine({
+  connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
+  plugins: [stripePlugin({ apiKey: '...' }), metricsPlugin({ endpoint: '...' })],
+})
+```
+
+Plugin contributions merge with your engine config. If both a plugin and your config define the same permission slug or action name, the engine throws at startup with a clear error. Roles from plugins and config are unioned. See [Plugins](/docs/backend/plugins) for the full guide.

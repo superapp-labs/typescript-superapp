@@ -1,0 +1,225 @@
+---
+title: Lifecycle Hooks
+icon: RefreshCw
+description: Hook into engine startup, request handling, errors, and shutdown.
+---
+
+Plugins can hook into four moments in the engine lifecycle. All hooks are optional and run in plugin declaration order.
+
+```typescript
+definePlugin({
+  name: 'my-plugin',
+  onInit: async (ctx) => { /* engine started */ },
+  onRequest: async (ctx) => { /* request received */ },
+  onError: async (error, ctx) => { /* unhandled error */ },
+  onShutdown: async () => { /* engine stopping */ },
+})
+```
+
+## onInit
+
+Called once after the engine has fully initialized — connections are established, plugins are merged, and the request pipeline is ready. Use this for setup tasks that need a live engine.
+
+```typescript
+onInit: async ({ db, connections, config }) => {
+  // Run migrations
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS plugin_state (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `)
+
+  // Validate external service connectivity
+  const res = await fetch('https://api.stripe.com/v1/charges?limit=1', {
+    headers: { Authorization: `Bearer ${config.stripeKey}` },
+  })
+  if (!res.ok) {
+    throw new Error('Stripe API key is invalid — aborting startup')
+  }
+}
+```
+
+### EngineContext
+
+| Field | Type | Description |
+|---|---|---|
+| `db` | `QueryBuilder` | Drizzle query builder connected to the metadata database |
+| `connections` | `Record<string, unknown>` | Named database connection configs |
+| `config` | `Record<string, unknown>` | Full engine configuration |
+
+Throwing from `onInit` aborts engine startup. Use this to enforce required external dependencies.
+
+## onRequest
+
+Called on every incoming request, before the pipeline starts. Runs after HTTP parsing but before rate limiting, auth, and everything else. Use this for request-level telemetry, tracing, or early rejection.
+
+```typescript
+onRequest: async (ctx) => {
+  const start = Date.now()
+  ctx.request.headers.set('x-request-start', String(start))
+}
+```
+
+### PipelineContext
+
+| Field | Type | Available | Description |
+|---|---|---|---|
+| `request` | `Request` | Always | The incoming HTTP request |
+| `user` | `EnrichedUser` | After auth | Resolved user session |
+| `operation` | `PermissionOperation` | After parsing | `select`, `insert`, `update`, `delete` |
+| `table` | `string` | After parsing | Target table, e.g. `main.orders` |
+| `sql` | `string` | After parsing | Parameterized SQL from the client |
+| `params` | `unknown[]` | After parsing | SQL parameters |
+
+In `onRequest`, only `request` is populated. Other fields are filled as the pipeline progresses.
+
+## onError
+
+Called when an unhandled error occurs during request processing. The error has already been caught by the engine — `onError` is for logging, alerting, and telemetry. It does not change the response.
+
+```typescript
+onError: async (error, ctx) => {
+  await fetch('https://hooks.slack.com/services/xxx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: `Error in ${ctx.table ?? 'unknown'}: ${error.message}`,
+      blocks: [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: [
+            `*Error:* \`${error.message}\``,
+            `*Table:* ${ctx.table ?? 'N/A'}`,
+            `*User:* ${ctx.user?.id ?? 'anonymous'}`,
+            `*Operation:* ${ctx.operation ?? 'N/A'}`,
+          ].join('\n'),
+        },
+      }],
+    }),
+  })
+}
+```
+
+Throwing from `onError` does not affect the response. The engine catches errors from error handlers to prevent cascading failures.
+
+## onShutdown
+
+Called when the engine is shutting down (e.g., `SIGTERM`, `SIGINT`, or manual shutdown). Use this to close connections, flush buffers, and clean up resources.
+
+```typescript
+onShutdown: async () => {
+  await metricsClient.flush()
+  await redisConnection.quit()
+}
+```
+
+Shutdown hooks run in plugin declaration order. Each hook gets a 5-second timeout — if it doesn't resolve, the engine moves to the next hook.
+
+## Execution Order
+
+When multiple plugins define the same hook, they run in the order plugins are declared:
+
+```typescript
+plugins: [
+  pluginA(),  // onInit runs first
+  pluginB(),  // onInit runs second
+  pluginC(),  // onInit runs third
+]
+```
+
+This is consistent across all four hooks. For `onShutdown`, plugins are called in the same forward order (not reversed) — if you need reverse teardown, handle it within your plugin.
+
+## Example: Metrics Plugin
+
+A plugin that tracks request duration and sends metrics to a monitoring service:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+
+export function metricsPlugin(opts: { endpoint: string }) {
+  const pending = new Map<Request, number>()
+
+  return definePlugin({
+    name: 'metrics',
+
+    onRequest: async (ctx) => {
+      pending.set(ctx.request, Date.now())
+    },
+
+    middleware: [
+      async (ctx, next) => {
+        const response = await next()
+        const start = pending.get(ctx.request)
+        pending.delete(ctx.request)
+
+        if (start) {
+          const duration = Date.now() - start
+          // fire-and-forget — don't block the response
+          fetch(opts.endpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              table: ctx.table,
+              operation: ctx.operation,
+              user: ctx.user?.id,
+              duration,
+              status: response.status,
+            }),
+          }).catch(() => {})
+        }
+
+        return response
+      },
+    ],
+
+    onError: async (error, ctx) => {
+      fetch(opts.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'error',
+          table: ctx.table,
+          operation: ctx.operation,
+          error: error.message,
+        }),
+      }).catch(() => {})
+    },
+
+    onShutdown: async () => {
+      pending.clear()
+    },
+  })
+}
+```
+
+## Example: Request Logger Plugin
+
+A minimal plugin that logs every request and error using the central logger:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+import { logger } from '@core/utils/logger'
+
+export function requestLoggerPlugin() {
+  return definePlugin({
+    name: 'request-logger',
+
+    onRequest: async (ctx) => {
+      logger.info('request received', {
+        method: ctx.request.method,
+        url: ctx.request.url,
+      })
+    },
+
+    onError: async (error, ctx) => {
+      logger.error('unhandled error', {
+        error: error.message,
+        table: ctx.table,
+        user: ctx.user?.id,
+      })
+    },
+  })
+}
+```

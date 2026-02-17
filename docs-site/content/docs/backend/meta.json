@@ -4,6 +4,7 @@
   "pages": [
     "overview",
     "configuration",
+    "plugins",
     "databases",
     "auth",
     "adapters",

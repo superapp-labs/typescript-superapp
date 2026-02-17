@@ -1,0 +1,379 @@
+---
+title: Creating Plugins
+icon: Hammer
+description: Build a plugin from scratch — from a single route to a full-featured integration.
+---
+
+A plugin is a plain object. Use `definePlugin` for type checking and autocomplete, or export a raw object — either works.
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+
+export function myPlugin() {
+  return definePlugin({
+    name: 'my-plugin',
+    // ... contributions
+  })
+}
+```
+
+## Start Small
+
+Every plugin starts the same way: a function that returns `definePlugin({ name, ... })`. Add only what you need.
+
+### Route-only plugin
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+
+export function healthPlugin() {
+  return definePlugin({
+    name: 'health',
+    routes: {
+      'GET /health': () => Response.json({ status: 'ok', timestamp: Date.now() }),
+    },
+  })
+}
+```
+
+### Permissions-only plugin
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+
+export function readOnlyPlugin() {
+  return definePlugin({
+    name: 'read-only',
+    permissions: {
+      view_all_tables: {
+        name: 'View all tables',
+        table: '*',
+        operations: { select: true },
+        columns: '*',
+      },
+    },
+    roles: {
+      viewer: ['view_all_tables'],
+    },
+  })
+}
+```
+
+### Action-only plugin
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+import { z } from 'zod'
+
+export function emailPlugin(opts: { sendgridKey: string }) {
+  return definePlugin({
+    name: 'email',
+    actions: {
+      sendEmail: {
+        input: z.object({
+          to: z.string().email(),
+          subject: z.string(),
+          body: z.string(),
+        }),
+        run: async (_ctx, { to, subject, body }) => {
+          await fetch('https://api.sendgrid.com/v3/mail/send', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${opts.sendgridKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              personalizations: [{ to: [{ email: to }] }],
+              from: { email: 'noreply@myapp.com' },
+              subject,
+              content: [{ type: 'text/plain', value: body }],
+            }),
+          })
+        },
+      },
+    },
+    roles: {
+      admin: ['action_sendEmail'],
+    },
+  })
+}
+```
+
+## Plugin Options
+
+Plugins are functions that return a plugin object. This lets you accept configuration:
+
+```typescript
+export function rateLimitPlugin(opts: {
+  maxRequests?: number
+  windowMs?: number
+}) {
+  const max = opts.maxRequests ?? 100
+  const window = opts.windowMs ?? 60_000
+  const hits = new Map<string, { count: number; resetAt: number }>()
+
+  return definePlugin({
+    name: 'rate-limit',
+    middleware: [
+      async (ctx, next) => {
+        const ip = ctx.request.headers.get('x-forwarded-for') ?? 'unknown'
+        const now = Date.now()
+        const entry = hits.get(ip)
+
+        if (entry && entry.resetAt > now && entry.count >= max) {
+          return new Response('Too Many Requests', { status: 429 })
+        }
+
+        if (!entry || entry.resetAt <= now) {
+          hits.set(ip, { count: 1, resetAt: now + window })
+        } else {
+          entry.count++
+        }
+
+        return next()
+      },
+    ],
+  })
+}
+```
+
+Usage:
+
+```typescript
+const engine = createEngine({
+  connections: { /* ... */ },
+  plugins: [
+    rateLimitPlugin({ maxRequests: 200, windowMs: 60_000 }),
+  ],
+})
+```
+
+## Contributing to Multiple Layers
+
+A real plugin usually touches several layers. Here's a notifications plugin that adds a database integration, actions, permissions, and routes:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+import { z } from 'zod'
+
+export function notificationsPlugin(opts: { webhookUrl: string }) {
+  return definePlugin({
+    name: 'notifications',
+
+    permissions: {
+      view_own_notifications: {
+        name: 'View own notifications',
+        table: 'main.notifications',
+        operations: { select: true },
+        columns: ['id', 'title', 'body', 'read', 'created_at'],
+        filter: { user_id: { $eq: '$user.id' } },
+      },
+      mark_notification_read: {
+        name: 'Mark notification as read',
+        table: 'main.notifications',
+        operations: { update: true },
+        columns: ['read'],
+        filter: { user_id: { $eq: '$user.id' } },
+        check: { read: { $eq: true } },
+      },
+    },
+
+    roles: {
+      user: ['view_own_notifications', 'mark_notification_read'],
+    },
+
+    actions: {
+      sendNotification: {
+        input: z.object({
+          userId: z.string(),
+          title: z.string(),
+          body: z.string(),
+        }),
+        run: async ({ db }, { userId, title, body }) => {
+          await db.insert('main.notifications').values({
+            user_id: userId,
+            title,
+            body,
+            read: false,
+            created_at: new Date(),
+          })
+
+          await fetch(opts.webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, title, body }),
+          })
+        },
+      },
+    },
+
+    routes: {
+      'GET /notifications/unread-count': async (req) => {
+        // handled by the engine's auth + db context in production
+        return Response.json({ count: 0 })
+      },
+    },
+  })
+}
+```
+
+## Adding a Custom Integration
+
+Plugins can contribute database integration providers. This is how you wrap an external API as queryable tables:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+
+export function hubspotPlugin(opts: { apiKey: string }) {
+  return definePlugin({
+    name: 'hubspot',
+
+    integrations: [{
+      type: 'hubspot',
+      capabilities: { read: true, write: true, transactions: false },
+      configSchema: {
+        apiKey: { type: 'string', required: true, secret: true },
+      },
+
+      async testConnection(config) {
+        const res = await fetch('https://api.hubapi.com/crm/v3/objects/contacts?limit=1', {
+          headers: { Authorization: `Bearer ${config.apiKey}` },
+        })
+        return res.ok
+      },
+
+      async introspect() {
+        return [
+          {
+            name: 'contacts',
+            columns: [
+              { name: 'id', type: 'varchar', nullable: false, primaryKey: true },
+              { name: 'email', type: 'varchar', nullable: true },
+              { name: 'firstname', type: 'varchar', nullable: true },
+              { name: 'lastname', type: 'varchar', nullable: true },
+            ],
+          },
+          {
+            name: 'deals',
+            columns: [
+              { name: 'id', type: 'varchar', nullable: false, primaryKey: true },
+              { name: 'dealname', type: 'varchar', nullable: true },
+              { name: 'amount', type: 'decimal', nullable: true },
+              { name: 'pipeline', type: 'varchar', nullable: true },
+            ],
+          },
+        ]
+      },
+
+      async execute(config, query) {
+        const res = await fetch(
+          `https://api.hubapi.com/crm/v3/objects/${query.table}`,
+          { headers: { Authorization: `Bearer ${config.apiKey}` } },
+        )
+        const data = await res.json()
+        return { rows: data.results, count: data.total }
+      },
+    }],
+  })
+}
+```
+
+## Plugin with Auth Provider
+
+Only one plugin (or the engine config) can provide `auth`. This is how you wrap a custom auth system as a plugin:
+
+```typescript
+import { definePlugin } from '@superapp/backend/plugins'
+import admin from 'firebase-admin'
+
+export function firebaseAuthPlugin() {
+  admin.initializeApp({ credential: admin.credential.applicationDefault() })
+
+  return definePlugin({
+    name: 'firebase-auth',
+
+    auth: {
+      async verifyToken(token) {
+        const decoded = await admin.auth().verifyIdToken(token)
+        return { sub: decoded.uid, email: decoded.email }
+      },
+
+      async findUser(payload, db) {
+        return db
+          .selectFrom('main.users')
+          .selectAll()
+          .where('firebase_uid', '=', payload.sub)
+          .executeTakeFirst() ?? null
+      },
+
+      async resolveSession(user) {
+        return { ...user }
+      },
+    },
+  })
+}
+```
+
+## Testing Plugins
+
+Plugins are plain objects — test them without the engine:
+
+```typescript
+import { describe, it, expect } from 'vitest'
+import { healthPlugin } from './health-plugin'
+
+describe('healthPlugin', () => {
+  const plugin = healthPlugin()
+
+  it('has the correct name', () => {
+    expect(plugin.name).toBe('health')
+  })
+
+  it('exposes a GET /health route', async () => {
+    const handler = plugin.routes!['GET /health']
+    const response = await handler(new Request('http://localhost/health'))
+    const body = await response.json()
+    expect(body.status).toBe('ok')
+  })
+})
+```
+
+For plugins with actions, test the `run` function directly:
+
+```typescript
+import { emailPlugin } from './email-plugin'
+
+describe('emailPlugin', () => {
+  const plugin = emailPlugin({ sendgridKey: 'test-key' })
+
+  it('defines a sendEmail action', () => {
+    expect(plugin.actions!.sendEmail).toBeDefined()
+    expect(plugin.actions!.sendEmail.input).toBeDefined()
+  })
+})
+```
+
+## Publishing Plugins
+
+A plugin is just an npm package that exports a function. Naming convention: `@superapp/plugin-{name}` or `superapp-plugin-{name}`.
+
+```
+my-plugin/
+├── src/
+│   └── index.ts      # export function myPlugin(opts) { ... }
+├── package.json
+└── tsconfig.json
+```
+
+```json
+{
+  "name": "superapp-plugin-my-feature",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "peerDependencies": {
+    "@superapp/backend": "^1.0.0"
+  }
+}
+```
+
+Use `peerDependencies` for `@superapp/backend` so the plugin shares the same instance as the host application. This avoids version conflicts and duplicate type registrations.
