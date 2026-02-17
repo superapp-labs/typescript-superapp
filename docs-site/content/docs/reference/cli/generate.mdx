@@ -12,7 +12,7 @@ npx @superapp/backend generate --url http://localhost:3001 --token <schema-token
 
 ## What It Generates
 
-The command connects to your engine's `/schema` endpoint, reads every connection, table, and column, and writes a `schema.ts` file:
+The command connects to your engine's `/schema` endpoint, reads every connection, table, column, and action, and writes a `schema.ts` file:
 
 ```typescript
 // generated/schema.ts — auto-generated, do not edit
@@ -33,17 +33,22 @@ export interface SuperAppSchema {
       organization_id: number
       created_at: string
     }
-    organizations: {
-      id: number
-      name: string
-      slug: string
-      created_at: string
-    }
+  }
+}
+
+export interface SuperAppActions {
+  incrementStock: {
+    input: { productId: string; amount: number }
+    output: { id: string; stock: number }
+  }
+  revenueReport: {
+    input: { startDate: string; endDate: string }
+    output: { month: string; totalRevenue: number; orderCount: number; avgOrderValue: number }[]
   }
 }
 ```
 
-This type is passed to `createClient<SuperAppSchema>()` for full autocomplete on table names, column names, and query results.
+These types are passed to `createClient<SuperAppSchema, SuperAppActions>()` for full autocomplete on table names, column names, query results, action names, and action input/output.
 
 ## Options
 
@@ -106,12 +111,14 @@ npx @superapp/backend generate --url http://localhost:3001 --token sk_schema_abc
 
 ```typescript
 import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import type { SuperAppSchema, SuperAppActions } from '../generated/schema'
 
-const db = createClient<SuperAppSchema>({
+const db = createClient<SuperAppSchema, SuperAppActions>({
   url: 'http://localhost:3001/data',
   userToken: token,
 })
 
-// Full autocomplete: db.main.orders.findMany(...)
+// Full autocomplete on queries and actions
+db.main.orders.findMany(...)
+const result = await db.action('incrementStock', { productId: 'prod_123', amount: 5 })
 ```

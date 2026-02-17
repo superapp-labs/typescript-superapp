@@ -199,13 +199,13 @@ Requests to `POST /actions/{actionName}` follow a shorter pipeline — no SQL pa
   2. JWT Extraction + Session Resolution
     │
     ▼
-  3. Permission lookup — find which permission defines this action
+  3. Role check — is 'action_incrementStock' in the user's role array?
     │
     ▼
-  4. Role check — does the user's role include that permission?
+  4. Input validation — parse input against Zod schema (400 if invalid)
     │
     ▼
-  5. Execute action function — your TypeScript runs with { user, db } and input
+  5. Execute action function — run({ user, db }, validatedInput)
     │
     ▼
   6. Audit Log + Response

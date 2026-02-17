@@ -4,7 +4,7 @@ description: Map roles to permissions and define role hierarchies for access con
 icon: Users
 ---
 
-Roles group permissions into named sets. Each user gets a role, and the engine resolves which permissions apply based on that role.
+Roles group permissions and actions into named sets. Each user gets a role, and the engine resolves which permissions and actions apply based on that role.
 
 ## Example
 
@@ -22,21 +22,26 @@ const engine = createEngine({
     edit_orders: { /* ... */ },
     delete_orders: { /* ... */ },
   },
+  actions: {
+    exportOrders: async ({ user, db }, input) => { /* ... */ },
+    bulkUpdate: async ({ user, db }, input) => { /* ... */ },
+  },
   roles: {
     viewer: ['view_orders'],
-    editor: ['view_orders', 'edit_orders'],
-    admin: ['view_orders', 'edit_orders', 'delete_orders'],
+    editor: ['view_orders', 'edit_orders', 'action_exportOrders'],
+    admin: ['view_orders', 'edit_orders', 'delete_orders', 'action_exportOrders', 'action_bulkUpdate'],
   },
 })
 ```
 
-Each role is an array of permission slugs. Higher roles include lower-role permissions — `admin` can do everything `editor` can, plus delete orders.
+Each role is an array of permission slugs and action slugs. Action slugs are prefixed with `action_` to distinguish them from table permissions. Higher roles include lower-role capabilities — `admin` can do everything `editor` can, plus delete orders and run bulk updates.
 
 ## How It Works
 
 1. User authenticates and `resolveSession` returns their role
 2. Engine looks up the role in the `roles` config
-3. All permissions in that role's array are activated for the request
+3. For `POST /data` — all permission slugs in that role's array are activated
+4. For `POST /actions/{name}` — engine checks if the action slug is in the role's array
 
 ## Role Resolution
 
@@ -68,4 +73,4 @@ const auth = betterAuthProvider({
 
 ## Unknown Roles
 
-If a user's role is not in the `roles` config, they get **zero permissions** — all data requests return empty results or `403 Forbidden`.
+If a user's role is not in the `roles` config, they get **zero permissions** — all data requests return empty results or `403 Forbidden`, and all action calls return `403`.

@@ -1,50 +1,61 @@
 ---
 title: Actions
 icon: Zap
-description: Named server-side functions callable by the client, with full access to the database, user session, and any table.
+description: Typed server-side functions callable by the client, with full access to the database, user session, and any table.
 ---
 
 Actions are named server-side functions defined at the engine level. Unlike permissions (which are bound to a single table), actions can touch any table, run multi-table transactions, and execute arbitrary business logic. The client calls them by name — no raw SQL.
 
+Actions use Zod schemas for input and output validation, and the types flow end-to-end: the schema endpoint exposes them, the CLI generates TypeScript types, and the client gets full autocomplete on `db.action()` calls.
+
 ```typescript
+import { z } from 'zod'
+
 const engine = createEngine({
   connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
-  permissions: { /* ... */ },
-  roles: {
-    warehouse_manager: ['view_products', 'edit_products'],
-    customer: ['view_products'],
+  permissions: {
+    view_products: { /* ... */ },
+    edit_products: { /* ... */ },
   },
   actions: {
     incrementStock: {
-      roles: ['warehouse_manager'],
+      input: z.object({ productId: z.string(), amount: z.number().positive() }),
+      output: z.object({ id: z.string(), stock: z.number() }),
       run: async ({ user, db }, { productId, amount }) => {
         const [updated] = await db
           .update(products)
           .set({ stock: sql`stock + ${amount}` })
           .where(eq(products.id, productId))
-          .returning()
+          .returning({ id: products.id, stock: products.stock })
         return updated
       },
     },
+  },
+  roles: {
+    warehouse_manager: ['view_products', 'edit_products', 'action_incrementStock'],
+    customer: ['view_products'],
   },
 })
 ```
 
 ```typescript
-// Client calls the action by name
-const result = await superapp.action('incrementStock', {
+// Client — fully typed input and output
+const result = await db.action('incrementStock', {
   productId: 'prod_123',
   amount: 5,
 })
+// result: { id: string; stock: number }
 ```
 
 ## How It Works
 
 1. Client sends `POST /actions/{actionName}` with a JSON body
 2. Engine authenticates the user and resolves the session
-3. Engine checks if the user's role is listed in the action's `roles`
-4. Engine calls `run` with `{ user, db }` and the client's input
-5. Return value is sent back to the client as JSON
+3. Engine checks if `action_{actionName}` is in the user's role array
+4. Engine validates the input against the Zod schema — rejects with `400` if invalid
+5. Engine calls `run` with `{ user, db }` and the validated input
+6. Engine validates the output against the Zod schema (if defined)
+7. Return value is sent back to the client as JSON
 
 ```text
   POST /actions/incrementStock + Bearer JWT + { productId, amount }
@@ -53,42 +64,53 @@ const result = await superapp.action('incrementStock', {
   1. Auth — JWT verification, session resolution
     │
     ▼
-  2. Role check — is the user's role in the action's roles array?
+  2. Role check — is 'action_incrementStock' in the user's role array?
     │
     ▼
-  3. Execute — run({ user, db }, input)
+  3. Input validation — parse input against Zod schema
     │
     ▼
-  4. Response — return value sent as JSON
+  4. Execute — run({ user, db }, validatedInput)
+    │
+    ▼
+  5. Response — return value sent as JSON
 ```
 
 ## Defining Actions
 
-Actions are a top-level field on `createEngine`, alongside `permissions` and `roles`:
+Each action has three fields:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `input` | `ZodSchema` | Yes | Zod schema that validates and types the client's request body |
+| `output` | `ZodSchema` | No | Zod schema that validates and types the return value |
+| `run` | `({ user, db }, input) => Promise<Output>` | Yes | The function that executes the action |
 
 ```typescript
+import { z } from 'zod'
+
 const engine = createEngine({
   connections: { /* ... */ },
   permissions: { /* ... */ },
-  roles: { /* ... */ },
   actions: {
-    actionName: {
-      roles: ['role1', 'role2'],
-      run: async ({ user, db }, input) => {
-        // your logic here
-        return result
+    myAction: {
+      input: z.object({ id: z.string() }),
+      output: z.object({ success: z.boolean() }),
+      run: async ({ user, db }, { id }) => {
+        // input is typed as { id: string }
+        return { success: true }
+        // return is typed as { success: boolean }
       },
     },
+  },
+  roles: {
+    editor: ['view_orders', 'edit_orders', 'action_myAction'],
+    admin: ['view_orders', 'edit_orders', 'delete_orders', 'action_myAction'],
   },
 })
 ```
 
-Each action has two fields:
-
-| Field | Type | Description |
-|---|---|---|
-| `roles` | `string[]` | Which roles can call this action |
-| `run` | `({ user, db }, input) => Promise<any>` | The function that executes the action |
+Action names are defined without a prefix (e.g., `myAction`), but referenced in `roles` with the `action_` prefix (e.g., `action_myAction`). This makes it immediately clear which entries are table permissions and which are server-side functions.
 
 The `run` function receives:
 
@@ -96,19 +118,120 @@ The `run` function receives:
 |---|---|---|
 | `user` | `UserSession` | Resolved session (same as `$user.*` in filters) |
 | `db` | `DrizzleInstance` | Drizzle query builder — run any query, any table |
-| `input` | `any` | The client's request body (parsed JSON) |
+| `input` | `z.infer<typeof input>` | The client's request body, validated and typed by the `input` schema |
 
-The return value is sent to the client as JSON. If the function returns nothing, the client receives `{ ok: true }`.
+If the function returns nothing, the client receives `{ ok: true }`.
+
+## Type Safety
+
+Actions are type-safe end-to-end — from engine definition to client call.
+
+### 1. Schema Endpoint
+
+The `/schema` endpoint includes action definitions with their input/output JSON schemas:
+
+```json
+{
+  "connections": { "..." },
+  "actions": {
+    "incrementStock": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "productId": { "type": "string" },
+          "amount": { "type": "number" }
+        },
+        "required": ["productId", "amount"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "stock": { "type": "number" }
+        },
+        "required": ["id", "stock"]
+      }
+    }
+  }
+}
+```
+
+### 2. Type Generation
+
+The CLI generates action types alongside table types:
+
+```bash
+npx superapp generate --url http://localhost:3001
+```
+
+```typescript
+// generated/schema.ts — auto-generated, do not edit
+
+export interface SuperAppSchema {
+  main: {
+    orders: { id: string; amount: number; status: string }
+    products: { id: string; name: string; stock: number }
+  }
+}
+
+export interface SuperAppActions {
+  incrementStock: {
+    input: { productId: string; amount: number }
+    output: { id: string; stock: number }
+  }
+  decrementStock: {
+    input: { productId: string; amount: number }
+    output: { id: string; stock: number }
+  }
+  resetStock: {
+    input: { productId: string }
+    output: void
+  }
+}
+```
+
+### 3. Client Usage
+
+Pass both types to `drizzle()` for fully typed queries and actions:
+
+```typescript
+import { drizzle } from '@superapp/db'
+import * as schema from './generated/schema'
+import type { SuperAppActions } from './generated/schema'
+
+const db = drizzle<SuperAppActions>({
+  connection: 'http://localhost:3001',
+  token: session.token,
+  schema,
+})
+
+// Full autocomplete on action name, input, and output
+const result = await db.action('incrementStock', {
+  productId: 'prod_123',  // ← autocomplete
+  amount: 5,              // ← autocomplete
+})
+// result: { id: string; stock: number }
+```
+
+Calling an action that doesn't exist or passing wrong input types is a compile-time error:
+
+```typescript
+// ✗ Type error — 'unknownAction' does not exist
+await db.action('unknownAction', {})
+
+// ✗ Type error — 'amount' must be number, not string
+await db.action('incrementStock', { productId: 'prod_123', amount: '5' })
+```
 
 ## Client API
 
 ```typescript
-const result = await superapp.action('actionName', { ...params })
+const result = await db.action('incrementStock', { ...params })
 ```
 
 This sends:
 ```
-POST /actions/actionName
+POST /actions/incrementStock
 Authorization: Bearer <jwt>
 Content-Type: application/json
 
@@ -122,9 +245,12 @@ Content-Type: application/json
 A warehouse management system where operators scan items in and out. The client shouldn't write raw `SET stock = stock + 1` SQL — the server controls the atomic update and validates stock bounds. Each operation is a separate action with clear naming.
 
 ```typescript
+import { z } from 'zod'
+
 actions: {
   incrementStock: {
-    roles: ['warehouse_manager', 'admin'],
+    input: z.object({ productId: z.string(), amount: z.number().positive() }),
+    output: z.object({ id: z.string(), stock: z.number() }),
     run: async ({ user, db }, { productId, amount }) => {
       const [updated] = await db
         .update(products)
@@ -140,7 +266,8 @@ actions: {
   },
 
   decrementStock: {
-    roles: ['warehouse_manager', 'admin'],
+    input: z.object({ productId: z.string(), amount: z.number().positive() }),
+    output: z.object({ id: z.string(), stock: z.number() }),
     run: async ({ user, db }, { productId, amount }) => {
       const product = await db.query.products.findFirst({
         where: eq(products.id, productId),
@@ -164,7 +291,7 @@ actions: {
   },
 
   resetStock: {
-    roles: ['admin'],
+    input: z.object({ productId: z.string() }),
     run: async ({ user, db }, { productId }) => {
       await db
         .update(products)
@@ -176,14 +303,20 @@ actions: {
         .where(eq(products.id, productId))
     },
   },
+},
+roles: {
+  warehouse_manager: ['view_products', 'edit_products', 'action_incrementStock', 'action_decrementStock'],
+  admin: ['view_products', 'edit_products', 'action_incrementStock', 'action_decrementStock', 'action_resetStock'],
 }
 ```
 
 ```typescript
-// Client
-await superapp.action('incrementStock', { productId: 'prod_123', amount: 10 })
-await superapp.action('decrementStock', { productId: 'prod_123', amount: 3 })
-await superapp.action('resetStock', { productId: 'prod_123' })
+// Client — typed input and output
+const updated = await db.action('incrementStock', { productId: 'prod_123', amount: 10 })
+// updated: { id: string; stock: number }
+
+await db.action('decrementStock', { productId: 'prod_123', amount: 3 })
+await db.action('resetStock', { productId: 'prod_123' })
 ```
 
 ### Finance: Transfer Balance Between Accounts
@@ -193,10 +326,19 @@ A fintech app where users transfer money between their own accounts. The transfe
 ```typescript
 actions: {
   transfer: {
-    roles: ['account_holder'],
+    input: z.object({
+      fromAccountId: z.string(),
+      toAccountId: z.string(),
+      amount: z.number().positive(),
+    }),
+    output: z.object({
+      id: z.string(),
+      fromAccountId: z.string(),
+      toAccountId: z.string(),
+      amount: z.number(),
+      timestamp: z.string(),
+    }),
     run: async ({ user, db }, { fromAccountId, toAccountId, amount }) => {
-      if (amount <= 0) throw new PermissionError('Amount must be positive')
-
       return db.transaction(async (tx) => {
         const [source] = await tx
           .select()
@@ -227,16 +369,20 @@ actions: {
       })
     },
   },
+},
+roles: {
+  account_holder: ['view_accounts', 'view_transactions', 'action_transfer'],
 }
 ```
 
 ```typescript
 // Client
-const tx = await superapp.action('transfer', {
+const tx = await db.action('transfer', {
   fromAccountId: 'acc_checking',
   toAccountId: 'acc_savings',
   amount: 500,
 })
+// tx: { id: string; fromAccountId: string; toAccountId: string; amount: number; timestamp: string }
 ```
 
 ### E-Commerce: Apply Discount Code
@@ -246,7 +392,8 @@ An online store where the client sends a discount code and the server validates 
 ```typescript
 actions: {
   applyDiscount: {
-    roles: ['customer'],
+    input: z.object({ orderId: z.string(), code: z.string().min(1) }),
+    output: z.object({ discountAmount: z.number(), newTotal: z.number() }),
     run: async ({ user, db }, { orderId, code }) => {
       return db.transaction(async (tx) => {
         const order = await tx.query.orders.findFirst({
@@ -287,15 +434,19 @@ actions: {
       })
     },
   },
+},
+roles: {
+  customer: ['view_products', 'view_own_orders', 'action_applyDiscount'],
 }
 ```
 
 ```typescript
 // Client
-const { discountAmount, newTotal } = await superapp.action('applyDiscount', {
+const { discountAmount, newTotal } = await db.action('applyDiscount', {
   orderId: 'ord_456',
   code: 'SUMMER20',
 })
+// discountAmount: number, newTotal: number
 ```
 
 ### Team Management: Invite Member with Email Notification
@@ -305,11 +456,12 @@ A multi-tenant app where admins invite new members to their organization. The ac
 ```typescript
 actions: {
   inviteMember: {
-    roles: ['admin', 'owner'],
+    input: z.object({
+      email: z.string().email(),
+      role: z.enum(['viewer', 'editor', 'admin']),
+    }),
+    output: z.object({ memberId: z.string(), status: z.literal('invited') }),
     run: async ({ user, db }, { email, role }) => {
-      if (!['viewer', 'editor', 'admin'].includes(role)) {
-        throw new PermissionError('Invalid role')
-      }
       if (role === 'admin' && !user.roles.includes('owner')) {
         throw new PermissionError('Only owners can invite admins')
       }
@@ -337,15 +489,23 @@ actions: {
         data: { inviterName: user.name, orgName: user.org_name, role },
       })
 
-      return { memberId: member.id, status: 'invited' }
+      return { memberId: member.id, status: 'invited' as const }
     },
   },
+},
+roles: {
+  admin: ['view_members', 'edit_members', 'action_inviteMember'],
+  owner: ['view_members', 'edit_members', 'delete_members', 'action_inviteMember'],
 }
 ```
 
 ```typescript
 // Client
-await superapp.action('inviteMember', { email: 'alice@example.com', role: 'editor' })
+const result = await db.action('inviteMember', {
+  email: 'alice@example.com',
+  role: 'editor',
+})
+// result: { memberId: string; status: 'invited' }
 ```
 
 ### Analytics: Server-Side Aggregation Report
@@ -355,14 +515,17 @@ A dashboard where the client requests a revenue report. The aggregation query us
 ```typescript
 actions: {
   revenueReport: {
-    roles: ['analyst', 'admin', 'owner'],
+    input: z.object({
+      startDate: z.string().date(),
+      endDate: z.string().date(),
+    }),
+    output: z.array(z.object({
+      month: z.string(),
+      totalRevenue: z.number(),
+      orderCount: z.number(),
+      avgOrderValue: z.number(),
+    })),
     run: async ({ user, db }, { startDate, endDate }) => {
-      const start = new Date(startDate)
-      const end = new Date(endDate)
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        throw new PermissionError('Invalid date range')
-      }
-
       return db
         .select({
           month: sql`DATE_TRUNC('month', ${orders.createdAt})`.as('month'),
@@ -374,8 +537,8 @@ actions: {
         .where(
           and(
             eq(orders.organizationId, user.current_org_id),
-            gte(orders.createdAt, start),
-            lte(orders.createdAt, end),
+            gte(orders.createdAt, new Date(startDate)),
+            lte(orders.createdAt, new Date(endDate)),
             eq(orders.status, 'completed'),
           ),
         )
@@ -383,15 +546,21 @@ actions: {
         .orderBy(sql`month`)
     },
   },
+},
+roles: {
+  analyst: ['view_orders', 'action_revenueReport'],
+  admin: ['view_orders', 'edit_orders', 'action_revenueReport'],
+  owner: ['view_orders', 'edit_orders', 'delete_orders', 'action_revenueReport'],
 }
 ```
 
 ```typescript
 // Client
-const report = await superapp.action('revenueReport', {
+const report = await db.action('revenueReport', {
   startDate: '2025-01-01',
   endDate: '2025-12-31',
 })
+// report: { month: string; totalRevenue: number; orderCount: number; avgOrderValue: number }[]
 ```
 
 ## Actions vs Permissions vs Middleware
@@ -399,9 +568,10 @@ const report = await superapp.action('revenueReport', {
 | | Permissions (CRUD) | Middleware | Actions |
 |---|---|---|---|
 | **Scope** | Single table | Single table (wraps CRUD) | Any table, any logic |
-| **Client sends** | SQL via Drizzle Proxy | SQL via Drizzle Proxy | Action name + JSON |
+| **Client sends** | SQL via Drizzle Proxy | SQL via Drizzle Proxy | Action name + typed JSON |
 | **Defined on** | Permission object | Permission object | Engine config (top-level) |
-| **Access control** | Role → permission → table | Inherits from permission | Role listed in `action.roles` |
+| **Access control** | Role → permission → table | Inherits from permission | Role includes `action_*` slug |
+| **Type safety** | Schema-generated table types | Inherits from permission | Zod input/output schemas |
 | **Use when** | Standard reads and writes | Intercept or extend a CRUD query | Multi-table logic, workflows, aggregations |
 
 ## Error Handling
@@ -409,9 +579,12 @@ const report = await superapp.action('revenueReport', {
 Throw `PermissionError` to reject with `403 Forbidden`:
 
 ```typescript
-run: async ({ user, db }, input) => {
-  throw new PermissionError('Reason shown in error response')
+myAction: {
+  input: z.object({ id: z.string() }),
+  run: async ({ user, db }, { id }) => {
+    throw new PermissionError('Reason shown in error response')
+  },
 },
 ```
 
-Any other thrown error returns `500 Internal Server Error` and is logged but not exposed to the client. When using `db.transaction()`, any throw automatically rolls back all queries in that transaction.
+Invalid input (fails Zod validation) returns `400 Bad Request` with the Zod error details. Any other thrown error returns `500 Internal Server Error` and is logged but not exposed to the client. When using `db.transaction()`, any throw automatically rolls back all queries in that transaction.

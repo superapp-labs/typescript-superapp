@@ -4,7 +4,7 @@ icon: FileType
 description: Generate TypeScript types from your database schema for fully type-safe queries.
 ---
 
-The superapp CLI generates a `SuperAppSchema` type from your live database, giving you full autocomplete for connection names, table names, column names, and return types.
+The superapp CLI generates `SuperAppSchema` and `SuperAppActions` types from your live engine, giving you full autocomplete for connection names, table names, column names, action names, action inputs, and return types.
 
 ```bash
 npx superapp generate
@@ -29,7 +29,7 @@ This connects to your backend, introspects all configured database connections, 
 
 ## Generated Schema Structure
 
-The generated file exports a `SuperAppSchema` type that maps your database structure.
+The generated file exports a `SuperAppSchema` type (table types) and a `SuperAppActions` type (action input/output types).
 
 ```typescript
 // generated/schema.ts (auto-generated, do not edit)
@@ -59,19 +59,30 @@ export type SuperAppSchema = {
     }
   }
 }
+
+export type SuperAppActions = {
+  incrementStock: {
+    input: { productId: string; amount: number }
+    output: { id: string; stock: number }
+  }
+  revenueReport: {
+    input: { startDate: string; endDate: string }
+    output: { month: string; totalRevenue: number; orderCount: number; avgOrderValue: number }[]
+  }
+}
 ```
 
-The top-level keys are connection names (e.g., `main`), and each connection contains table names with their column types.
+The `SuperAppSchema` top-level keys are connection names (e.g., `main`), and each connection contains table names with their column types. The `SuperAppActions` type is derived from the Zod schemas defined on each action in the engine config.
 
 ## Using the Schema
 
-Pass the generated type to `createClient` for type-safe queries.
+Pass the generated types to `createClient` for type-safe queries and actions.
 
 ```typescript
 import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from '../generated/schema'
+import type { SuperAppSchema, SuperAppActions } from '../generated/schema'
 
-const db = createClient<SuperAppSchema>({
+const db = createClient<SuperAppSchema, SuperAppActions>({
   url: 'http://localhost:3001/data',
   userToken,
 })
@@ -83,6 +94,13 @@ const orders = await db.main.orders.findMany({
   where: { status: { $eq: 'active' } },
 })
 // orders: { id: string; amount: number; status: string }[]
+
+// Full autocomplete for action names, input, and output
+const result = await db.action('incrementStock', {
+  productId: 'prod_123',  // ← autocomplete
+  amount: 5,              // ← autocomplete
+})
+// result: { id: string; stock: number }
 ```
 
 ## Regenerating

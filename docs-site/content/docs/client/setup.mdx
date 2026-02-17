@@ -114,3 +114,18 @@ When you call a Drizzle query method, the proxy driver:
 4. **Returns typed results** as JSON, deserialized into the expected TypeScript type.
 
 This is standard [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) — the query syntax is identical to any other Drizzle setup, only the transport layer differs.
+
+## Calling Actions
+
+The `db` instance also exposes a typed `action()` method for calling server-side [actions](/docs/backend/actions):
+
+```typescript
+// Fully typed — autocomplete on action name, input params, and return type
+const result = await db.action('incrementStock', {
+  productId: 'prod_123',
+  amount: 5,
+})
+// result: { id: string; stock: number }
+```
+
+This sends `POST /actions/incrementStock` with the input as JSON. The engine validates the JWT, checks the user's role for `action_incrementStock`, validates the input against the Zod schema, and returns the typed result. See [Actions](/docs/backend/actions) for details.

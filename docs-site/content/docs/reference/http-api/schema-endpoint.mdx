@@ -64,7 +64,7 @@ No request body or query parameters are needed.
 
 ## Response Format
 
-The response is a JSON object describing all connections, their tables, columns, and relationships.
+The response is a JSON object describing all connections, their tables, columns, relationships, and actions.
 
 ```typescript
 interface SchemaResponse {
@@ -104,6 +104,15 @@ interface SchemaResponse {
           }
         }
       }
+    }
+  }
+  /** Typed server-side actions (derived from Zod schemas) */
+  actions?: {
+    [actionName: string]: {
+      /** JSON Schema for the action's input */
+      input: JSONSchema
+      /** JSON Schema for the action's output (if defined) */
+      output?: JSONSchema
     }
   }
 }
@@ -231,6 +240,26 @@ interface SchemaResponse {
         }
       }
     }
+  },
+  "actions": {
+    "incrementStock": {
+      "input": {
+        "type": "object",
+        "properties": {
+          "productId": { "type": "string" },
+          "amount": { "type": "number" }
+        },
+        "required": ["productId", "amount"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "stock": { "type": "number" }
+        },
+        "required": ["id", "stock"]
+      }
+    }
   }
 }
 ```
@@ -251,7 +280,7 @@ This command:
 2. Parses the response into a TypeScript type definition.
 3. Writes the type file to the specified output path.
 
-The generated file looks like:
+The generated file includes both table types and action types:
 
 ```typescript
 // generated/schema.ts — auto-generated, do not edit
@@ -281,17 +310,29 @@ export interface SuperAppSchema {
     }
   }
 }
+
+export interface SuperAppActions {
+  incrementStock: {
+    input: { productId: string; amount: number }
+    output: { id: string; stock: number }
+  }
+}
 ```
 
-Pass this type to `createClient` for full autocomplete:
+Pass these types for full autocomplete on queries and actions:
 
 ```typescript
 import { createClient } from '@superapp/db'
-import type { SuperAppSchema } from './generated/schema'
+import type { SuperAppSchema, SuperAppActions } from './generated/schema'
 
-const db = createClient<SuperAppSchema>({ url, userToken })
+const db = createClient<SuperAppSchema, SuperAppActions>({ url, userToken })
+
+// Table queries — autocomplete on columns
 db.main.orders.findMany({ select: ['id', 'amount'] })
-//                                  ^ autocomplete
+
+// Actions — autocomplete on name, input, and output
+const result = await db.action('incrementStock', { productId: 'prod_123', amount: 5 })
+// result: { id: string; stock: number }
 ```
 
 ## Errors
