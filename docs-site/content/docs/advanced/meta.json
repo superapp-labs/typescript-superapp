@@ -8,6 +8,7 @@
     "multi-database",
     "duckdb",
     "audit-logging",
+    "spicedb-comparison",
     "security"
   ]
 }

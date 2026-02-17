@@ -1,0 +1,389 @@
+---
+title: SpiceDB Comparison
+description: "A detailed comparison between superapp's permission model and SpiceDB (Google Zanzibar), with architectural recommendations."
+icon: Scale
+---
+
+A side-by-side analysis of superapp's built-in permission layer and [SpiceDB](https://github.com/authzed/spicedb) — the most mature open-source implementation of Google Zanzibar. The goal is to understand what each system does well, what we can borrow from SpiceDB, and how to keep our architecture layer as thin as possible without sacrificing flexibility.
+
+## Philosophical Difference
+
+The two systems solve authorization from opposite directions:
+
+| | superapp | SpiceDB |
+|---|---|---|
+| **Model** | SQL-centric, declarative permissions that compile to WHERE clauses | Graph-centric, relationships between objects resolved by graph traversal |
+| **Where logic lives** | Co-located with the data layer — permissions _are_ query modifiers | Externalized in a dedicated authorization service |
+| **Primary question** | "What rows can this user see/write?" | "Can subject X perform action Y on resource Z?" |
+| **Data coupling** | Tight — permissions reference tables, columns, FK paths | Loose — SpiceDB knows nothing about your database schema |
+| **Deployment** | Embedded in your backend process | Separate distributed service (gRPC) |
+
+superapp's model is **row-level security as configuration**. SpiceDB's model is **relationship-based access control (ReBAC) as a service**.
+
+---
+
+## Feature Comparison
+
+### Access Control Models
+
+| Capability | superapp | SpiceDB |
+|---|---|---|
+| Role-Based (RBAC) | Roles map to permission arrays | Modeled as relations (`relation admin: user`) |
+| Row-Level Security | First-class — filters inject WHERE clauses | Not applicable — SpiceDB does not touch your queries |
+| Column-Level Security | `columns` allowlist per permission | Not applicable |
+| Relationship traversal | FK-based filter nesting (`organization.members.user_id`) | Arrow operator (`org->admin`) walks the relation graph |
+| Attribute-Based (ABAC) | Middleware with full TypeScript + DB access | Caveats using CEL expressions (statically analyzed) |
+| Wildcard / public access | `$in` with a static array | `user:*` syntax — single relationship grants access to all subjects |
+| Hierarchical permissions | Implicit via role arrays (admin includes editor includes viewer) | Explicit via permission composition (`permission view = viewer + edit`) |
+| Set operations on permissions | Filter merging (OR across permissions on same table) | Union (`+`), Intersection (`&`), Exclusion (`-`) |
+| Write validation | `check` rules validate input values before writes | Not applicable — SpiceDB does not validate application data |
+| Auto-injected values | `preset` sets columns on INSERT/UPDATE | Not applicable |
+| Custom logic escape hatch | `middleware` wraps query execution | Caveats (limited to CEL), or application-side logic |
+
+### API and Integration
+
+| Capability | superapp | SpiceDB |
+|---|---|---|
+| Primary API | `POST /data` — parameterized SQL over HTTP | gRPC (with HTTP/JSON gateway) |
+| Permission check | Implicit — every query is filtered by permissions | Explicit — `CheckPermission(resource, permission, subject)` |
+| List accessible resources | Query returns only permitted rows (built-in) | `LookupResources` (server-streaming, can be slow at scale) |
+| List who has access | Not built-in (query the membership tables yourself) | `LookupSubjects` (server-streaming) |
+| Bulk checks | Single query covers all rows | `BulkCheckPermission` — multiple checks in one round-trip |
+| Schema definition | TypeScript config object | Custom schema language (`definition`, `relation`, `permission`) |
+| Schema validation | TypeScript compiler | `zed validate` CLI + Playground |
+| Watch for changes | Not applicable | `Watch` API streams relationship changes in real-time |
+
+### Consistency and Performance
+
+| Capability | superapp | SpiceDB |
+|---|---|---|
+| Consistency model | Strong — permissions are evaluated at query time against the live database | Tunable — four levels from `minimize_latency` to `fully_consistent` |
+| Consistency tokens | Not needed — single-process, same transaction | ZedTokens (Zookies) — must be stored alongside resource data |
+| Caching | No caching needed — filter injection is zero-cost | Distributed dispatch with consistent hash ring, ~60% cache hit rate |
+| Latency | Near-zero overhead (WHERE clause injection) | ~5ms p95 at scale (network hop to SpiceDB + graph traversal) |
+| Scaling | Scales with your database | Horizontally — multiple SpiceDB nodes with dispatch-based parallelism |
+
+### Operations
+
+| Capability | superapp | SpiceDB |
+|---|---|---|
+| Deployment | Embedded — no additional infrastructure | Separate service — needs its own datastore (CockroachDB, PostgreSQL, Spanner) |
+| Operational complexity | Zero — it is your backend | Significant — distributed system requiring monitoring, migrations, backups |
+| Schema migrations | Change your TypeScript config, redeploy | `WriteSchema` API or `zed` CLI with migration tooling |
+| Dev tooling | TypeScript autocompletion, your existing test suite | Playground (web), `zed` CLI, schema validation |
+| Observability | Your existing logging and metrics | Prometheus, OpenTelemetry, pprof, structured logging |
+
+---
+
+## What superapp Does Better
+
+### 1. Zero-Overhead Row-Level Security
+
+superapp's filters compile directly to SQL WHERE clauses. There is no network hop, no graph traversal, no cache invalidation. A permission like:
+
+```typescript
+filter: { organization_id: { $in: '$user.org_ids' } }
+```
+
+becomes:
+
+```sql
+WHERE organization_id IN ('org_1', 'org_2')
+```
+
+This is injected into every query at near-zero cost. SpiceDB cannot do this — it answers "can user X access resource Y?" but cannot inject conditions into your database queries. With SpiceDB, you would need to call `LookupResources` to get a list of accessible resource IDs, then pass those IDs to your database query — a fundamentally slower pattern that degrades as the number of resources grows.
+
+### 2. Column-Level Security Out of the Box
+
+```typescript
+columns: ['id', 'name', 'status', 'created_at'] // only these columns are returned
+```
+
+SpiceDB has no concept of column-level access. You would need to implement this entirely in your application layer.
+
+### 3. Write-Path Controls
+
+superapp's `check`, `preset`, and `middleware` give you a complete write-validation pipeline:
+
+```typescript
+check: { amount: { $gte: 0 } },           // validate input
+preset: { created_by: '$user.id' },         // auto-inject values
+middleware: async ({ db, input }, next) => { // custom logic
+  return db.transaction(async (tx) => {
+    const rows = await next({ db: tx })
+    await tx.update(inventory).set({ stock: sql`stock - ${input.qty}` })
+    return rows
+  })
+}
+```
+
+SpiceDB is read-path only — it tells you whether an action is allowed, but does not validate input data, inject server values, or wrap transactions.
+
+### 4. Single Deployment, Single Mental Model
+
+No separate service to deploy, monitor, or scale. No consistency tokens to manage. No relationship data to keep in sync with your application database. The permission config lives next to the route handlers and is version-controlled with the rest of your code.
+
+### 5. Full TypeScript Escape Hatch
+
+When declarative rules are not enough, `middleware` gives you unrestricted TypeScript with full database access. You can look up subscription plans, check stock levels, redact PII, enforce workflow transitions — anything. SpiceDB's escape hatch is CEL-based caveats, which are deliberately constrained (no I/O, no database access, statically analyzed for bounded execution time).
+
+---
+
+## What SpiceDB Does Better
+
+### 1. Explicit Permission Graph with Set Algebra
+
+SpiceDB's schema language is purpose-built for modeling authorization:
+
+```
+definition document {
+    relation owner: user
+    relation editor: user | team#member
+    relation viewer: user | user:*
+
+    permission edit = owner + editor
+    permission view = viewer + edit
+    permission delete = owner
+}
+```
+
+Permissions compose using union (`+`), intersection (`&`), and exclusion (`-`). This makes it trivial to express "viewers can view, editors can edit and view, owners can do everything" without duplicating permission arrays.
+
+In superapp, hierarchical permissions require manually listing all included permissions in each role:
+
+```typescript
+roles: {
+  viewer: ['view_orders'],
+  editor: ['view_orders', 'edit_orders'],              // must repeat view_orders
+  admin: ['view_orders', 'edit_orders', 'delete_orders'], // must repeat all
+}
+```
+
+This is manageable for small systems but becomes error-prone as the permission surface grows.
+
+### 2. Cross-Service Authorization
+
+SpiceDB is a standalone service that any microservice can query. If your architecture grows beyond a single backend, SpiceDB becomes a single source of truth for "who can do what" across all services.
+
+superapp's permissions are embedded in a single backend process. If you add a second service (a notification worker, an analytics pipeline, an admin panel), each needs its own permission logic or must call through the superapp backend.
+
+### 3. "Who Has Access?" Queries
+
+SpiceDB's `LookupSubjects` answers "who can view document:123?" — useful for building sharing UIs, audit dashboards, and access reviews. superapp has no equivalent; you would query your membership tables directly.
+
+### 4. Consistency Controls
+
+SpiceDB's ZedToken system lets you make per-request trade-offs between consistency and performance. The `at_least_as_fresh` pattern — store the ZedToken from a write, use it on subsequent reads — prevents the "New Enemy Problem" (revoking access but stale caches still granting it).
+
+superapp evaluates permissions at query time against the live database, so staleness is not a concern in a single-process deployment. But if you ever add caching or read replicas, you would need to solve this yourself.
+
+### 5. Schema Validation Tooling
+
+SpiceDB's `zed` CLI and Playground let you validate schemas, run test assertions, and visualize the permission graph before deploying. This catches modeling errors early. superapp relies on TypeScript type checking, which validates structure but not semantic correctness of permission logic.
+
+### 6. Relationship Expiration and Wildcards
+
+SpiceDB supports relationship expiration (access that automatically revokes after a timestamp) and wildcard subjects (`user:*` for public access) as first-class concepts. In superapp, you would implement time-based access via middleware or custom SQL, and public access via a filter that matches all rows.
+
+---
+
+## What We Can Borrow from SpiceDB
+
+These are SpiceDB concepts worth adopting in superapp's permission layer — not by adding SpiceDB as a dependency, but by incorporating the ideas into our existing architecture.
+
+### 1. Permission Composition (Priority: High)
+
+**SpiceDB pattern:**
+```
+permission view = viewer + edit
+permission manage = owner + org->admin
+```
+
+**Proposed superapp equivalent — role inheritance:**
+
+```typescript
+roles: {
+  viewer: ['view_orders', 'view_customers'],
+  editor: { extends: 'viewer', add: ['edit_orders', 'create_orders'] },
+  admin: { extends: 'editor', add: ['delete_orders', 'action_bulkUpdate'] },
+}
+```
+
+This eliminates the repetition problem. The engine resolves `admin` to the full flattened set at startup. Implementation cost: minimal — a single recursive resolver in the role config parser.
+
+### 2. Named Permission Groups (Priority: Medium)
+
+SpiceDB's `definition` groups all relations and permissions for a resource type. We can adopt a similar grouping to reduce config sprawl:
+
+```typescript
+permissions: {
+  orders: {
+    table: 'main.orders',
+    view: { operations: { select: true }, columns: ['id', 'amount', 'status'], filter: { ... } },
+    edit: { operations: { update: true }, columns: ['status', 'notes'], filter: { ... } },
+    create: { operations: { insert: true }, columns: ['product_id', 'quantity'], preset: { ... } },
+    delete: { operations: { delete: true }, filter: { status: { $eq: 'draft' } } },
+  },
+}
+```
+
+This makes the permission surface self-documenting and reduces the chance of misconfiguring table references.
+
+### 3. Schema Validation and Test Assertions (Priority: Medium)
+
+SpiceDB's Playground lets you write assertions like:
+
+```yaml
+assertTrue:
+  - document:readme#view@user:alice
+assertFalse:
+  - document:readme#delete@user:bob
+```
+
+We can build an equivalent test helper:
+
+```typescript
+import { assertPermission } from '@superapp/backend/testing'
+
+assertPermission({
+  user: { id: 'usr_1', role: 'editor', org_ids: ['org_1'] },
+  permission: 'edit_orders',
+  table: 'main.orders',
+  expect: {
+    allowed: true,
+    filter: { organization_id: { $in: ['org_1'] } },
+    columns: ['id', 'amount', 'status', 'notes'],
+  },
+})
+```
+
+This validates that a given user+role combination produces the expected filter, columns, and access level — catching misconfigurations in CI rather than production.
+
+### 4. "Who Has Access?" Query Helper (Priority: Low)
+
+For admin UIs and audit dashboards, a utility that answers "which roles/users can access this table with this operation?":
+
+```typescript
+import { explainAccess } from '@superapp/backend/admin'
+
+const result = explainAccess(engine, {
+  table: 'main.orders',
+  operation: 'delete',
+})
+// → { roles: ['admin'], permissions: ['delete_orders'], filter: { status: { $eq: 'draft' } } }
+```
+
+This is the superapp equivalent of SpiceDB's `ExpandPermissionTree` — useful for debugging and compliance, without requiring a separate graph database.
+
+### 5. Relationship Expiration via Filter (Priority: Low)
+
+SpiceDB has first-class relationship expiration. We can approximate this with a filter pattern:
+
+```typescript
+filter: {
+  $or: [
+    { expires_at: { $eq: null } },
+    { expires_at: { $gt: '$now' } },
+  ],
+}
+```
+
+Or as a reusable helper:
+
+```typescript
+import { notExpired } from '@superapp/backend/filters'
+
+filter: {
+  organization_id: { $in: '$user.org_ids' },
+  ...notExpired('access_expires_at'),
+}
+```
+
+---
+
+## Keeping the Architecture Layer Thin
+
+The goal is maximum flexibility with minimum abstraction. Here are the design principles:
+
+### Principle 1: Permissions Are Data, Not Code
+
+superapp permissions are a JSON-serializable config object. This means:
+
+- They can be stored in a database and edited through an admin UI
+- They can be generated from a schema (e.g., auto-create CRUD permissions per table)
+- They can be diffed, versioned, and audited
+- They are evaluated by a single, well-tested engine — not scattered across middleware files
+
+**Do not** add an abstraction layer between the config and the engine. The config _is_ the abstraction.
+
+### Principle 2: Declarative First, Imperative Escape Hatch
+
+The layered evaluation order — `filter` → `check` → `preset` → `customSql` → `middleware` — means most permissions need only the declarative fields. Middleware is the escape hatch for the 10-20% of cases that need custom logic.
+
+**Do not** build a mini-language or DSL for complex cases. TypeScript middleware with full DB access is more powerful and more maintainable than any DSL we could design.
+
+### Principle 3: No Separate Authorization Service
+
+SpiceDB's biggest operational cost is being a separate service. You need to:
+
+1. Deploy and scale SpiceDB alongside your application
+2. Keep relationship data in sync with your application database (write to both on every mutation)
+3. Manage ZedTokens for consistency
+4. Handle SpiceDB being unavailable (circuit breakers, fallbacks)
+5. Pay the latency cost of a network hop on every permission check
+
+superapp avoids all of this by embedding permissions in the backend process. The permission engine is a function call, not a network call. **Keep it this way** unless you genuinely need cross-service authorization.
+
+### Principle 4: Composition Over Configuration
+
+Instead of adding more fields to the permission object, compose existing primitives:
+
+```typescript
+// Instead of adding a "temporal" field:
+filter: { ...orgScoped('$user.org_ids'), ...notExpired('access_expires_at') }
+
+// Instead of adding an "audit" field:
+middleware: pipe(withAuditLog('order_update'), withStockValidation())
+```
+
+Reusable filter fragments and middleware composers keep the permission object slim while enabling complex behavior.
+
+### Principle 5: What We Should NOT Build
+
+| Temptation | Why Not |
+|---|---|
+| A graph database for relationships | Our FK-based filter traversal already walks the relationship graph — it is the database's relationship graph |
+| Consistency tokens (ZedTokens) | We evaluate permissions at query time against the live database — staleness is not possible in a single-process model |
+| A custom expression language | TypeScript middleware is strictly more powerful and already familiar to every developer |
+| A permission caching layer | Filter injection is O(1) — there is nothing to cache |
+| A separate permission microservice | Adds latency, operational complexity, and a data sync problem without solving a real problem for single-backend deployments |
+
+---
+
+## Decision Matrix: When to Consider SpiceDB
+
+| Scenario | Recommendation |
+|---|---|
+| Single backend, single database | **Use superapp permissions.** Zero overhead, full control, no operational burden. |
+| Single backend, multiple databases | **Use superapp permissions.** DuckDB already fans out to multiple sources; permissions apply uniformly. |
+| Multiple backends sharing the same authorization model | **Consider SpiceDB.** A centralized authorization service prevents duplicating permission logic across services. |
+| Complex organizational hierarchies (nested orgs, teams, projects) | **Evaluate.** If FK-based filter traversal handles the depth, stay with superapp. If you need 5+ hops or circular references, SpiceDB's graph engine handles this natively. |
+| Fine-grained per-document sharing (Google Docs-style) | **Consider SpiceDB.** Per-object relationships (`document:123#viewer@user:alice`) are SpiceDB's core strength. superapp's filter model works best with set-based access (all rows matching a condition), not per-row grants. |
+| Compliance requirement for "who has access to X?" queries | **Evaluate.** If you can query your membership tables, stay with superapp. If you need a real-time, always-consistent answer across a complex graph, SpiceDB provides this out of the box. |
+| Need to authorize non-database operations (API endpoints, feature flags, UI elements) | **Evaluate.** superapp permissions are table-centric. For non-data authorization, you already need application-side logic. SpiceDB can unify both data and non-data authorization in one model. |
+
+---
+
+## Summary
+
+superapp's permission layer is thin by design — it translates a declarative config into SQL query modifiers. This is the right approach for applications where authorization is fundamentally about "which rows can this user see and modify."
+
+SpiceDB is the right tool when authorization is fundamentally about "which objects can this subject act on" — especially when those objects span multiple services, have per-object sharing, or require complex graph traversal that exceeds what FK relationships can express.
+
+The recommended path forward:
+
+1. **Adopt role inheritance** to eliminate permission list repetition
+2. **Add permission test assertions** for CI-level validation of permission configs
+3. **Build filter composition helpers** for common patterns (org-scoping, temporal access, status filters)
+4. **Keep middleware as the escape hatch** — do not replace it with a DSL
+5. **Do not add SpiceDB** unless the application grows to multiple independent services that need shared authorization
