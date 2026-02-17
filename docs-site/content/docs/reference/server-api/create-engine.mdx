@@ -83,17 +83,10 @@ Each connection maps a name to a database URL or config object. The engine infer
 
 ```typescript
 connections: {
-  // Postgres — detected from postgres:// protocol
-  main: 'postgres://localhost:5432/mydb',
-
-  // MySQL — detected from mysql:// protocol
-  warehouse: 'mysql://localhost:3306/warehouse',
-
-  // SQLite — detected from .db file extension
-  legacy: './legacy.db',
-
-  // CSV — detected from { directory } shape
-  imports: { directory: './data/imports/' },
+  main: 'postgres://localhost:5432/mydb',           // postgres
+  warehouse: 'mysql://localhost:3306/warehouse',     // mysql
+  legacy: './legacy.db',                             // sqlite
+  imports: { directory: './data/imports/' },          // csv
 }
 ```
 
@@ -240,35 +233,14 @@ Query complexity and rate limit constraints to prevent abuse and protect your da
 
 ```typescript
 limits: {
-  // --- Query complexity ---
-
-  // Cap on rows returned per query (client limit is capped to this)
-  maxRows: 5000,
-
-  // How deep relations can nest: orders → items → product = depth 3
-  maxRelationDepth: 2,
-
-  // How deep $and/$or/$not can nest inside each other
-  maxFilterNesting: 4,
-
-  // Total number of conditions across all nesting levels
-  maxFilterConditions: 30,
-
-  // --- Request size ---
-
-  // Max JSON body size (accepts '512kb', '1mb', '2mb', etc.)
-  maxRequestBodySize: '2mb',
-
-  // Kill queries that run longer than this (in ms)
-  queryTimeout: 15_000,
-
-  // --- Rate limiting ---
-
-  // Requests per minute per authenticated user
-  rateLimitPerUser: 100,
-
-  // Requests per minute per IP (applies to unauthenticated too)
-  rateLimitPerIP: 300,
+  maxRows: 5000,              // max rows a query can return
+  maxRelationDepth: 2,        // orders → items = depth 2
+  maxFilterNesting: 4,        // nested $and/$or/$not levels
+  maxFilterConditions: 30,    // total conditions per query
+  maxRequestBodySize: '2mb',  // max JSON body size
+  queryTimeout: 15_000,       // kill slow queries (ms)
+  rateLimitPerUser: 100,      // req/min per user
+  rateLimitPerIP: 300,        // req/min per IP
 }
 ```
 
@@ -342,36 +314,15 @@ Configure audit logging for queries, permission denials, and admin actions.
 
 ```typescript
 audit: {
-  // Turn audit logging on or off
-  enabled: true,
-
-  // --- What to log ---
-
-  // Log the SQL statement that was executed
-  logQuery: true,
-
-  // Log query parameters (useful for debugging, may contain sensitive data)
-  logParams: false,
-
-  // Log how long each query took (in ms)
-  logDuration: true,
-
-  // Log which user ran each query
-  logUser: true,
-
-  // Log when a user is denied access (helps detect unauthorized attempts)
-  logDenied: true,
-
-  // Log admin UI actions (permission changes, connection edits)
-  logAdminActions: true,
-
-  // --- Retention & privacy ---
-
-  // Auto-delete logs older than this (accepts '30d', '90d', '1y', etc.)
-  retention: '90d',
-
-  // Strip emails and phone numbers from log entries
-  piiRedaction: true,
+  enabled: true,           // turn logging on/off
+  logQuery: true,          // log SQL statements
+  logParams: false,        // log query params (may contain sensitive data)
+  logDuration: true,       // log query time (ms)
+  logUser: true,           // log who ran each query
+  logDenied: true,         // log permission denials
+  logAdminActions: true,   // log admin UI changes
+  retention: '90d',        // auto-delete after 90 days
+  piiRedaction: true,      // strip emails & phone numbers
 }
 ```
 
@@ -404,17 +355,10 @@ JWT verification settings. These configure how the auth provider validates incom
 
 ```typescript
 jwt: {
-  // Allowed signing algorithms (common: 'HS256', 'RS256', 'ES256')
-  algorithms: ['RS256', 'ES256'],
-
-  // Expected 'iss' claim — tokens from other issuers are rejected
-  issuer: 'https://auth.myapp.com',
-
-  // Expected 'aud' claim — tokens for other audiences are rejected
-  audience: 'https://api.myapp.com',
-
-  // Seconds of clock drift allowed when checking token expiry
-  clockSkewSeconds: 10,
+  algorithms: ['RS256', 'ES256'],        // allowed signing algorithms
+  issuer: 'https://auth.myapp.com',      // reject tokens from other issuers
+  audience: 'https://api.myapp.com',     // reject tokens for other audiences
+  clockSkewSeconds: 10,                  // clock drift tolerance (seconds)
 }
 ```
 
@@ -466,21 +410,12 @@ Network security, CORS, and access control settings.
 ```typescript
 security: {
   cors: {
-    // Which origins can make requests (never use '*' in production)
-    origin: ['https://myapp.com', 'https://admin.myapp.com'],
-
-    // Send Access-Control-Allow-Credentials: true
-    credentials: true,
-
-    // How long browsers cache preflight responses (in seconds)
-    maxAge: 86400,
+    origin: ['https://myapp.com', 'https://admin.myapp.com'], // allowed origins
+    credentials: true,                                         // allow cookies
+    maxAge: 86400,                                             // preflight cache (seconds)
   },
-
-  // Content-Security-Policy header (applied to admin UI responses)
-  csp: "default-src 'self'; script-src 'self'",
-
-  // Only these IPs can access /admin (all others are blocked)
-  adminIpAllowlist: ['10.0.0.0/8', '192.168.1.0/24'],
+  csp: "default-src 'self'; script-src 'self'",  // CSP header for admin UI
+  adminIpAllowlist: ['10.0.0.0/8', '192.168.1.0/24'], // restrict /admin access
 }
 ```
 
@@ -503,16 +438,11 @@ Enable the `GET /schema` endpoint for schema introspection.
 />
 
 ```typescript
-// Boolean shorthand — enable with defaults
-schemaEndpoint: true
+schemaEndpoint: true // shorthand — enable with defaults
 
-// Object form — customize
 schemaEndpoint: {
-  // Expose GET /schema for introspection
-  enabled: true,
-
-  // Require this token in the Authorization header (optional)
-  token: process.env.SCHEMA_API_TOKEN,
+  enabled: true,                          // expose GET /schema
+  token: process.env.SCHEMA_API_TOKEN,    // require token for access
 }
 ```
 
@@ -524,39 +454,19 @@ import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 
 const engine = createEngine({
 
-  // ────────────────────────────────────────
-  // Core
-  // ────────────────────────────────────────
+  // ── Core ──────────────────────────────────────────
+  mode: 'programmatic',                              // config in code (or 'admin_ui')
+  superapp_db: process.env.TURSO_URL ?? './superapp.db', // internal tables storage
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,       // admin API key (use env var)
 
-  // 'programmatic' = define config in code
-  // 'admin_ui'     = manage config from the admin dashboard
-  mode: 'programmatic',
-
-  // Where superapp stores its own tables (sessions, audit logs, admin config)
-  // SQLite file path or a Turso URL
-  superapp_db: process.env.TURSO_URL ?? './superapp.db',
-
-  // Admin API key — required for admin_ui mode and /admin endpoints
-  // Always use an env var, never hardcode
-  masterKey: process.env.SUPERAPP_MASTER_KEY!,
-
-  // ────────────────────────────────────────
-  // Database Connections
-  // ────────────────────────────────────────
-
-  // Each key becomes a namespace prefix (e.g. main.orders, warehouse.events)
-  // Type is auto-detected from the URL protocol
+  // ── Database Connections ──────────────────────────
   connections: {
-    main: process.env.PG_URL!,
-    warehouse: process.env.MYSQL_URL!,
+    main: process.env.PG_URL!,                       // namespace: main.*
+    warehouse: process.env.MYSQL_URL!,               // namespace: warehouse.*
   },
 
-  // ────────────────────────────────────────
-  // Authentication
-  // ────────────────────────────────────────
-
-  // Auth provider — if omitted, the engine runs in open mode (no auth)
-  auth: betterAuthProvider({
+  // ── Authentication ────────────────────────────────
+  auth: betterAuthProvider({                         // omit for open mode (no auth)
     secret: process.env.AUTH_SECRET!,
     userTable: {
       table: 'main.users',
@@ -565,122 +475,55 @@ const engine = createEngine({
     },
   }),
 
-  // ────────────────────────────────────────
-  // JWT Verification
-  // ────────────────────────────────────────
-
+  // ── JWT Verification ──────────────────────────────
   jwt: {
-    // Allowed signing algorithms (common: 'HS256', 'RS256', 'ES256')
-    algorithms: ['RS256'],
-
-    // Expected 'iss' claim — tokens from other issuers are rejected
-    issuer: 'https://auth.myapp.com',
-
-    // Expected 'aud' claim — tokens for other audiences are rejected
-    audience: 'https://api.myapp.com',
-
-    // Seconds of clock drift allowed when checking token expiry
-    clockSkewSeconds: 5,
+    algorithms: ['RS256'],                           // allowed signing algorithms
+    issuer: 'https://auth.myapp.com',                // reject other issuers
+    audience: 'https://api.myapp.com',               // reject other audiences
+    clockSkewSeconds: 5,                             // clock drift tolerance
   },
 
-  // ────────────────────────────────────────
-  // Limits & Rate Limiting
-  // ────────────────────────────────────────
-
+  // ── Limits & Rate Limiting ────────────────────────
   limits: {
-    // Cap on rows returned per query (client limit is capped to this)
-    maxRows: 10_000,
-
-    // How deep relations can nest: orders → items → product = depth 3
-    maxRelationDepth: 3,
-
-    // How deep $and/$or/$not can nest inside each other
-    maxFilterNesting: 5,
-
-    // Total number of conditions across all nesting levels
-    maxFilterConditions: 50,
-
-    // Max JSON body size (accepts '512kb', '1mb', '2mb', etc.)
-    maxRequestBodySize: '1mb',
-
-    // Kill queries that run longer than this (in ms)
-    queryTimeout: 30_000,
-
-    // Requests per minute per authenticated user
-    rateLimitPerUser: 200,
-
-    // Requests per minute per IP (applies to unauthenticated too)
-    rateLimitPerIP: 500,
+    maxRows: 10_000,              // max rows a query can return
+    maxRelationDepth: 3,          // orders → items → product = depth 3
+    maxFilterNesting: 5,          // nested $and/$or/$not levels
+    maxFilterConditions: 50,      // total conditions per query
+    maxRequestBodySize: '1mb',    // max JSON body size
+    queryTimeout: 30_000,         // kill slow queries (ms)
+    rateLimitPerUser: 200,        // req/min per user
+    rateLimitPerIP: 500,          // req/min per IP
   },
 
-  // ────────────────────────────────────────
-  // Audit Logging
-  // ────────────────────────────────────────
-
+  // ── Audit Logging ─────────────────────────────────
   audit: {
-    // Turn audit logging on or off
-    enabled: true,
-
-    // Log the SQL statement that was executed
-    logQuery: true,
-
-    // Log query parameters (useful for debugging, may contain sensitive data)
-    logParams: false,
-
-    // Log how long each query took (in ms)
-    logDuration: true,
-
-    // Log which user ran each query
-    logUser: true,
-
-    // Log when a user is denied access (helps detect unauthorized attempts)
-    logDenied: true,
-
-    // Log admin UI actions (permission changes, connection edits)
-    logAdminActions: true,
-
-    // Auto-delete logs older than this (accepts '30d', '90d', '1y', etc.)
-    retention: '90d',
-
-    // Strip emails and phone numbers from log entries
-    piiRedaction: true,
+    enabled: true,                // turn logging on/off
+    logQuery: true,               // log SQL statements
+    logParams: false,             // log query params (may contain sensitive data)
+    logDuration: true,            // log query time (ms)
+    logUser: true,                // log who ran each query
+    logDenied: true,              // log permission denials
+    logAdminActions: true,        // log admin UI changes
+    retention: '90d',             // auto-delete after 90 days
+    piiRedaction: true,           // strip emails & phone numbers
   },
 
-  // ────────────────────────────────────────
-  // Network Security
-  // ────────────────────────────────────────
-
+  // ── Network Security ──────────────────────────────
   security: {
     cors: {
-      // Which origins can make requests (never use '*' in production)
-      origin: ['https://myapp.com'],
-
-      // Send Access-Control-Allow-Credentials: true
-      credentials: true,
+      origin: ['https://myapp.com'],  // allowed origins (never '*' in prod)
+      credentials: true,              // allow cookies
     },
-
-    // Only these IPs can access /admin (all others are blocked)
-    adminIpAllowlist: ['10.0.0.0/8'],
+    adminIpAllowlist: ['10.0.0.0/8'], // restrict /admin access
   },
 
-  // ────────────────────────────────────────
-  // Schema Introspection
-  // ────────────────────────────────────────
-
+  // ── Schema Introspection ──────────────────────────
   schemaEndpoint: {
-    // Expose GET /schema for introspection
-    enabled: true,
-
-    // Require this token in the Authorization header (optional)
-    token: process.env.SCHEMA_API_TOKEN,
+    enabled: true,                            // expose GET /schema
+    token: process.env.SCHEMA_API_TOKEN,      // require token for access
   },
 
-  // ────────────────────────────────────────
-  // Permissions
-  // ────────────────────────────────────────
-
-  // Each key is a snake_case permission slug
-  // Roles are declared inline on each permission
+  // ── Permissions ───────────────────────────────────
   permissions: {
     view_own_orders: {
       table: 'main.orders',
@@ -692,11 +535,7 @@ const engine = createEngine({
     },
   },
 
-  // ────────────────────────────────────────
-  // Actions
-  // ────────────────────────────────────────
-
-  // Typed server-side functions callable via POST /actions/{name}
+  // ── Actions ───────────────────────────────────────
   actions: {
     incrementStock: {
       roles: ['warehouse_manager'],

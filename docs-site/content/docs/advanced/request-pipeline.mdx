@@ -51,11 +51,8 @@ The engine enforces rate limits before processing any request logic:
 
 ```typescript
 limits: {
-  // Requests per minute per authenticated user
-  rateLimitPerUser: 200,
-
-  // Requests per minute per IP (applies to unauthenticated too)
-  rateLimitPerIP: 500,
+  rateLimitPerUser: 200,  // req/min per user
+  rateLimitPerIP: 500,    // req/min per IP
 }
 ```
 
@@ -123,14 +120,9 @@ Query limits are also enforced at this stage:
 
 ```typescript
 limits: {
-  // Cap on rows returned per query
-  maxRows: 10_000,
-
-  // How deep relations can nest: orders → items → product = depth 3
-  maxRelationDepth: 3,
-
-  // How deep $and/$or/$not can nest inside each other
-  maxFilterNesting: 5,
+  maxRows: 10_000,          // max rows a query can return
+  maxRelationDepth: 3,      // orders → items → product = depth 3
+  maxFilterNesting: 5,      // nested $and/$or/$not levels
 }
 ```
 
@@ -153,8 +145,7 @@ The permission-filtered SQL is executed directly against the target database usi
 
 ```typescript
 limits: {
-  // Kill queries that run longer than this (in ms)
-  queryTimeout: 30_000,
+  queryTimeout: 30_000,  // kill slow queries (ms)
 }
 ```
 
