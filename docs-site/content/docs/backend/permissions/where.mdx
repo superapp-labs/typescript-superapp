@@ -6,15 +6,6 @@ icon: ListFilter
 
 Where clauses inject SQL `WHERE` conditions into every query so users only see and touch rows they're allowed to. They work the same way as [Drizzle ORM filters](https://orm.drizzle.team/docs/select#filtering) — if you know Drizzle, you already know how this works.
 
-The engine supports four operations. Each one accepts different keys inside its block:
-
-| Operation | `where` | `columns` | `validate` | `default` | `overwrite` | `sql` | `middleware` |
-|-----------|---------|-----------|------------|-----------|-------------|-------|-------------|
-| `select`  | yes     | yes       | —          | —         | —           | yes   | yes         |
-| `insert`  | —       | yes       | yes        | yes       | yes         | —     | yes         |
-| `update`  | yes     | yes       | yes        | yes       | yes         | yes   | yes         |
-| `delete`  | yes     | —         | —          | —         | —           | yes   | yes         |
-
 ---
 
 ## select
