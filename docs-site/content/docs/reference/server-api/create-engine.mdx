@@ -453,19 +453,15 @@ import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 
 const engine = createEngine({
-
-  // ── Core ──────────────────────────────────────────
   mode: 'programmatic',                              // config in code (or 'admin_ui')
   superapp_db: process.env.TURSO_URL ?? './superapp.db', // internal tables storage
   masterKey: process.env.SUPERAPP_MASTER_KEY!,       // admin API key (use env var)
 
-  // ── Database Connections ──────────────────────────
   connections: {
     main: process.env.PG_URL!,                       // namespace: main.*
     warehouse: process.env.MYSQL_URL!,               // namespace: warehouse.*
   },
 
-  // ── Authentication ────────────────────────────────
   auth: betterAuthProvider({                         // omit for open mode (no auth)
     secret: process.env.AUTH_SECRET!,
     userTable: {
@@ -475,7 +471,6 @@ const engine = createEngine({
     },
   }),
 
-  // ── JWT Verification ──────────────────────────────
   jwt: {
     algorithms: ['RS256'],                           // allowed signing algorithms
     issuer: 'https://auth.myapp.com',                // reject other issuers
@@ -483,7 +478,6 @@ const engine = createEngine({
     clockSkewSeconds: 5,                             // clock drift tolerance
   },
 
-  // ── Limits & Rate Limiting ────────────────────────
   limits: {
     maxRows: 10_000,              // max rows a query can return
     maxRelationDepth: 3,          // orders → items → product = depth 3
@@ -495,7 +489,6 @@ const engine = createEngine({
     rateLimitPerIP: 500,          // req/min per IP
   },
 
-  // ── Audit Logging ─────────────────────────────────
   audit: {
     enabled: true,                // turn logging on/off
     logQuery: true,               // log SQL statements
@@ -508,7 +501,6 @@ const engine = createEngine({
     piiRedaction: true,           // strip emails & phone numbers
   },
 
-  // ── Network Security ──────────────────────────────
   security: {
     cors: {
       origin: ['https://myapp.com'],  // allowed origins (never '*' in prod)
@@ -517,13 +509,11 @@ const engine = createEngine({
     adminIpAllowlist: ['10.0.0.0/8'], // restrict /admin access
   },
 
-  // ── Schema Introspection ──────────────────────────
   schemaEndpoint: {
     enabled: true,                            // expose GET /schema
     token: process.env.SCHEMA_API_TOKEN,      // require token for access
   },
 
-  // ── Permissions ───────────────────────────────────
   permissions: {
     view_own_orders: {
       table: 'main.orders',
@@ -535,7 +525,6 @@ const engine = createEngine({
     },
   },
 
-  // ── Actions ───────────────────────────────────────
   actions: {
     incrementStock: {
       roles: ['warehouse_manager'],
