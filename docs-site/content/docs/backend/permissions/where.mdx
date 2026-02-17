@@ -149,40 +149,6 @@ Only rows matching both the user's filter and the permission's `where` are delet
 
 ---
 
-## Putting It All Together
-
-A single permission can define all four operations. This is the recommended pattern for most tables:
-
-```typescript
-permissions: {
-  manage_orders: {
-    table: 'main.orders',
-    roles: ['member'],
-    select: {
-      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
-      where: { organization_id: { $in: '$user.org_ids' } },
-    },
-    insert: {
-      columns: ['amount', 'status', 'customer_id'],
-      validate: { amount: { $gte: 0 } },
-      default: { status: 'draft' },
-      overwrite: { created_by: '$user.id', organization_id: '$user.current_org_id' },
-    },
-    update: {
-      columns: ['amount', 'status'],
-      where: { organization_id: { $in: '$user.org_ids' }, status: { $ne: 'completed' } },
-      validate: { amount: { $gte: 0 } },
-      overwrite: { updated_by: '$user.id' },
-    },
-    delete: {
-      where: { organization_id: { $in: '$user.org_ids' }, status: { $eq: 'draft' } },
-    },
-  },
-}
-```
-
----
-
 ## Where Syntax Reference
 
 ### Operators
