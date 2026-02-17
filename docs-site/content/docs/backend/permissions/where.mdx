@@ -1,22 +1,31 @@
 ---
 title: Where Clauses
-description: Restrict which rows users can read, update, and delete using Drizzle-like where syntax.
+description: Restrict which rows users can read, update, and delete — grouped by operation.
 icon: ListFilter
 ---
 
 Where clauses inject SQL `WHERE` conditions into every query so users only see and touch rows they're allowed to. They work the same way as [Drizzle ORM filters](https://orm.drizzle.team/docs/select#filtering) — if you know Drizzle, you already know how this works.
 
-## Complete Example
+The engine supports four operations. Each one accepts different keys inside its block:
 
-One permission that covers all four operations on an `orders` table:
+| Operation | `where` | `columns` | `validate` | `default` | `overwrite` | `sql` | `middleware` |
+|-----------|---------|-----------|------------|-----------|-------------|-------|-------------|
+| `select`  | yes     | yes       | —          | —         | —           | yes   | yes         |
+| `insert`  | —       | yes       | yes        | yes       | yes         | —     | yes         |
+| `update`  | yes     | yes       | yes        | yes       | yes         | yes   | yes         |
+| `delete`  | yes     | —         | —          | —         | —           | yes   | yes         |
+
+---
+
+## select
+
+Controls which rows and columns users can **read**. The `where` clause is appended to every `SELECT` query.
 
 ```typescript
 permissions: {
-  manage_orders: {
+  view_orders: {
     table: 'main.orders',
     roles: ['member'],
-
-    // READ — only orders from the user's organization
     select: {
       columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
       where: {
@@ -24,19 +33,72 @@ permissions: {
         status: { $ne: 'deleted' },
       },
     },
+  },
+}
+```
 
-    // CREATE — no where clause needed (new rows)
+```sql
+-- What the engine generates
+SELECT id, amount, status, customer_id, created_at
+FROM main.orders
+WHERE organization_id IN ('org_1', 'org_2')
+  AND status != 'deleted'
+```
+
+The user's Drizzle query on the client runs normally — the engine silently adds the `WHERE` conditions. If the user tries to select columns outside the `columns` list, they're stripped.
+
+---
+
+## insert
+
+Controls which columns users can **create** and what values are allowed. Inserts don't use `where` — use [`validate`](/docs/backend/permissions/validate), [`default`](/docs/backend/permissions/defaults), and [`overwrite`](/docs/backend/permissions/defaults) instead.
+
+```typescript
+permissions: {
+  create_orders: {
+    table: 'main.orders',
+    roles: ['member'],
     insert: {
       columns: ['amount', 'status', 'customer_id'],
-      validate: { amount: { $gte: 0 } },
+      validate: {
+        amount: { $gte: 0 },
+        status: { $in: ['draft'] },
+      },
       default: { status: 'draft' },
       overwrite: {
         created_by: '$user.id',
         organization_id: '$user.current_org_id',
       },
     },
+  },
+}
+```
 
-    // UPDATE — can only update orders in your org that aren't completed
+```sql
+-- User sends: { amount: 500, customer_id: 'cust_1' }
+-- Engine validates, fills defaults, forces overwrites, then runs:
+INSERT INTO main.orders (amount, customer_id, status, created_by, organization_id)
+VALUES (500, 'cust_1', 'draft', 'usr_123', 'org_1')
+```
+
+| Key | Purpose |
+|-----|---------|
+| `columns` | Allowed columns — anything else is rejected |
+| `validate` | Must pass or the request returns 403 |
+| `default` | Fills value if the client didn't send it (client can override) |
+| `overwrite` | Always set from server — client cannot override |
+
+---
+
+## update
+
+Controls which rows users can **modify** and what values are allowed. The `where` clause restricts which rows are updatable.
+
+```typescript
+permissions: {
+  edit_orders: {
+    table: 'main.orders',
+    roles: ['member'],
     update: {
       columns: ['amount', 'status'],
       where: {
@@ -46,8 +108,33 @@ permissions: {
       validate: { amount: { $gte: 0 } },
       overwrite: { updated_by: '$user.id' },
     },
+  },
+}
+```
 
-    // DELETE — can only delete drafts in your org
+```sql
+-- User sends: db.update(orders).set({ amount: 500 }).where(eq(orders.id, 'order_42'))
+-- Engine injects permission where clause + overwrite:
+UPDATE main.orders
+SET amount = 500, updated_by = 'usr_123'
+WHERE id = 'order_42'
+  AND organization_id IN ('org_1', 'org_2')
+  AND status != 'completed'
+```
+
+The user's own `where` (e.g. `eq(orders.id, 'order_42')`) is **AND'd** with the permission's `where`. If the row doesn't match both, nothing is updated.
+
+---
+
+## delete
+
+Controls which rows users can **remove**. The `where` clause restricts which rows are deletable.
+
+```typescript
+permissions: {
+  delete_drafts: {
+    table: 'main.orders',
+    roles: ['member'],
     delete: {
       where: {
         organization_id: { $in: '$user.org_ids' },
@@ -58,177 +145,138 @@ permissions: {
 }
 ```
 
-**What the engine generates for a `select` query:**
-
 ```sql
-SELECT id, amount, status, customer_id, created_at
-FROM main.orders
-WHERE organization_id IN ('org_1', 'org_2')
-  AND status != 'deleted'
-```
-
-**For an `update`:**
-
-```sql
-UPDATE main.orders
-SET amount = 500, updated_by = 'usr_123'
-WHERE organization_id IN ('org_1', 'org_2')
-  AND status != 'completed'
-  AND id = 'order_42'
-```
-
-**For a `delete`:**
-
-```sql
+-- User sends: db.delete(orders).where(eq(orders.id, 'order_42'))
+-- Engine injects permission where clause:
 DELETE FROM main.orders
-WHERE organization_id IN ('org_1', 'org_2')
+WHERE id = 'order_42'
+  AND organization_id IN ('org_1', 'org_2')
   AND status = 'draft'
-  AND id = 'order_42'
 ```
 
-The user never sees or bypasses these conditions — they're injected server-side on every request.
+Only rows matching both the user's filter and the permission's `where` are deleted.
 
-## Operators
+---
 
-Where clauses use MongoDB-style operators. These map directly to SQL:
+## Putting It All Together
 
-```typescript
-// Exact match
-where: { status: { $eq: 'active' } }
-// → WHERE status = 'active'
-
-// Not equal
-where: { status: { $ne: 'deleted' } }
-// → WHERE status != 'deleted'
-
-// List membership
-where: { status: { $in: ['active', 'pending'] } }
-// → WHERE status IN ('active', 'pending')
-
-// Range
-where: { amount: { $gte: 0, $lte: 50_000 } }
-// → WHERE amount >= 0 AND amount <= 50000
-
-// Multiple conditions are AND'd together
-where: {
-  organization_id: { $eq: '$user.current_org_id' },
-  status: { $ne: 'deleted' },
-}
-// → WHERE organization_id = 'org_1' AND status != 'deleted'
-```
-
-See [Operators](/docs/backend/permissions/operators) for the full list (`$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$like`, `$ilike`).
-
-## Session Variables
-
-Any property on the user session (returned by [`resolveSession`](/docs/backend/auth)) is available as a `$user.*` token:
+A single permission can define all four operations. This is the recommended pattern for most tables:
 
 ```typescript
-where: { customer_id: { $eq: '$user.id' } }
-// → WHERE customer_id = 'usr_123'
-
-where: { organization_id: { $in: '$user.org_ids' } }
-// If $user.org_ids = ['org_1', 'org_2']
-// → WHERE organization_id IN ('org_1', 'org_2')
-```
-
-## Logical Operators
-
-Combine conditions with `$or`, `$and`, and `$not`:
-
-```typescript
-where: {
-  $or: [
-    { customer_id: { $eq: '$user.id' } },
-    { assigned_to: { $eq: '$user.id' } },
-  ],
-}
-// → WHERE (customer_id = 'usr_123' OR assigned_to = 'usr_123')
-```
-
-```typescript
-where: {
-  status: { $ne: 'deleted' },
-  $or: [
-    { customer_id: { $eq: '$user.id' } },
-    { organization_id: { $in: '$user.org_ids' } },
-  ],
-}
-// → WHERE status != 'deleted' AND (customer_id = 'usr_123' OR organization_id IN ('org_1', 'org_2'))
-```
-
-## Relationship Traversal
-
-Filter through foreign key relationships by nesting objects. The engine follows the FK path in your schema:
-
-```typescript
-select: {
-  columns: '*',
-  where: {
-    organization: {
-      members: {
-        user_id: { $eq: '$user.id' },
-        role: { $in: ['owner', 'admin'] },
-      },
+permissions: {
+  manage_orders: {
+    table: 'main.orders',
+    roles: ['member'],
+    select: {
+      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      where: { organization_id: { $in: '$user.org_ids' } },
+    },
+    insert: {
+      columns: ['amount', 'status', 'customer_id'],
+      validate: { amount: { $gte: 0 } },
+      default: { status: 'draft' },
+      overwrite: { created_by: '$user.id', organization_id: '$user.current_org_id' },
+    },
+    update: {
+      columns: ['amount', 'status'],
+      where: { organization_id: { $in: '$user.org_ids' }, status: { $ne: 'completed' } },
+      validate: { amount: { $gte: 0 } },
+      overwrite: { updated_by: '$user.id' },
+    },
+    delete: {
+      where: { organization_id: { $in: '$user.org_ids' }, status: { $eq: 'draft' } },
     },
   },
 }
 ```
 
-**Generated SQL:**
+---
 
-```sql
-SELECT * FROM main.orders
-WHERE organization_id IN (
-  SELECT id FROM main.organizations
-  WHERE id IN (
-    SELECT organization_id FROM main.members
-    WHERE user_id = 'usr_123'
-      AND role IN ('owner', 'admin')
-  )
-)
+## Where Syntax Reference
+
+### Operators
+
+Where clauses use MongoDB-style operators that map directly to SQL:
+
+```typescript
+where: { status: { $eq: 'active' } }        // = 'active'
+where: { status: { $ne: 'deleted' } }        // != 'deleted'
+where: { status: { $in: ['a', 'b'] } }       // IN ('a', 'b')
+where: { amount: { $gt: 100 } }              // > 100
+where: { amount: { $gte: 0, $lte: 50000 } }  // BETWEEN 0 AND 50000
+where: { name: { $like: '%corp%' } }          // LIKE '%corp%'
 ```
 
-The engine resolves nested keys by inspecting FK relationships:
+Full list: `$eq`, `$ne`, `$gt`, `$gte`, `$lt`, `$lte`, `$in`, `$nin`, `$like`, `$ilike`. See [Operators](/docs/backend/permissions/operators).
 
-```text
-main.orders
-  → organization (FK: orders.organization_id → organizations.id)
-    → members (FK: members.organization_id → organizations.id)
-      → user_id = $user.id, role IN ('owner', 'admin')
+### Session Variables
+
+Any property from [`resolveSession`](/docs/backend/auth) is available as `$user.*`:
+
+```typescript
+where: { customer_id: { $eq: '$user.id' } }          // user's own rows
+where: { organization_id: { $in: '$user.org_ids' } }  // user's orgs (array)
 ```
 
-You can mix direct column conditions with FK traversal:
+### Logical Operators
+
+Combine conditions with `$or`, `$and`, `$not`:
 
 ```typescript
 where: {
   status: { $ne: 'deleted' },
+  $or: [
+    { customer_id: { $eq: '$user.id' } },
+    { assigned_to: { $eq: '$user.id' } },
+  ],
+}
+// → WHERE status != 'deleted' AND (customer_id = 'usr_123' OR assigned_to = 'usr_123')
+```
+
+### Relationship Traversal
+
+Filter through foreign keys by nesting objects. The engine follows the FK path in your schema:
+
+```typescript
+where: {
   organization: {
-    members: { user_id: { $eq: '$user.id' } },
+    members: {
+      user_id: { $eq: '$user.id' },
+      role: { $in: ['owner', 'admin'] },
+    },
   },
 }
 ```
 
-The `maxFilterDepth` setting (default: `5`) controls how many FK hops are allowed. Exceeding it returns `400 Bad Request`.
+```sql
+WHERE organization_id IN (
+  SELECT id FROM main.organizations
+  WHERE id IN (
+    SELECT organization_id FROM main.members
+    WHERE user_id = 'usr_123' AND role IN ('owner', 'admin')
+  )
+)
+```
 
-## Permission Merging
+The `maxFilterDepth` setting (default: `5`) limits FK hops.
+
+### Permission Merging
 
 When a user matches multiple permissions for the same table and operation, where clauses are merged with OR:
 
 ```typescript
-// Permission 1: view own orders
+// Permission 1
 select: { where: { customer_id: { $eq: '$user.id' } } }
-
-// Permission 2: view org orders
+// Permission 2
 select: { where: { organization_id: { $in: '$user.org_ids' } } }
-
-// Merged:
-// → WHERE (customer_id = 'usr_123') OR (organization_id IN ('org_1', 'org_2'))
+// Merged → WHERE (customer_id = 'usr_123') OR (organization_id IN ('org_1', 'org_2'))
 ```
+
+---
 
 ## Learn More
 
-- [Operators](/docs/backend/permissions/operators) — Full list of comparison and logical operators
+- [Operators](/docs/backend/permissions/operators) — Full operator reference
 - [Validate](/docs/backend/permissions/validate) — Input validation for insert and update
 - [Defaults & Overwrite](/docs/backend/permissions/defaults) — Auto-fill and force values on writes
 - [Raw SQL](/docs/backend/permissions/sql) — Escape hatch for complex WHERE conditions
