@@ -1,0 +1,306 @@
+---
+title: "Simplify Architecture"
+description: "Proposals to cut superapp's surface area in half — thinner core, fewer concepts, easier to extend."
+icon: Scissors
+---
+
+# superapp — Architecture Simplification Proposals
+
+> superapp has 69 documentation pages, 3 planned packages, 2 engine modes, 5 permission subsystems, 5 database providers, 4 HTTP adapters, and a 9-step request pipeline. This document proposes how to make it thinner, simpler, and easier to extend — without losing the core idea: a secure data layer between your frontend and any database.
+
+The architecture is sound. The problem is surface area. Every additional concept — engine modes, custom SQL permissions, middleware hooks, admin UI, DuckDB tuning knobs — is another thing a developer must understand before they ship. The proposals below cut that surface area roughly in half while keeping the extension points that matter.
+
+## Guiding Principles
+
+- **One way to do things.** If there are two ways, pick the better one and delete the other.
+- **Defaults over configuration.** Ship opinionated defaults. Let advanced users override, but don't document the overrides upfront.
+- **Thin core, pluggable edges.** The framework should be small. Databases, auth providers, and HTTP adapters are plugins — not built-in features.
+- **Docs are the product.** If a feature requires a dedicated docs page to explain, it's too complex for v1.
+
+## Proposal 1: One Engine Mode
+
+**Current state:** Two engine modes — `programmatic` (code-based config) and `admin_ui` (database-backed config with a visual editor). Docs explain both, plus mode switching and hybrid setups.
+
+**Problem:** Nobody needs a visual admin UI before they have users. Mode switching adds cognitive load and implementation complexity. The `admin_ui` mode requires a Turso metadata database, a React admin panel, and a separate API surface.
+
+**Proposal:** Ship `programmatic` mode only. Delete `engine-modes.mdx`. Remove the `mode` field from `createEngine`. If someone needs a visual editor later, it can be a separate package (`@superapp/admin`) that reads and writes the same config format.
+
+**Pages removed:** `advanced/engine-modes.mdx`
+**Config fields removed:** `mode`, `superapp_db` (only needed for admin_ui metadata)
+**Complexity saved:** One fewer mental model, no admin API routes, no Turso dependency in core
+
+## Proposal 2: Flatten the Permission Model
+
+**Current state:** Five permission subsystems — filters, checks, presets, middleware, and custom SQL. Each has its own docs page, its own mental model, and its own interaction with the request pipeline.
+
+**Problem:** Filters and presets cover 90% of real-world permission needs (row scoping + auto-set fields). Checks duplicate what Zod validation in Actions already does. Custom SQL is an escape hatch that undermines the declarative model. Middleware is powerful but makes permissions unpredictable — a `middleware` function can silently rewrite any query.
+
+**Proposal:**
+
+Keep:
+- **Filters** — WHERE clause injection. This is the core value proposition.
+- **Presets** — Auto-set fields on writes. Essential for multi-tenancy.
+
+Defer to v2:
+- **Checks** — Move write validation to Actions with Zod schemas. If you need validated writes, use an Action. If you need simple CRUD, filters + presets are enough.
+- **Custom SQL** — Remove entirely. If the declarative operators can't express a filter, write an Action instead.
+- **Middleware** — Remove from the permission object. If you need pre/post query hooks, use the HTTP adapter's native middleware (Hono `app.use()`, Express `app.use()`). This keeps permissions declarative and predictable.
+
+**Pages removed:** `permissions/checks.mdx`, `permissions/custom-sql.mdx`, `permissions/middleware.mdx`
+**Pages simplified:** `permissions/filters.mdx` (cut FK traversal examples from 5 to 2), `permissions/operators.mdx` (cut check-only operators)
+**Pipeline steps reduced:** 9 → 7 (remove middleware hooks, remove check validation step)
+
+## Proposal 3: One Default Database, Plugin the Rest
+
+**Current state:** Five database providers (Postgres, MySQL, SQLite, CSV, custom) are documented as first-class features. Each has a dedicated page. The `integrations` array in `createEngine` loads provider modules.
+
+**Problem:** Treating all five as equal suggests they're all equally supported and tested. In practice, Postgres is the primary target. MySQL and SQLite are secondary. CSV is a niche feature. Custom providers are an extension point, not a core feature.
+
+**Proposal:**
+
+- **Core:** Postgres only. No `integrations` array needed — Postgres support is built in.
+- **Plugins:** Publish `@superapp/mysql`, `@superapp/sqlite`, `@superapp/csv` as separate packages. Each exports a provider function you pass to `createEngine({ plugins: [...] })`.
+- **Custom:** Document the provider interface in a single "Writing a Plugin" page instead of a dedicated "Custom Provider" page.
+
+```typescript
+// Before: load everything, configure everything
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { mysqlProvider } from '@superapp/backend/integrations/mysql'
+
+const engine = createEngine({
+  integrations: [postgresProvider, mysqlProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+})
+
+// After: Postgres built in, MySQL is a plugin
+import { mysql } from '@superapp/mysql'
+
+const app = createEngine({
+  connections: {
+    main: { url: process.env.PG_URL! },
+  },
+  plugins: [
+    mysql({ warehouse: process.env.MYSQL_URL! }),
+  ],
+})
+```
+
+**Pages removed:** `databases/mysql.mdx`, `databases/sqlite.mdx`, `databases/csv.mdx`, `databases/custom-provider.mdx`
+**Pages added:** One "Plugins" page documenting the provider interface
+**Net page change:** -3
+
+## Proposal 4: One HTTP Adapter
+
+**Current state:** Four adapter pages — Hono, Express, Next.js, and a generic handler. Each shows how to mount the engine on a different framework.
+
+**Problem:** Four adapters means four surfaces to maintain, test, and document. The generic handler already covers Express, Next.js, Deno, Bun, and Cloudflare Workers — making the Express and Next.js pages redundant.
+
+**Proposal:**
+
+- **Default:** Hono. superapp ships as a Hono app. `createEngine` returns a `Hono` instance directly — no separate adapter step.
+- **Escape hatch:** Export a generic `handler(req: Request): Response` for embedding in any framework. One paragraph in the docs, not a full page.
+- **Remove:** Dedicated Express and Next.js adapter pages.
+
+```typescript
+// Before: create engine, create adapter, create Hono app, mount adapter
+const engine = createEngine({ ... })
+const middleware = createHonoMiddleware(engine)
+const app = new Hono()
+app.route('/', middleware)
+
+// After: engine IS the app
+const app = createEngine({ ... })
+serve({ fetch: app.fetch, port: 3001 })
+
+// Embedding in Next.js or Express? Use the generic handler:
+export const POST = app.handler
+```
+
+**Pages removed:** `adapters/express.mdx`, `adapters/nextjs.mdx`, `adapters/generic.mdx`
+**Pages simplified:** `adapters/hono.mdx` → merged into `backend/overview.mdx`
+**Net page change:** -4 (the adapters section disappears entirely)
+
+## Proposal 5: Hide DuckDB
+
+**Current state:** DuckDB has a dedicated docs page with pool sizing, memory limits, thread counts, idle timeouts, and query timeouts. The architecture docs explain DuckDB's role in detail. Connection strings reference DuckDB's ATTACH syntax.
+
+**Problem:** DuckDB is an implementation detail. Developers don't need to know that superapp uses DuckDB internally — they need to know that they can connect Postgres and query it with Drizzle. Exposing DuckDB tuning knobs invites premature optimization and creates a maintenance burden.
+
+**Proposal:**
+
+- Remove `duckdb` from `createEngine` config. Use sensible defaults internally (256MB, 2 threads, 30s timeout, pool of 10).
+- Remove the dedicated DuckDB page.
+- Mention DuckDB once in the architecture overview as an implementation note, not a feature.
+- If someone needs to tune DuckDB, expose a single `advanced.queryEngine` escape hatch — undocumented in the main docs, mentioned in a troubleshooting FAQ.
+
+**Pages removed:** `advanced/duckdb.mdx`
+**Config fields removed:** `duckdb.maxMemory`, `duckdb.threads`, `duckdb.poolSize`, `duckdb.idleTimeout`, `duckdb.queryTimeout`
+
+## Proposal 6: Collapse the Security Section
+
+**Current state:** Five security pages — overview, JWT validation, session isolation, encryption, and request limits. Each explains a defense layer in detail.
+
+**Problem:** Security is non-negotiable, but five pages describing internal mechanisms creates the impression that developers need to configure security manually. In practice, the defaults should be secure. Documenting internal defenses in detail is useful for security audits, not for getting started.
+
+**Proposal:**
+
+- Merge all five pages into a single `Security` page.
+- Lead with: "superapp is secure by default. Here's what it does." Then a table of defense layers with one-line descriptions.
+- Move detailed explanations (JWT algorithm allowlists, DuckDB sandboxing internals) to a collapsible "Security Deep Dive" section or a separate `security-whitepaper.md` outside the main docs.
+
+**Pages removed:** 4 (keep 1 merged page)
+
+## Proposal 7: Trim the Client Docs
+
+**Current state:** The client section has 12 pages: overview, setup, type generation, 2 auth pages, 3 component pages, and 6 query pages (select, insert, update, delete, filtering, aggregations).
+
+**Problem:** The client is Drizzle ORM with a proxy driver. If you know Drizzle, you know the client. Six query pages re-document Drizzle's API — this is redundant with Drizzle's own docs and creates a maintenance burden when Drizzle adds features.
+
+**Proposal:**
+
+- **Keep:** Overview (what the proxy does), Setup (connection config + schema generation), Auth Setup (token management).
+- **Merge:** All 6 query pages into a single "Queries" page with one example per operation. Link to Drizzle docs for the full API.
+- **Merge:** 3 component pages (AuthProvider, AuthCard, UserButton) into a single "Auth Components" page.
+- **Remove:** Filtering page (covered by Drizzle docs), Aggregations page (covered by Drizzle docs), separate Session page (merge into Auth Setup).
+
+**Pages: 12 → 5**
+
+## Proposal 8: Simplify the Reference Section
+
+**Current state:** 11 reference pages across 4 categories — server API (3), client API (3), CLI (2), HTTP API (3).
+
+**Problem:** Reference docs duplicate information from the guide pages. The HTTP API reference describes the same `/data`, `/auth`, `/schema` endpoints already covered in the backend overview. The client API reference re-documents Drizzle methods.
+
+**Proposal:**
+
+- **Keep:** `create-engine` reference (this is the canonical config reference).
+- **Merge:** `auth-provider` and `permission-object` into the `create-engine` reference as subsections.
+- **Remove:** Client API reference (link to Drizzle docs instead).
+- **Remove:** HTTP API reference (merge endpoint descriptions into backend overview).
+- **Keep:** CLI reference (2 pages — these are unique and necessary).
+
+**Pages: 11 → 3**
+
+## Proposal 9: Archive the Planning Docs
+
+**Current state:** `docs/plans/` contains 4 files totaling ~4,000 lines — a 2,741-line design document, two docs improvement plans, and a config reference. These overlap heavily with the MDX documentation.
+
+**Problem:** Two sources of truth. The planning docs describe the same architecture as the MDX docs but with different levels of detail and sometimes conflicting specifics (two packages vs. three packages, different config field names).
+
+**Proposal:**
+
+- Archive `docs/plans/` to `docs/archive/`. These were useful during design — they shouldn't live alongside active documentation.
+- Create a single `ARCHITECTURE.md` in the project root (under 500 lines) covering: the three-package model, the request lifecycle, the permission model, and deployment. This becomes the single high-level reference.
+
+## Summary: Before and After
+
+| Metric | Before | After | Change |
+|---|---|---|---|
+| Docs pages | 69 | ~35 | -49% |
+| Permission subsystems | 5 | 2 | -60% |
+| Engine modes | 2 | 1 | -50% |
+| Database providers (core) | 5 | 1 | -80% |
+| HTTP adapters | 4 | 1 | -75% |
+| Pipeline steps | 9 | 7 | -22% |
+| Config fields in createEngine | 12 top-level | 7 top-level | -42% |
+| Security pages | 5 | 1 | -80% |
+| Reference pages | 11 | 3 | -73% |
+
+## Proposed Docs Structure
+
+```
+docs/
+  index.mdx                         — What superapp is (current, trimmed)
+  getting-started/
+    installation.mdx                 — Install packages
+    quick-start.mdx                  — Working example in 5 minutes
+  backend/
+    overview.mdx                     — createEngine, routes, Hono setup
+    configuration.mdx                — Full config reference
+    connections.mdx                  — Postgres setup (built-in)
+    auth.mdx                         — better-auth provider setup
+    permissions.mdx                  — Filters + presets + operators (one page)
+    roles.mdx                        — Role-to-permission mappings
+    actions.mdx                      — Server-side functions (trimmed to 2 examples)
+    plugins.mdx                      — Writing database plugins (MySQL, SQLite, etc.)
+  client/
+    overview.mdx                     — Drizzle Proxy, how it works
+    setup.mdx                        — Connection config + schema generation
+    queries.mdx                      — One example per operation, link to Drizzle docs
+    auth.mdx                         — Auth setup + components (merged)
+  advanced/
+    architecture.mdx                 — System diagram + request lifecycle
+    security.mdx                     — Defense layers (merged)
+    multi-database.mdx               — Using multiple connections
+    audit-logging.mdx                — Query audit trail
+  reference/
+    create-engine.mdx                — Canonical config reference
+    cli.mdx                          — generate + create-app
+  examples/
+    orders-dashboard.mdx             — CRUD with row-level security
+    multi-tenant-saas.mdx            — Organization-scoped permissions
+```
+
+**35 pages.** Each page covers one concept. No concept is split across multiple pages. No concept is documented twice.
+
+## Proposed createEngine API
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const app = createEngine({
+  // --- Required ---
+  connections: {
+    main: { url: process.env.PG_URL! },
+  },
+
+  // --- Auth (optional, required for permissions) ---
+  auth: betterAuth({ secret: process.env.AUTH_SECRET! }),
+
+  // --- Permissions (optional) ---
+  permissions: {
+    view_own_orders: {
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'created_at'],
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+    create_orders: {
+      table: 'main.orders',
+      operations: { insert: true },
+      columns: ['amount', 'status'],
+      preset: { customer_id: '$user.id' },
+    },
+  },
+
+  // --- Roles (optional) ---
+  roles: {
+    viewer: ['view_own_orders'],
+    customer: ['view_own_orders', 'create_orders'],
+  },
+
+  // --- Plugins (optional) ---
+  plugins: [
+    // mysql({ warehouse: process.env.MYSQL_URL! }),
+  ],
+})
+
+// app is a Hono instance — serve it directly
+serve({ fetch: app.fetch, port: 3001 })
+
+// Or embed in another framework
+export const POST = app.handler
+```
+
+**7 top-level fields.** No `mode`, no `superapp_db`, no `integrations`, no `duckdb`, no `limits` (use defaults), no `jwt` (infer from auth provider), no `security` (secure by default).
+
+## Implementation Priority
+
+1. **Flatten permissions** — Remove checks, custom SQL, middleware from permission objects. This is the highest-leverage change: it simplifies the core mental model.
+2. **One engine mode** — Delete admin_ui mode and related code. Removes an entire subsystem.
+3. **Engine returns Hono** — `createEngine` returns a Hono app directly. Eliminates the adapter layer.
+4. **Plugin architecture** — Move MySQL/SQLite/CSV to separate packages. Shrinks the core.
+5. **Docs consolidation** — Merge and trim docs per the structure above. Do this last so the docs reflect the simplified code.
