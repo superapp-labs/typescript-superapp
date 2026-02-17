@@ -16,6 +16,29 @@ const engine = createEngine({
 })
 ```
 
+## Execution Mode
+
+The `executor` option controls how queries reach your database. The default is `'duckdb'`, which routes queries through DuckDB. Set `executor: 'direct'` to bypass DuckDB and use native database drivers -- this makes superapp deployable to edge runtimes.
+
+```typescript
+// DuckDB mode (default) — cross-database joins, CSV support
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+// Direct mode — edge-compatible, no DuckDB dependency
+const engine = createEngine({
+  executor: 'direct',
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+See [Direct Connections](/docs/advanced/direct-connections) for edge deployment examples and trade-offs.
+
 ## Full Configuration
 
 ```typescript
@@ -28,6 +51,7 @@ import { csvProvider } from '@superapp/backend/integrations/csv'
 
 const engine = createEngine({
   mode: 'programmatic',
+  executor: 'duckdb',
   superapp_db: process.env.TURSO_URL ?? './superapp.db',
   integrations: [postgresProvider, mysqlProvider, sqliteProvider, csvProvider],
   connections: {
@@ -77,11 +101,12 @@ const engine = createEngine({
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode |
+| `executor` | `'duckdb' \| 'direct'` | `'duckdb'` | Query execution mode. `'duckdb'` routes through DuckDB (cross-DB joins, CSV). `'direct'` uses native drivers (edge-compatible). |
 | `superapp_db` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables. Local file path for SQLite or a Turso URL. |
 | `integrations` | `Provider[]` | `[]` | Database integration providers to load |
 | `connections` | `Record<string, Connection>` | `{}` | Named database connections |
 | `auth` | `AuthProvider` | — | Authentication provider |
-| `duckdb` | `DuckDBConfig` | — | DuckDB memory, threads, pool settings |
+| `duckdb` | `DuckDBConfig` | — | DuckDB memory, threads, pool settings. Ignored when `executor: 'direct'`. |
 | `limits` | `LimitsConfig` | — | Query and rate limit constraints |
 | `audit` | `AuditConfig` | — | Audit logging configuration |
 | `jwt` | `JWTConfig` | — | JWT algorithm and issuer settings |
@@ -95,8 +120,16 @@ const engine = createEngine({
 For development, only `connections` is required. Add `auth`, `permissions`, and `roles` when you need access control:
 
 ```typescript
-// Development — open access
+// Development — open access, DuckDB mode
 const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: 'postgres://localhost:5432/mydb' },
+  },
+})
+
+// Development — open access, direct mode (edge-compatible)
+const engine = createEngine({
+  executor: 'direct',
   connections: {
     main: { type: 'postgres', url: 'postgres://localhost:5432/mydb' },
   },

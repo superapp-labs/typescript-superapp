@@ -4,7 +4,7 @@ description: A thin, secure data layer between your frontend and any database.
 icon: House
 ---
 
-One library to connect your frontend to any database -- with authentication, row-level permissions, and type safety built in.
+One library to connect your frontend to any database -- with authentication, row-level permissions, and type safety built in. Deploy to Node.js or edge runtimes.
 
 ## What is superapp?
 
@@ -12,7 +12,7 @@ superapp is three packages:
 
 | Package | What it does |
 |---|---|
-| `@superapp/backend` | Connects to Postgres, MySQL, SQLite, or CSV through DuckDB. Handles auth, enforces row-level permissions, runs queries. |
+| `@superapp/backend` | Connects to Postgres, MySQL, SQLite, or CSV. Handles auth, enforces row-level permissions, runs queries. Supports two execution modes: **DuckDB** (cross-database joins) or **direct** (edge-compatible, no native dependencies). |
 | `@superapp/db` | Drizzle ORM client built on [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy). You write standard Drizzle queries — the data you get back is already filtered, restricted, and validated by the backend's permission engine. |
 | `@superapp/auth` | Client-side authentication. Uses [better-auth](https://www.better-auth.com) by default, but supports custom adapters. Provides session management, React hooks, and pre-built auth UI components. |
 
@@ -42,7 +42,9 @@ superapp is three packages:
   │         │          • restrict columns to allowed set      │
   │         │          • validate writes against rules        │
   │         ▼                                                 │
-  │  3. Execute ────── run permission-filtered SQL via DuckDB  │
+  │  3. Execute ────── run permission-filtered SQL             │
+  │         ├── DuckDB mode (default): via DuckDB ATTACH      │
+  │         └── Direct mode: via native database driver        │
   └───────────────────────────┬───────────────────────────────┘
                               │
                 ┌─────────────┼─────────────┐
@@ -96,6 +98,19 @@ const engine = createEngine({
 const app = new Hono()
 app.route('/', createHonoMiddleware(engine))
 serve({ fetch: app.fetch, port: 3001 })
+```
+
+**Edge deployment** -- add one line to deploy to Cloudflare Workers, Vercel Edge, or Deno:
+
+```typescript
+const engine = createEngine({
+  executor: 'direct',  // ← skip DuckDB, use native pg driver
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  // ... same auth, permissions, roles
+})
 ```
 
 **Client** (`lib/superapp.ts`):
@@ -154,3 +169,4 @@ Because the authorization layer lives entirely in the backend middleware, you ca
 
 - [Installation](/docs/getting-started/installation) -- Install the packages and set up your environment.
 - [Quick Start](/docs/getting-started/quick-start) -- Get running in 5 minutes.
+- [Direct Connections](/docs/advanced/direct-connections) -- Deploy to edge runtimes without DuckDB.

@@ -1,0 +1,206 @@
+---
+title: Direct Connections
+icon: Zap
+description: "Skip DuckDB and connect directly to your database. Edge-compatible."
+---
+
+By default, superapp routes all queries through DuckDB. Direct mode bypasses DuckDB entirely and sends SQL straight to your database using native drivers (`pg`, `mysql2`, `better-sqlite3`). This makes superapp deployable to edge runtimes like Cloudflare Workers, Vercel Edge Functions, and Deno Deploy -- environments where native binaries like DuckDB cannot run.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+## When to Use Direct Mode
+
+| Scenario | Use `direct` |
+|---|---|
+| Deploying to edge workers (Cloudflare, Vercel Edge, Deno) | Yes |
+| Single database, no cross-DB joins needed | Yes |
+| Minimal footprint / fast cold starts | Yes |
+| Cross-database joins (Postgres + MySQL in one query) | No -- use `duckdb` |
+| CSV file querying | No -- use `duckdb` |
+| In-process OLAP analytics | No -- use `duckdb` |
+
+## How It Works
+
+In `direct` mode, the engine skips DuckDB and sends permission-filtered SQL directly to each database's native driver:
+
+```text
+  Client request (Drizzle Proxy: SQL + params)
+    │
+    ▼
+  Auth + Permissions (identical to DuckDB mode)
+    │
+    ▼
+  Native driver execution
+    ├── pg           → Postgres
+    ├── mysql2       → MySQL
+    └── better-sqlite3 → SQLite
+```
+
+The auth pipeline, permission engine, rate limiting, audit logging, and middleware all work identically in both modes. The only difference is the execution layer at step 7 of the [request pipeline](/docs/advanced/request-pipeline).
+
+## Direct Mode vs DuckDB Mode
+
+| Feature | `executor: 'direct'` | `executor: 'duckdb'` (default) |
+|---|---|---|
+| Edge runtime compatible | Yes | No (native binary) |
+| Cold start time | Fast | Slower (DuckDB init) |
+| Memory footprint | Low | Higher (DuckDB in-process) |
+| Cross-database joins | No | Yes |
+| CSV file querying | No | Yes |
+| Predicate push-down | N/A (native) | Yes (via DuckDB extensions) |
+| Auth + permissions | Full | Full |
+| Audit logging | Full | Full |
+| Middleware | Full | Full |
+| Connection pooling | Per-driver | DuckDB pool |
+
+## Configuration
+
+Set `executor: 'direct'` in `createEngine`. The `duckdb` config block is ignored in direct mode, and the `integrations` array uses each provider's native driver instead of generating DuckDB ATTACH statements.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({ secret: process.env.AUTH_SECRET! }),
+  permissions: {
+    view_own_orders: {
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'created_at'],
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+```
+
+## Edge Deployment Examples
+
+### Cloudflare Workers
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+
+export default app
+```
+
+### Vercel Edge Functions
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { createNextHandler } from '@superapp/backend/adapters/next'
+
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+export const { GET, POST } = createNextHandler(engine)
+export const runtime = 'edge'
+```
+
+## Multiple Connections in Direct Mode
+
+Direct mode supports multiple connections. Each connection uses its own native driver. Queries are routed to the correct connection based on table namespace, the same as in DuckDB mode:
+
+```typescript
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider, mysqlProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+  },
+})
+```
+
+Querying `main.orders` goes to Postgres. Querying `warehouse.events` goes to MySQL. But you cannot join across them -- cross-database joins require DuckDB mode.
+
+## Migrating Between Modes
+
+Switching modes requires changing one line. No schema changes, no permission changes, no client changes:
+
+```typescript
+// Before: DuckDB mode
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+// After: Direct mode
+const engine = createEngine({
+  executor: 'direct',
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+If your app uses cross-database joins or CSV querying, those features will not work in direct mode. All single-database queries, permissions, auth, and middleware work identically.
+
+## Connection Pooling
+
+In direct mode, connection pooling is managed by each database's native driver rather than by DuckDB:
+
+```typescript
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: {
+      type: 'postgres',
+      url: process.env.PG_URL!,
+      pool: {
+        max: 10,
+        idleTimeout: 300_000,
+      },
+    },
+  },
+})
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `pool.max` | `number` | `10` | Maximum connections in the pool |
+| `pool.idleTimeout` | `number` | `300000` | Close idle connections after this many milliseconds |
+
+For edge runtimes that don't support persistent connections, use a connection pooler like PgBouncer, Neon's serverless driver, or Planetscale's HTTP driver.

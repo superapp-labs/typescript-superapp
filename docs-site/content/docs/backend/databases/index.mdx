@@ -1,10 +1,10 @@
 ---
 title: Databases
 icon: Database
-description: Connect to any database through DuckDB.
+description: Connect to any database.
 ---
 
-Every database in `@superapp/backend` is accessed through a **provider** -- a thin adapter that tells DuckDB how to attach and query the source.
+Every database in `@superapp/backend` is accessed through a **provider** -- an adapter that handles connecting to the source. In DuckDB mode (default), providers generate `ATTACH` statements. In direct mode, providers use native database drivers.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -20,18 +20,22 @@ const engine = createEngine({
 
 ## Native vs Custom Providers
 
-**Native providers** use DuckDB's built-in `ATTACH` extensions. DuckDB handles the wire protocol directly, which means full SQL pushdown and maximum performance. Postgres, MySQL, SQLite, and CSV are all native.
+**Native providers** connect to databases that both DuckDB and standard drivers support. In DuckDB mode, they use DuckDB's built-in `ATTACH` extensions with full SQL pushdown. In direct mode, they use native database drivers (`pg`, `mysql2`, `better-sqlite3`). Postgres, MySQL, and SQLite are native providers that work in both modes.
 
 **Custom providers** implement a `CustomIntegrationProvider` interface for sources DuckDB cannot attach natively -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary databases. Queries are translated into provider-specific calls and results are returned as virtual tables.
 
 ## Built-in Providers
 
-| Provider | Import | Read | Write | Transport |
-|---|---|---|---|---|
-| PostgreSQL | `@superapp/backend/integrations/postgres` | Yes | Yes | Native (`postgres_scanner`) |
-| MySQL | `@superapp/backend/integrations/mysql` | Yes | Yes | Native (`mysql_scanner`) |
-| SQLite | `@superapp/backend/integrations/sqlite` | Yes | Yes | Native (`sqlite_scanner`) |
-| CSV | `@superapp/backend/integrations/csv` | Yes | No | Native (`read_csv_auto`) |
+| Provider | Import | Read | Write | DuckDB Mode | Direct Mode |
+|---|---|---|---|---|---|
+| PostgreSQL | `@superapp/backend/integrations/postgres` | Yes | Yes | `postgres_scanner` | `pg` driver |
+| MySQL | `@superapp/backend/integrations/mysql` | Yes | Yes | `mysql_scanner` | `mysql2` driver |
+| SQLite | `@superapp/backend/integrations/sqlite` | Yes | Yes | `sqlite_scanner` | `better-sqlite3` driver |
+| CSV | `@superapp/backend/integrations/csv` | Yes | No | `read_csv_auto` | Not supported |
+
+<Callout>
+CSV connections require DuckDB mode. They are not available when `executor: 'direct'` is set.
+</Callout>
 
 ## Provider Interface
 
@@ -42,20 +46,22 @@ interface IntegrationProvider {
   type: string
   attachSQL: (name: string, config: ConnectionConfig) => string
   detachSQL: (name: string) => string
+  createDirectConnection: (config: ConnectionConfig) => DirectConnection
   introspect: (name: string) => Promise<TableSchema[]>
   capabilities: {
     read: boolean
     write: boolean
     transactions: boolean
+    directMode: boolean
   }
 }
 ```
 
-The `attachSQL` method returns the DuckDB `ATTACH` statement for the given connection config. The engine calls it once on startup (or when a connection is added via the admin UI) and caches the result for the lifetime of the process.
+In DuckDB mode, the engine calls `attachSQL` to generate the DuckDB `ATTACH` statement. In direct mode, it calls `createDirectConnection` to initialize a native driver connection. The `capabilities.directMode` flag indicates whether the provider supports direct mode.
 
 ## Registering Multiple Providers
 
-Pass all providers you need in the `integrations` array. Only connections whose `type` matches a registered provider will be attached:
+Pass all providers you need in the `integrations` array. Only connections whose `type` matches a registered provider will be connected:
 
 ```typescript
 import { postgresProvider } from '@superapp/backend/integrations/postgres'
@@ -77,5 +83,6 @@ const engine = createEngine({
 - [PostgreSQL](/docs/backend/databases/postgres) -- Full CRUD with Postgres
 - [MySQL](/docs/backend/databases/mysql) -- Full CRUD with MySQL
 - [SQLite](/docs/backend/databases/sqlite) -- Local file-based databases
-- [CSV](/docs/backend/databases/csv) -- Read-only CSV file queries
+- [CSV](/docs/backend/databases/csv) -- Read-only CSV file queries (DuckDB mode only)
 - [Custom Providers](/docs/backend/databases/custom-provider) -- Build your own provider
+- [Direct Connections](/docs/advanced/direct-connections) -- Edge-compatible database connections

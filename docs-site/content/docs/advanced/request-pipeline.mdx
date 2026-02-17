@@ -31,7 +31,9 @@ Every `POST /data` request passes through a 9-step pipeline. The client sends pa
   6a. Middleware (before next) — Custom TypeScript logic (optional)
     │
     ▼
-  7. DuckDB Execution — next() runs the permission-filtered SQL
+  7. Query Execution — next() runs the permission-filtered SQL
+    │   ├── DuckDB mode: routes through DuckDB to attached databases
+    │   └── Direct mode: sends SQL to the native database driver
     │
     ▼
   7a. Middleware (after next) — Custom TypeScript logic (optional)
@@ -42,6 +44,8 @@ Every `POST /data` request passes through a 9-step pipeline. The client sends pa
     ▼
   9. Response — Return JSON result to client
 ```
+
+Steps 1--6 and 8--9 are identical regardless of execution mode. Only step 7 differs based on the `executor` setting.
 
 ## Step-by-Step
 
@@ -139,13 +143,27 @@ If the matching permission defines a `middleware` function, it runs now with des
 
 See [Middleware](/docs/backend/permissions/middleware) for details.
 
-### 7. DuckDB Execution
+### 7. Query Execution
 
-The permission-filtered SQL is executed against DuckDB, which routes the query to the appropriate attached database (Postgres, MySQL, etc.):
+The permission-filtered SQL is executed by the configured executor.
+
+**DuckDB mode** (`executor: 'duckdb'`, default): DuckDB routes the query to the appropriate attached database (Postgres, MySQL, SQLite, or CSV):
 
 ```typescript
 duckdb: {
   queryTimeout: 30_000,  // Kill after 30 seconds
+}
+```
+
+**Direct mode** (`executor: 'direct'`): The native database driver executes the query against the target database:
+
+```typescript
+connections: {
+  main: {
+    type: 'postgres',
+    url: process.env.PG_URL!,
+    pool: { max: 10 },  // native driver pool settings
+  },
 }
 ```
 
@@ -220,6 +238,6 @@ See [Actions](/docs/backend/actions) for details.
 | `400` | Body Validation | Invalid request structure or malformed SQL |
 | `401` | JWT / Session | Invalid token or user not found |
 | `403` | Permission Check | No permission for table, operation, or column |
-| `408` | DuckDB Execution | Query timeout exceeded |
+| `408` | Query Execution | Query timeout exceeded |
 | `429` | Rate Limiting | Rate limit exceeded |
 | `500` | Any | Internal server error |

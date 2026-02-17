@@ -4,7 +4,11 @@ icon: Bird
 description: Configure DuckDB memory limits, thread count, connection pooling, and query isolation.
 ---
 
-The engine uses DuckDB as its query execution layer. All connected databases (Postgres, MySQL, SQLite, CSV) are attached to DuckDB, which handles cross-database joins and query execution.
+<Callout type="info">
+DuckDB is optional. If you don't need cross-database joins or CSV querying, you can use [direct connections](/docs/advanced/direct-connections) instead -- set `executor: 'direct'` to bypass DuckDB entirely and deploy to edge runtimes.
+</Callout>
+
+When `executor` is `'duckdb'` (the default), the engine uses DuckDB as its query execution layer. All connected databases (Postgres, MySQL, SQLite, CSV) are attached to DuckDB, which handles cross-database joins and query execution.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -41,6 +45,10 @@ duckdb: {
 | `queryTimeout` | `number` | `30000` | Query timeout in milliseconds. Queries exceeding this are killed |
 | `poolSize` | `number` | `10` | Number of DuckDB connections to maintain in the pool |
 | `idleTimeout` | `number` | `300000` | Time in milliseconds before idle connections are closed |
+
+<Callout>
+The `duckdb` config block is ignored when `executor: 'direct'` is set. In direct mode, connection pooling is configured per-connection. See [Direct Connections](/docs/advanced/direct-connections).
+</Callout>
 
 ## Memory
 

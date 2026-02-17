@@ -4,6 +4,10 @@ icon: Layers
 description: "Query across Postgres, MySQL, SQLite, and CSV."
 ---
 
+<Callout type="warn">
+Cross-database joins require DuckDB mode (`executor: 'duckdb'`, the default). In [direct mode](/docs/advanced/direct-connections), each connection uses its own native driver and cannot join across databases.
+</Callout>
+
 superapp uses DuckDB as an in-process query engine that can attach to multiple external databases simultaneously. This means you can query Postgres, MySQL, SQLite, and CSV sources through a single unified API -- and even join across them.
 
 ## How DuckDB ATTACH Works
@@ -56,7 +60,7 @@ legacy.users         → SQLite table "users"
 imports.products     → CSV file "products.csv"
 ```
 
-This namespacing is consistent across the entire system:
+This namespacing is consistent across the entire system and works in both DuckDB and direct mode:
 
 ```typescript
 // Client queries
@@ -74,8 +78,12 @@ permissions: {
     // ...
   },
 }
+```
 
-// Include (join) across connections
+Cross-database includes only work in DuckDB mode:
+
+```typescript
+// DuckDB mode only — cross-database join
 db.main.orders.findMany({
   include: {
     events: {
@@ -100,7 +108,7 @@ JWT verification
 Permission evaluation (validate SQL, inject filters, restrict columns, check, preset)
   │
   ▼
-DuckDB execution → routes to correct database
+Query execution → routes to correct database
   │
   ▼
 Response
@@ -129,36 +137,39 @@ permissions: {
 }
 ```
 
-Both permissions compile to the same CASL ability structure and produce the same kind of SQL WHERE clause. DuckDB handles the routing transparently.
+Both permissions compile to the same CASL ability structure and produce the same kind of SQL WHERE clause. The executor handles routing transparently.
 
 ## Provider Types
 
-Providers are integration modules that teach the engine how to attach a specific database type to DuckDB.
+Providers are integration modules that teach the engine how to connect to a specific database type.
 
 ### Built-in Providers
 
-| Provider | Import | Connection Config | DuckDB Extension |
-|---|---|---|---|
-| `postgresProvider` | `@superapp/backend/integrations/postgres` | `{ type: 'postgres', url: string }` | `postgres_scanner` |
-| `mysqlProvider` | `@superapp/backend/integrations/mysql` | `{ type: 'mysql', url: string }` | `mysql_scanner` |
-| `sqliteProvider` | `@superapp/backend/integrations/sqlite` | `{ type: 'sqlite', path: string }` | `sqlite_scanner` |
-| `csvProvider` | `@superapp/backend/integrations/csv` | `{ type: 'csv', directory: string }` | built-in |
+| Provider | Import | Connection Config | DuckDB Extension | Direct Driver |
+|---|---|---|---|---|
+| `postgresProvider` | `@superapp/backend/integrations/postgres` | `{ type: 'postgres', url: string }` | `postgres_scanner` | `pg` |
+| `mysqlProvider` | `@superapp/backend/integrations/mysql` | `{ type: 'mysql', url: string }` | `mysql_scanner` | `mysql2` |
+| `sqliteProvider` | `@superapp/backend/integrations/sqlite` | `{ type: 'sqlite', path: string }` | `sqlite_scanner` | `better-sqlite3` |
+| `csvProvider` | `@superapp/backend/integrations/csv` | `{ type: 'csv', directory: string }` | built-in | N/A (DuckDB only) |
 
 ### Native vs Custom Providers
 
-**Native providers** use DuckDB's built-in scanner extensions. They support push-down predicates, which means DuckDB can push WHERE clauses down to the source database for efficient filtering. Postgres, MySQL, and SQLite are native providers.
+**Native providers** use DuckDB's built-in scanner extensions in DuckDB mode, or standard database drivers in direct mode. In DuckDB mode, they support push-down predicates, which means DuckDB can push WHERE clauses down to the source database for efficient filtering.
 
 **Custom providers** implement data loading in JavaScript. The CSV provider, for example, registers CSV files as DuckDB views. Custom providers do not benefit from predicate push-down -- all data is loaded into DuckDB first, then filtered.
 
 ```typescript
-// Native provider: DuckDB pushes the WHERE clause to Postgres
+// DuckDB mode: DuckDB pushes the WHERE clause to Postgres
 // Only matching rows are transferred over the network
 db.main.orders.findMany({
   where: { status: { $eq: 'active' } },
 })
 // DuckDB sends: SELECT ... FROM main.orders WHERE status = 'active' → Postgres
 
-// CSV provider: all rows loaded, then filtered in DuckDB
+// Direct mode: same query, same result — SQL sent directly to Postgres via pg driver
+// Performance is equivalent for single-database queries
+
+// CSV provider: all rows loaded, then filtered in DuckDB (DuckDB mode only)
 db.imports.products.findMany({
   where: { category: { $eq: 'electronics' } },
 })
@@ -167,7 +178,7 @@ db.imports.products.findMany({
 
 ### Registering Providers
 
-Providers are registered in the `integrations` array. Only register the providers you need -- each one loads a DuckDB extension:
+Providers are registered in the `integrations` array. Only register the providers you need:
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -185,10 +196,10 @@ const engine = createEngine({
 
 ## Cross-Database Joins
 
-Because all databases are attached to the same DuckDB instance, you can join across them:
+Because all databases are attached to the same DuckDB instance, you can join across them in DuckDB mode:
 
 ```typescript
-// Join Postgres orders with MySQL analytics events
+// Join Postgres orders with MySQL analytics events (DuckDB mode only)
 const ordersWithEvents = await db.main.orders.findMany({
   select: ['id', 'amount', 'status'],
   include: {
@@ -203,9 +214,13 @@ const ordersWithEvents = await db.main.orders.findMany({
 
 DuckDB handles the cross-database join internally. For native providers, it fetches the relevant rows from each source and joins them in memory. Permissions apply to both sides of the join independently -- the user must have SELECT permission on both `main.orders` and `warehouse.events`.
 
+<Callout>
+Cross-database joins are not available in direct mode. If you need this feature, use `executor: 'duckdb'` (the default).
+</Callout>
+
 ## Performance Considerations
 
-- **Native providers** (Postgres, MySQL, SQLite) benefit from predicate push-down. DuckDB pushes filters to the source, reducing data transfer.
-- **CSV sources** are loaded fully into DuckDB memory. Use the `duckdb.maxMemory` setting to control how much memory DuckDB can use.
+- **Native providers** (Postgres, MySQL, SQLite) benefit from predicate push-down in DuckDB mode. In direct mode, queries go straight to the database driver with no intermediary.
+- **CSV sources** are loaded fully into DuckDB memory. Use the `duckdb.maxMemory` setting to control how much memory DuckDB can use. CSV is not available in direct mode.
 - **Cross-database joins** require DuckDB to fetch data from both sources. For large joins, consider materializing frequently-joined data.
-- **Connection pooling** is handled per-provider. DuckDB maintains its own connection pool to each attached database, configured via `duckdb.poolSize` and `duckdb.idleTimeout`.
+- **Connection pooling** depends on the execution mode. In DuckDB mode, DuckDB maintains its own connection pool. In direct mode, each database driver manages its own pool via the `pool` config on each connection.

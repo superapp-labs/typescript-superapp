@@ -4,6 +4,10 @@ description: Query CSV files as tables.
 icon: FileSpreadsheet
 ---
 
+<Callout type="warn">
+CSV connections require DuckDB mode (`executor: 'duckdb'`, the default). They are not available in [direct mode](/docs/advanced/direct-connections).
+</Callout>
+
 Point at a directory of CSV files and query them as read-only tables. Useful for reports, data imports, and static datasets.
 
 ```typescript
@@ -109,3 +113,4 @@ const engine = createEngine({
 | `Could not parse CSV` | Malformed file | Check for consistent delimiters and quoting |
 | Empty results | No header row | Add a header row to the CSV file |
 | Wrong column types | Auto-detection mismatch | Ensure consistent formatting (dates, numbers) across all rows |
+| `CSV not supported in direct mode` | Using `executor: 'direct'` | Switch to `executor: 'duckdb'` or remove CSV connections |

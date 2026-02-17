@@ -23,6 +23,7 @@ const engine = createEngine({
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode. `programmatic` = config in code, `admin_ui` = config in admin UI. |
+| `executor` | `'duckdb' \| 'direct'` | `'duckdb'` | Query execution mode. `'duckdb'` routes all queries through DuckDB (supports cross-DB joins, CSV). `'direct'` uses native database drivers (edge-compatible, no DuckDB dependency). See [Direct Connections](/docs/advanced/direct-connections). |
 | `superapp_db` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables (sessions, roles, audit logs, admin configuration). Local file path for SQLite or a Turso URL. |
 | `integrations` | `Provider[]` | `[]` | Database provider modules to load. Each provider adds support for a database type (postgres, mysql, sqlite, csv). |
 | `connections` | `Record<string, ConnectionConfig>` | `{}` | Named database connections. Keys become table namespace prefixes (e.g., `main.orders`). |
@@ -32,11 +33,37 @@ const engine = createEngine({
 | `actions` | `Record<string, Action>` | `{}` | Typed server-side functions callable by the client via `POST /actions/{name}`. Each action defines Zod `input`/`output` schemas and a `run` function. Access controlled through `roles` using the `action_` prefix. See [Actions](/docs/backend/actions). |
 | `masterKey` | `string` | `undefined` | Master API key for admin access. Required for `admin_ui` mode and admin endpoints. Set via environment variable, never hardcode. |
 | `schemaEndpoint` | `SchemaEndpointConfig \| boolean` | `false` | Enable the `GET /schema` introspection endpoint. Set `true` for defaults or pass a config object. |
-| `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. |
+| `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. Ignored when `executor: 'direct'`. |
 | `limits` | `LimitsConfig` | See below | Query and rate limit constraints. |
 | `audit` | `AuditConfig` | See below | Audit logging configuration. |
 | `jwt` | `JWTConfig` | See below | JWT verification settings. |
 | `security` | `SecurityConfig` | See below | CORS, CSP, and network security. |
+
+## `executor`
+
+Controls how queries are executed after permission filtering.
+
+```typescript
+// DuckDB mode (default) — queries routed through DuckDB
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+// Direct mode — queries sent to native database drivers
+const engine = createEngine({
+  executor: 'direct',
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+| Value | Description |
+|---|---|
+| `'duckdb'` | Default. Routes queries through DuckDB. Supports cross-database joins, CSV file querying, and in-process OLAP. Requires a runtime that can load native binaries. |
+| `'direct'` | Sends queries directly to native database drivers (`pg`, `mysql2`, `better-sqlite3`). No DuckDB dependency. Edge-compatible (Cloudflare Workers, Vercel Edge, Deno Deploy). Does not support cross-database joins or CSV connections. |
 
 ## `connections`
 
@@ -51,16 +78,31 @@ connections: {
 }
 ```
 
-| Type | Config Shape |
-|---|---|
-| `postgres` | `{ type: 'postgres', url: string }` |
-| `mysql` | `{ type: 'mysql', url: string }` |
-| `sqlite` | `{ type: 'sqlite', path: string }` |
-| `csv` | `{ type: 'csv', directory: string }` |
+| Type | Config Shape | Direct Mode |
+|---|---|---|
+| `postgres` | `{ type: 'postgres', url: string, pool?: PoolConfig }` | Yes |
+| `mysql` | `{ type: 'mysql', url: string, pool?: PoolConfig }` | Yes |
+| `sqlite` | `{ type: 'sqlite', path: string }` | Yes |
+| `csv` | `{ type: 'csv', directory: string }` | No (DuckDB only) |
+
+In direct mode, connections support an optional `pool` config for native driver pooling:
+
+```typescript
+connections: {
+  main: {
+    type: 'postgres',
+    url: process.env.PG_URL!,
+    pool: {
+      max: 10,            // Maximum connections in the pool
+      idleTimeout: 300_000, // Close idle connections after 5 minutes
+    },
+  },
+}
+```
 
 ## `duckdb`
 
-Configure the DuckDB in-process engine.
+Configure the DuckDB in-process engine. These settings are ignored when `executor: 'direct'`.
 
 | Option | Type | Default | Description |
 |---|---|---|---|
@@ -213,6 +255,7 @@ import { mysqlProvider } from '@superapp/backend/integrations/mysql'
 
 const engine = createEngine({
   mode: 'programmatic',
+  executor: 'duckdb',
   superapp_db: process.env.TURSO_URL ?? './superapp.db',
   integrations: [postgresProvider, mysqlProvider],
   connections: {

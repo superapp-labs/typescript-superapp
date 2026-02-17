@@ -23,6 +23,25 @@ app.route('/', createHonoMiddleware(engine))
 serve({ fetch: app.fetch, port: 3001 })
 ```
 
+## Execution Modes
+
+The engine supports two query execution modes:
+
+- **DuckDB mode** (default) -- Routes queries through DuckDB. Supports cross-database joins and CSV querying. Requires a Node.js-compatible runtime.
+- **Direct mode** -- Sends queries directly to native database drivers (`pg`, `mysql2`, `better-sqlite3`). No DuckDB dependency. Deployable to edge runtimes like Cloudflare Workers and Vercel Edge Functions.
+
+```typescript
+// Direct mode — edge-compatible
+const engine = createEngine({
+  executor: 'direct',
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+Both modes share the same auth, permissions, middleware, and audit pipeline. See [Direct Connections](/docs/advanced/direct-connections) for details.
+
 ## Routes
 
 | Route | Method | Description |
@@ -35,15 +54,18 @@ serve({ fetch: app.fetch, port: 3001 })
 
 ## Request Pipeline
 
-Every `/data` request passes through a 10-step pipeline:
+Every `/data` request passes through a pipeline:
 
 ```text
-Request → Rate Limit → Validate → JWT → Session → Roles → Permissions → Query Build → DuckDB → Audit → Response
+Request → Rate Limit → Validate → JWT → Session → Roles → Permissions → Query Build → Execute → Audit → Response
 ```
+
+The execution step uses DuckDB or native drivers depending on the `executor` setting. All other steps are identical.
 
 ## Key Concepts
 
-- **Databases** -- Named database sources (Postgres, MySQL, SQLite, CSV) attached to DuckDB
+- **Databases** -- Named database sources (Postgres, MySQL, SQLite, CSV) connected via providers
+- **Executor** -- Query execution mode: `'duckdb'` (default) or `'direct'` (edge-compatible)
 - **Auth Providers** -- Pluggable authentication (better-auth or custom); client-side auth lives in `@superapp/auth`
 - **Permissions** -- Row-level security with filters, checks, and presets
 - **Roles** -- Named groups of permissions assigned to users
@@ -55,3 +77,4 @@ Request → Rate Limit → Validate → JWT → Session → Roles → Permission
 - [Databases](/docs/backend/databases) -- Add database sources
 - [Authentication](/docs/backend/auth) -- Set up auth
 - [Permissions](/docs/backend/permissions/filters) -- Define access rules
+- [Direct Connections](/docs/advanced/direct-connections) -- Deploy to edge runtimes

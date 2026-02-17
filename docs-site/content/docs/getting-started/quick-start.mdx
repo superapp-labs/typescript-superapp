@@ -65,6 +65,10 @@ export const engine = createEngine({
 })
 ```
 
+<Callout type="info">
+**Deploying to edge?** Add `executor: 'direct'` to skip DuckDB and use native database drivers. Everything else stays the same. See [Direct Connections](/docs/advanced/direct-connections).
+</Callout>
+
 ### Step 2: Start the Server
 
 Add the HTTP adapter below your engine config in the same file, or import the engine into a separate entry point:
@@ -228,7 +232,7 @@ Browser                       Backend                        Database
   |                              |-- Check permissions         |
   |                              |-- Inject WHERE filters      |
   |                              |                              |
-  |                              |-- Execute SQL via DuckDB -->|
+  |                              |-- Execute SQL ------------->|
   |                              |<-------- Results -----------|
   |                              |                              |
   |<------ Typed response ------|                              |
@@ -239,3 +243,4 @@ Browser                       Backend                        Database
 - [Backend Configuration](/docs/backend) — Full reference for `createEngine` options, connections, DuckDB tuning, and security settings.
 - [Client Queries](/docs/client/queries) — All query methods: `db.select()`, `db.insert()`, `db.update()`, `db.delete()`.
 - [Permissions](/docs/backend/permissions/filters) — Row-level filters, column restrictions, write checks, and preset values.
+- [Direct Connections](/docs/advanced/direct-connections) — Deploy to edge runtimes without DuckDB.

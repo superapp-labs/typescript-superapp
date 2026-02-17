@@ -4,7 +4,7 @@ description: Connect to PostgreSQL databases.
 icon: Database
 ---
 
-Attach a PostgreSQL database and get full CRUD through DuckDB's native `postgres_scanner` extension.
+Connect a PostgreSQL database with full CRUD support. Works in both DuckDB mode (via `postgres_scanner`) and direct mode (via the `pg` driver).
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -35,9 +35,9 @@ postgres://user:password@host:5432/database?sslmode=require
 | `database` | Database name |
 | `sslmode` | `disable`, `require`, `verify-ca`, `verify-full` |
 
-## What DuckDB Generates
+## DuckDB Mode
 
-When the engine starts, the Postgres provider generates:
+When `executor` is `'duckdb'` (the default), the Postgres provider generates a DuckDB `ATTACH` statement on startup:
 
 ```sql
 INSTALL postgres;
@@ -46,6 +46,29 @@ ATTACH 'postgres://user:password@host:5432/database' AS main (TYPE POSTGRES, REA
 ```
 
 All tables in the target database become available under the `main` schema. DuckDB pushes filters, joins, and aggregations down to Postgres whenever possible.
+
+## Direct Mode
+
+When `executor` is `'direct'`, the provider connects using the `pg` driver. Queries are sent directly to Postgres with no intermediary:
+
+```typescript
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: {
+      type: 'postgres',
+      url: process.env.PG_URL!,
+      pool: {
+        max: 10,
+        idleTimeout: 300_000,
+      },
+    },
+  },
+})
+```
+
+Direct mode is edge-compatible and works in Cloudflare Workers, Vercel Edge Functions, and Deno Deploy. For edge runtimes that don't support persistent TCP connections, use a connection pooler like PgBouncer or Neon's serverless driver.
 
 ## Capabilities
 
@@ -97,6 +120,28 @@ const engine = createEngine({
 const app = new Hono()
 app.route('/', createHonoMiddleware(engine))
 serve({ fetch: app.fetch, port: 3001 })
+```
+
+## Edge Deployment (Direct Mode)
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+
+export default app
 ```
 
 ## Multiple Postgres Connections

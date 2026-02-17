@@ -6,6 +6,7 @@
     "request-pipeline",
     "engine-modes",
     "multi-database",
+    "direct-connections",
     "duckdb",
     "audit-logging",
     "security"

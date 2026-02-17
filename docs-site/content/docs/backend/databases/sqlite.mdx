@@ -4,7 +4,7 @@ icon: Database
 description: Connect to SQLite databases.
 ---
 
-Attach a local SQLite file and get full CRUD through DuckDB's native `sqlite_scanner` extension. Ideal for development, testing, and embedded use cases.
+Connect a local SQLite file with full CRUD support. Works in both DuckDB mode (via `sqlite_scanner`) and direct mode (via `better-sqlite3`). Ideal for development, testing, and embedded use cases.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -29,9 +29,9 @@ SQLite uses a file path instead of a URL:
 
 The file must exist before the engine starts. To create a new database, use the `sqlite3` CLI or any SQLite tool.
 
-## What DuckDB Generates
+## DuckDB Mode
 
-When the engine starts, the SQLite provider generates:
+When `executor` is `'duckdb'` (the default), the SQLite provider generates a DuckDB `ATTACH` statement on startup:
 
 ```sql
 INSTALL sqlite;
@@ -40,6 +40,22 @@ ATTACH './data/app.db' AS local (TYPE SQLITE, READ_WRITE);
 ```
 
 All tables in the SQLite file become available under the `local` schema.
+
+## Direct Mode
+
+When `executor` is `'direct'`, the provider connects using `better-sqlite3`:
+
+```typescript
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [sqliteProvider],
+  connections: {
+    local: { type: 'sqlite', path: './data/app.db' },
+  },
+})
+```
+
+Direct mode with SQLite works in Node.js and Bun runtimes. For edge runtimes that don't support file system access, consider using a remote SQLite service like Turso with its HTTP driver.
 
 ## Capabilities
 

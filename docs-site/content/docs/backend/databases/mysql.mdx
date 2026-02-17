@@ -4,7 +4,7 @@ description: Connect to MySQL databases.
 icon: Database
 ---
 
-Attach a MySQL database and get full CRUD through DuckDB's native `mysql_scanner` extension.
+Connect a MySQL database with full CRUD support. Works in both DuckDB mode (via `mysql_scanner`) and direct mode (via the `mysql2` driver).
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -34,9 +34,9 @@ mysql://user:password@host:3306/database
 | `3306` | Port (default: 3306) |
 | `database` | Database name |
 
-## What DuckDB Generates
+## DuckDB Mode
 
-When the engine starts, the MySQL provider generates:
+When `executor` is `'duckdb'` (the default), the MySQL provider generates a DuckDB `ATTACH` statement on startup:
 
 ```sql
 INSTALL mysql;
@@ -45,6 +45,29 @@ ATTACH 'host=host user=user password=password port=3306 database=database' AS wa
 ```
 
 All tables in the target database become available under the `warehouse` schema. DuckDB pushes filters and aggregations down to MySQL whenever possible.
+
+## Direct Mode
+
+When `executor` is `'direct'`, the provider connects using the `mysql2` driver:
+
+```typescript
+const engine = createEngine({
+  executor: 'direct',
+  integrations: [mysqlProvider],
+  connections: {
+    warehouse: {
+      type: 'mysql',
+      url: process.env.MYSQL_URL!,
+      pool: {
+        max: 10,
+        idleTimeout: 300_000,
+      },
+    },
+  },
+})
+```
+
+Direct mode is edge-compatible. For edge runtimes, use a MySQL-compatible serverless driver like Planetscale's HTTP driver.
 
 ## Capabilities
 
