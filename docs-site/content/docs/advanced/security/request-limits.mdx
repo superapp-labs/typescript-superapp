@@ -9,13 +9,34 @@ The engine enforces limits on query complexity, request size, and request freque
 ```typescript
 const engine = createEngine({
   limits: {
-    maxLimit: 10_000,
-    maxIncludeDepth: 3,
-    maxFilterDepth: 5,
+    // --- Query complexity ---
+
+    // Cap on rows returned per query (client limit is capped to this)
+    maxRows: 10_000,
+
+    // How deep relations can nest: orders → items → product = depth 3
+    maxRelationDepth: 3,
+
+    // How deep $and/$or/$not can nest inside each other
+    maxFilterNesting: 5,
+
+    // Total number of conditions across all nesting levels
     maxFilterConditions: 20,
+
+    // --- Request size ---
+
+    // Max JSON body size (accepts '512kb', '1mb', '2mb', etc.)
     maxRequestBodySize: '1mb',
+
+    // Kill queries that run longer than this (in ms)
     queryTimeout: 30_000,
+
+    // --- Rate limiting ---
+
+    // Requests per minute per authenticated user
     rateLimitPerUser: 200,
+
+    // Requests per minute per IP (applies to unauthenticated too)
     rateLimitPerIP: 500,
   },
 })
@@ -25,18 +46,18 @@ const engine = createEngine({
 
 | Limit | Default | Error | Description |
 |---|---|---|---|
-| `maxLimit` | `10_000` | `400 Limit exceeds maximum of 10000` | Maximum rows returned per query |
-| `maxIncludeDepth` | `3` | `400 Include depth exceeds maximum of 3` | Maximum nesting depth for `include` (joins) |
-| `maxFilterDepth` | `5` | `400 Filter depth exceeds maximum of 5` | Maximum nesting of `$and` / `$or` conditions |
-| `maxFilterConditions` | `20` | `400 Filter has too many conditions (max 20)` | Maximum total filter conditions per query |
+| `maxRows` | `10_000` | `400 Limit exceeds maximum of 10000` | Cap on rows returned per query |
+| `maxRelationDepth` | `3` | `400 Relation depth exceeds maximum of 3` | How many levels deep relations can be nested |
+| `maxFilterNesting` | `5` | `400 Filter nesting exceeds maximum of 5` | How many levels deep `$and`/`$or`/`$not` can nest |
+| `maxFilterConditions` | `20` | `400 Filter has too many conditions (max 20)` | Total filter conditions per query |
 | `maxRequestBodySize` | `'1mb'` | `413 Request body too large` | Maximum JSON body size |
 | `queryTimeout` | `30_000` | `408 Query timed out after 30000ms` | Maximum query execution time in milliseconds |
-| `rateLimitPerUser` | `200` | `429 Rate limit exceeded, retry after {n}s` | Maximum requests per minute per authenticated user |
-| `rateLimitPerIP` | `500` | `429 Rate limit exceeded, retry after {n}s` | Maximum requests per minute per IP address |
+| `rateLimitPerUser` | `200` | `429 Rate limit exceeded, retry after {n}s` | Requests per minute per authenticated user |
+| `rateLimitPerIP` | `500` | `429 Rate limit exceeded, retry after {n}s` | Requests per minute per IP address |
 
 ## Query Complexity Limits
 
-### maxLimit
+### maxRows
 
 Caps the `limit` parameter on `findMany` queries. If a client requests more rows than allowed, the engine returns an error instead of silently truncating:
 
@@ -46,9 +67,9 @@ db.main.orders.findMany({ limit: 50_000 })
 // → 400 Limit exceeds maximum of 10000
 ```
 
-### maxIncludeDepth
+### maxRelationDepth
 
-Prevents deeply nested joins that could generate expensive multi-table queries:
+Prevents deeply nested relation joins that could generate expensive multi-table queries:
 
 ```typescript
 // Depth 1: orders → customers
@@ -69,14 +90,14 @@ db.main.orders.findMany({
 })
 ```
 
-### maxFilterDepth
+### maxFilterNesting
 
-Limits nesting of `$and` and `$or` conditions:
+Limits how deeply `$and` and `$or` conditions can be nested inside each other:
 
 ```typescript
-// Depth 1
+// Nesting level 1
 { $or: [
-  // Depth 2
+  // Nesting level 2
   { $and: [
     { status: { $eq: 'active' } },
     { amount: { $gt: 100 } },
@@ -120,12 +141,15 @@ Both limits are applied independently. A request must pass both checks.
 Use different limits for development and production:
 
 ```typescript
+const isProd = process.env.NODE_ENV === 'production'
+
 const engine = createEngine({
   limits: {
-    maxLimit: process.env.NODE_ENV === 'production' ? 10_000 : 100_000,
-    rateLimitPerUser: process.env.NODE_ENV === 'production' ? 200 : 10_000,
-    rateLimitPerIP: process.env.NODE_ENV === 'production' ? 500 : 10_000,
-    queryTimeout: process.env.NODE_ENV === 'production' ? 30_000 : 120_000,
+    // Tighter limits in production, relaxed for local development
+    maxRows:          isProd ? 10_000  : 100_000,
+    rateLimitPerUser: isProd ? 200     : 10_000,
+    rateLimitPerIP:   isProd ? 500     : 10_000,
+    queryTimeout:     isProd ? 30_000  : 120_000,
   },
 })
 ```

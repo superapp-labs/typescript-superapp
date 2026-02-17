@@ -37,12 +37,17 @@ Each database driver maintains its own connection pool to minimize latency:
 ```typescript
 const engine = createEngine({
   connections: {
-    main: process.env.PG_URL!,       // Postgres pool
-    warehouse: process.env.MYSQL_URL!, // MySQL pool
-    local: './data/app.db',            // SQLite (single connection, serialized)
+    // Each connection gets its own pool
+    main: process.env.PG_URL!,
+    warehouse: process.env.MYSQL_URL!,
+
+    // SQLite uses a single serialized connection
+    local: './data/app.db',
   },
+
   limits: {
-    queryTimeout: 30_000,   // Kill queries after 30 seconds
+    // Kill queries that run longer than this (in ms)
+    queryTimeout: 30_000,
   },
 })
 ```
@@ -57,15 +62,22 @@ Each request is constrained to prevent a single user from consuming all server r
 
 - **Time** -- `queryTimeout` (default 30 seconds) applies to every query. Exceeded queries return `408 Request Timeout`.
 - **Rate** -- `rateLimitPerUser` and `rateLimitPerIP` cap request frequency per minute.
-- **Complexity** -- `maxLimit`, `maxIncludeDepth`, and `maxFilterDepth` cap query complexity.
+- **Complexity** -- `maxRows`, `maxRelationDepth`, and `maxFilterNesting` cap query complexity.
 
 ```typescript
 const engine = createEngine({
   limits: {
+    // Kill queries that run longer than this (in ms)
     queryTimeout: 30_000,
+
+    // Requests per minute per authenticated user
     rateLimitPerUser: 200,
+
+    // Requests per minute per IP (applies to unauthenticated too)
     rateLimitPerIP: 500,
-    maxLimit: 10_000,
+
+    // Cap on rows returned per query
+    maxRows: 10_000,
   },
 })
 ```

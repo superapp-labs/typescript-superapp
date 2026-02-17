@@ -49,22 +49,48 @@ All security settings are configured through `createEngine`:
 ```typescript
 const engine = createEngine({
   connections: { /* ... */ },
+
   jwt: {
+    // Allowed signing algorithms
     algorithms: ['RS256', 'ES256'],
+
+    // Expected 'iss' claim — reject tokens from other issuers
     issuer: 'https://auth.myapp.com',
+
+    // Expected 'aud' claim — reject tokens for other audiences
     audience: 'https://api.myapp.com',
+
+    // Seconds of clock drift allowed when checking token expiry
     clockSkewSeconds: 30,
   },
+
   limits: {
-    maxLimit: 10_000,
-    maxIncludeDepth: 3,
-    maxFilterDepth: 5,
+    // Cap on rows returned per query
+    maxRows: 10_000,
+
+    // How deep relations can nest: orders → items → product = depth 3
+    maxRelationDepth: 3,
+
+    // How deep $and/$or/$not can nest inside each other
+    maxFilterNesting: 5,
+
+    // Total number of conditions across all nesting levels
     maxFilterConditions: 20,
+
+    // Max JSON body size
     maxRequestBodySize: '1mb',
+
+    // Kill queries that run longer than this (in ms)
     queryTimeout: 30_000,
+
+    // Requests per minute per authenticated user
     rateLimitPerUser: 200,
+
+    // Requests per minute per IP (applies to unauthenticated too)
     rateLimitPerIP: 500,
   },
+
+  // Admin API key
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
 })
 ```

@@ -212,7 +212,7 @@ select: {
 
 #### `select.limit`
 
-Maximum rows this permission can return per query. The client's `limit` is capped to whichever is lower: the permission limit or the global `limits.maxLimit`.
+Maximum rows this permission can return per query. The client's `limit` is capped to whichever is lower: the permission limit or the global `limits.maxRows`.
 
 ```typescript
 select: { limit: 100 }

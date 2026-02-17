@@ -23,38 +23,109 @@ import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 
 const engine = createEngine({
+
+  // ────────────────────────────────────────
+  // Core
+  // ────────────────────────────────────────
+
+  // 'programmatic' = define config in code
+  // 'admin_ui'     = manage config from the admin dashboard
   mode: 'programmatic',
+
+  // Where superapp stores its own tables (sessions, audit logs, admin config)
   superapp_db: process.env.TURSO_URL ?? './superapp.db',
+
+  // Admin API key — required for admin_ui mode and /admin endpoints
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+
+  // ────────────────────────────────────────
+  // Database Connections
+  // ────────────────────────────────────────
+
+  // Each key becomes a namespace prefix (e.g. main.orders)
+  // Type is auto-detected from the URL protocol
   connections: {
     main: process.env.PG_URL!,
     warehouse: process.env.MYSQL_URL!,
   },
+
+  // ────────────────────────────────────────
+  // Authentication
+  // ────────────────────────────────────────
+
   auth: betterAuthProvider({ /* ... */ }),
-  limits: {
-    maxLimit: 10_000,
-    maxIncludeDepth: 3,
-    maxFilterDepth: 5,
-    rateLimitPerUser: 200,
-    rateLimitPerIP: 500,
-  },
-  audit: {
-    enabled: true,
-    logQuery: true,
-    logParams: true,
-    logDuration: true,
-    retention: '90d',
-  },
+
+  // ────────────────────────────────────────
+  // JWT Verification
+  // ────────────────────────────────────────
+
   jwt: {
+    // Allowed signing algorithms
     algorithms: ['RS256', 'ES256'],
+
+    // Expected 'iss' claim — reject tokens from other issuers
     issuer: 'https://auth.myapp.com',
   },
+
+  // ────────────────────────────────────────
+  // Limits & Rate Limiting
+  // ────────────────────────────────────────
+
+  limits: {
+    // Cap on rows returned per query
+    maxRows: 10_000,
+
+    // How deep relations can nest: orders → items → product = depth 3
+    maxRelationDepth: 3,
+
+    // How deep $and/$or/$not can nest inside each other
+    maxFilterNesting: 5,
+
+    // Requests per minute per authenticated user
+    rateLimitPerUser: 200,
+
+    // Requests per minute per IP (applies to unauthenticated too)
+    rateLimitPerIP: 500,
+  },
+
+  // ────────────────────────────────────────
+  // Audit Logging
+  // ────────────────────────────────────────
+
+  audit: {
+    enabled: true,
+
+    // Log the SQL statement
+    logQuery: true,
+
+    // Log query parameters (may contain sensitive data)
+    logParams: true,
+
+    // Log how long each query took
+    logDuration: true,
+
+    // Auto-delete logs older than this
+    retention: '90d',
+  },
+
+  // ────────────────────────────────────────
+  // Network Security
+  // ────────────────────────────────────────
+
   security: {
     cors: {
+      // Which origins can make requests
       origin: ['https://myapp.com'],
+
+      // Send Access-Control-Allow-Credentials: true
       credentials: true,
     },
   },
-  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+
+  // ────────────────────────────────────────
+  // Permissions
+  // ────────────────────────────────────────
+
   permissions: { /* ... */ },
 })
 ```
