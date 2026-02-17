@@ -6,8 +6,9 @@
     "configuration",
     "databases",
     "auth",
-    "adapters",
     "permissions",
-    "actions"
+    "actions",
+    "admin-ui",
+    "adapters"
   ]
 }
