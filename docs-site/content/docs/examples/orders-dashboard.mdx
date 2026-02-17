@@ -4,7 +4,7 @@ icon: ShoppingCart
 description: Full CRUD example with auth, validation, and row-level security.
 ---
 
-**Use case:** A sales team app where each rep creates and manages their own orders. Reps can only see, edit, and delete their own orders. Admins can view all orders.
+**Use case:** A sales team app where reps manage their own orders, managers oversee their team, and admins have full access.
 
 ## Backend
 
@@ -27,20 +27,20 @@ const engine = createEngine({
   auth,
 
   permissions: {
-    orders: {
-      table: 'main.orders',
+    // ─── Sales Rep ──────────────────────────────────────────
+    //
+    // Can CRUD their own orders. Cannot see other reps' data.
+    // New orders must start as 'draft' with a positive amount.
+    // Can only delete drafts.
 
-      // Rep sees only orders they created; admin sees all
+    rep_orders: {
+      table: 'main.orders',
+      roles: ['sales_rep'],
       select: {
-        roles: ['sales_rep', 'admin'],
         columns: ['id', 'amount', 'status', 'created_by', 'created_at'],
         where: { created_by: { $eq: '$user.id' } },
       },
-
-      // Rep creates orders — ownership is enforced, amount must be positive,
-      // new orders can only start as draft
       insert: {
-        roles: ['sales_rep', 'admin'],
         columns: ['amount', 'status'],
         validate: {
           amount: { $gt: 0 },
@@ -51,11 +51,7 @@ const engine = createEngine({
           created_at: '$now',
         },
       },
-
-      // Rep updates only their own orders — amount stays positive,
-      // status transitions are restricted
       update: {
-        roles: ['sales_rep', 'admin'],
         columns: ['amount', 'status'],
         where: { created_by: { $eq: '$user.id' } },
         validate: {
@@ -64,23 +60,74 @@ const engine = createEngine({
         },
         overwrite: { updated_at: '$now' },
       },
-
-      // Rep can only delete their own draft orders
       delete: {
-        roles: ['sales_rep', 'admin'],
         where: {
           created_by: { $eq: '$user.id' },
           status: { $eq: 'draft' },
         },
       },
     },
+
+    // ─── Manager ────────────────────────────────────────────
+    //
+    // Can view all orders and update status on any order.
+    // Cannot create or delete orders.
+
+    manager_orders: {
+      table: 'main.orders',
+      roles: ['manager'],
+      select: {
+        columns: ['id', 'amount', 'status', 'created_by', 'created_at', 'updated_at'],
+      },
+      update: {
+        columns: ['status'],
+        validate: {
+          status: { $in: ['active', 'completed', 'cancelled'] },
+        },
+        overwrite: { updated_at: '$now' },
+      },
+    },
+
+    // ─── Admin ──────────────────────────────────────────────
+    //
+    // Full access to all orders. Can delete cancelled orders.
+
+    admin_orders: {
+      table: 'main.orders',
+      roles: ['admin'],
+      select: {
+        columns: ['id', 'amount', 'status', 'created_by', 'created_at', 'updated_at', 'notes'],
+      },
+      insert: {
+        columns: ['amount', 'status', 'created_by', 'notes'],
+        validate: { amount: { $gt: 0 } },
+        overwrite: { created_at: '$now' },
+      },
+      update: {
+        columns: ['amount', 'status', 'notes'],
+        validate: { amount: { $gt: 0 } },
+        overwrite: { updated_at: '$now' },
+      },
+      delete: {
+        where: { status: { $in: ['cancelled', 'draft'] } },
+      },
+    },
   },
 })
 ```
 
+**What each role can do:**
+
+| | View | Create | Update | Delete |
+|---|---|---|---|---|
+| **sales_rep** | Own orders only | Yes — draft only, amount > 0 | Own orders — amount > 0, restricted statuses | Own drafts only |
+| **manager** | All orders + `updated_at` | No | Status only — active/completed/cancelled | No |
+| **admin** | All orders + `notes` | Yes — any status, can set `created_by` | All fields | Cancelled and draft orders |
+
 **How it works:**
 
-- **`where`** — injects a WHERE clause. A rep querying orders automatically gets `WHERE created_by = ?` — they never see other reps' orders.
+- **`roles`** — declared at the permission level. The entire permission block (all its operations) applies to those roles.
+- **`where`** — injects a WHERE clause. A rep querying orders automatically gets `WHERE created_by = ?` — they never see other reps' orders. Managers and admins have no `where`, so they see everything.
 - **`validate`** — validates incoming data. Sending `amount: -5` or `status: 'shipped'` is rejected with `403` before any SQL runs.
 - **`overwrite`** — always applied server-side. The client cannot override these — `created_by` and timestamps are enforced automatically.
 
@@ -95,7 +142,6 @@ import { useDb } from '@/hooks/use-db'
 import { desc } from 'drizzle-orm'
 import * as schema from '@/generated/schema'
 
-// Type is inferred from the Drizzle schema — no manual interface needed
 type Order = Awaited<
   ReturnType<ReturnType<typeof useDb>['query']['orders']['findMany']>
 >[number]
@@ -127,13 +173,13 @@ export default function OrdersDashboard() {
     loadOrders()
   }
 
-  // Update — backend only allows own orders, validates status transitions
+  // Update — backend only allows own orders for reps, validates status
   const updateStatus = async (id: number, status: string) => {
     await db!.update(schema.orders).set({ status }).where({ id })
     loadOrders()
   }
 
-  // Delete — backend only allows own draft orders
+  // Delete — backend only allows own draft orders for reps
   const deleteOrder = async (id: number) => {
     await db!.delete(schema.orders).where({ id })
     loadOrders()

@@ -58,7 +58,9 @@ superapp is three packages:
 2. **Generate types** -- the CLI introspects your schema and outputs Drizzle table definitions
 3. **Query from the frontend** -- use standard Drizzle ORM syntax, permissions are enforced automatically
 
-## Quick Example
+## Full Example — E-commerce Backend
+
+A complete e-commerce backend with products, orders, and customers — four roles, each with different access levels. This is all the backend code you need.
 
 **Server** (`server.ts`):
 
@@ -74,17 +76,178 @@ const engine = createEngine({
     main: process.env.PG_URL!,
   },
   auth: betterAuthProvider({ secret: process.env.AUTH_SECRET! }),
-  permissions: {
-    view_own_orders: {
-      table: 'main.orders',
-      roles: ['viewer'],
-      select: {
-        columns: ['id', 'amount', 'status', 'created_at'],
 
-        // ⬇️ THIS IS THE KEY LINE — it scopes every query to the logged-in user.
-        // '$user.id' is replaced at runtime with the authenticated user's ID.
-        // The backend injects: WHERE customer_id = '<current user id>'
+  permissions: {
+    // ─── Products ───────────────────────────────────────────
+    //
+    // Everyone can browse. Only store managers can create/edit.
+
+    browse_products: {
+      table: 'main.products',
+      roles: ['customer', 'support_agent', 'store_manager', 'admin'],
+      select: {
+        columns: ['id', 'name', 'description', 'price', 'category', 'image_url', 'in_stock'],
+        where: { in_stock: { $eq: true } },
+      },
+    },
+
+    manage_products: {
+      table: 'main.products',
+      roles: ['store_manager', 'admin'],
+      select: {
+        columns: ['id', 'name', 'description', 'price', 'category', 'image_url', 'in_stock', 'cost', 'sku', 'created_at'],
+      },
+      insert: {
+        columns: ['name', 'description', 'price', 'category', 'image_url', 'cost', 'sku'],
+        validate: {
+          price: { $gt: 0 },
+          cost: { $gte: 0 },
+        },
+        overwrite: { in_stock: true, created_at: '$now' },
+      },
+      update: {
+        columns: ['name', 'description', 'price', 'category', 'image_url', 'in_stock', 'cost'],
+        validate: { price: { $gt: 0 } },
+        overwrite: { updated_at: '$now' },
+      },
+      delete: {
+        where: { in_stock: { $eq: false } },
+      },
+    },
+
+    // ─── Orders ─────────────────────────────────────────────
+    //
+    // Customers see own orders. Support can view and update status.
+    // Store managers see everything.
+
+    customer_orders: {
+      table: 'main.orders',
+      roles: ['customer'],
+      select: {
+        columns: ['id', 'total', 'status', 'shipping_address', 'created_at'],
         where: { customer_id: { $eq: '$user.id' } },
+      },
+      insert: {
+        columns: ['shipping_address'],
+        validate: {
+          shipping_address: { $ne: '' },
+        },
+        overwrite: {
+          customer_id: '$user.id',
+          status: 'pending',
+          total: 0,
+          created_at: '$now',
+        },
+      },
+      update: {
+        columns: ['shipping_address'],
+        where: {
+          customer_id: { $eq: '$user.id' },
+          status: { $eq: 'pending' },
+        },
+      },
+      delete: {
+        where: {
+          customer_id: { $eq: '$user.id' },
+          status: { $eq: 'pending' },
+        },
+      },
+    },
+
+    support_orders: {
+      table: 'main.orders',
+      roles: ['support_agent'],
+      select: {
+        columns: ['id', 'customer_id', 'total', 'status', 'shipping_address', 'created_at'],
+      },
+      update: {
+        columns: ['status'],
+        validate: {
+          status: { $in: ['processing', 'shipped', 'delivered', 'refunded'] },
+        },
+        overwrite: { updated_at: '$now' },
+      },
+    },
+
+    manage_orders: {
+      table: 'main.orders',
+      roles: ['store_manager', 'admin'],
+      select: {
+        columns: ['id', 'customer_id', 'total', 'status', 'shipping_address', 'notes', 'created_at', 'updated_at'],
+      },
+      update: {
+        columns: ['status', 'notes', 'total'],
+        validate: {
+          status: { $in: ['pending', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'] },
+          total: { $gte: 0 },
+        },
+        overwrite: { updated_at: '$now' },
+      },
+      delete: {
+        where: { status: { $in: ['cancelled', 'refunded'] } },
+      },
+    },
+
+    // ─── Order Items ────────────────────────────────────────
+
+    customer_order_items: {
+      table: 'main.order_items',
+      roles: ['customer'],
+      select: {
+        columns: ['id', 'order_id', 'product_id', 'quantity', 'unit_price'],
+        where: { order_id: { $in: '$user.order_ids' } },
+      },
+      insert: {
+        columns: ['order_id', 'product_id', 'quantity'],
+        validate: {
+          quantity: { $gt: 0, $lte: 99 },
+        },
+      },
+      delete: {
+        where: { order_id: { $in: '$user.order_ids' } },
+      },
+    },
+
+    view_order_items: {
+      table: 'main.order_items',
+      roles: ['support_agent', 'store_manager', 'admin'],
+      select: {
+        columns: ['id', 'order_id', 'product_id', 'quantity', 'unit_price'],
+      },
+    },
+
+    // ─── Customers ──────────────────────────────────────────
+
+    customer_profile: {
+      table: 'main.customers',
+      roles: ['customer'],
+      select: {
+        columns: ['id', 'name', 'email', 'phone', 'created_at'],
+        where: { id: { $eq: '$user.id' } },
+      },
+      update: {
+        columns: ['name', 'phone'],
+        where: { id: { $eq: '$user.id' } },
+      },
+    },
+
+    view_customers: {
+      table: 'main.customers',
+      roles: ['support_agent'],
+      select: {
+        columns: ['id', 'name', 'email', 'phone', 'created_at'],
+      },
+    },
+
+    manage_customers: {
+      table: 'main.customers',
+      roles: ['store_manager', 'admin'],
+      select: {
+        columns: ['id', 'name', 'email', 'phone', 'lifetime_value', 'notes', 'created_at'],
+      },
+      update: {
+        columns: ['notes'],
+        overwrite: { updated_at: '$now' },
       },
     },
   },
@@ -94,6 +257,15 @@ const app = new Hono()
 app.route('/', createHonoMiddleware(engine))
 serve({ fetch: app.fetch, port: 3001 })
 ```
+
+**What each role can do:**
+
+| | Products | Orders | Order Items | Customers |
+|---|---|---|---|---|
+| **customer** | Browse in-stock | Own orders only — create, edit pending, cancel pending | Own items — add, remove | Own profile — view, edit name/phone |
+| **support_agent** | Browse in-stock | View all — update status (processing → shipped → delivered → refunded) | View all | View all |
+| **store_manager** | Full CRUD + see cost/SKU | Full access + notes, delete cancelled/refunded | View all | View all + lifetime_value, edit notes |
+| **admin** | Same as store_manager | Same as store_manager | View all | Same as store_manager |
 
 **Client** (`lib/superapp.ts`):
 
@@ -113,34 +285,36 @@ export function createDb(token: string) {
 }
 ```
 
-**Query** (anywhere in your frontend):
+**Query** (anywhere in your app):
 
 ```typescript
 import { eq, desc } from 'drizzle-orm'
 
-// Looks like a normal Drizzle query — but the backend automatically
-// injects WHERE customer_id = <logged-in user's id> before executing.
-// User A only gets User A's orders. User B only gets User B's.
+// Customer sees only their own orders — backend injects WHERE customer_id = ?
 const orders = await db.select()
   .from(schema.orders)
-  .where(eq(schema.orders.status, 'active'))
   .orderBy(desc(schema.orders.createdAt))
   .limit(50)
 
-// ✅ Alice sees her orders:
-//    [{ id: 'ord_1', amount: 49.99, status: 'active', created_at: '2025-01-15' },
-//     { id: 'ord_3', amount: 149.00, status: 'active', created_at: '2025-01-10' }]
-//
-// ✅ Bob sees his orders (completely different rows, same query):
-//    [{ id: 'ord_7', amount: 89.50, status: 'active', created_at: '2025-01-14' }]
-//
-// ❌ Alice can NEVER see Bob's orders — the backend enforces it
+// Support agent runs the same query — sees ALL orders (no WHERE injected)
+// Store manager runs it — sees all orders + notes column
+
+// Create an order — backend forces customer_id, status, and timestamps
+await db.insert(schema.orders)
+  .values({ shipping_address: '123 Main St' })
+
+// Support updates status — backend validates the transition is allowed
+await db.update(schema.orders)
+  .set({ status: 'shipped' })
+  .where(eq(schema.orders.id, orderId))
+
+// Customer tries to set status to 'shipped' — rejected with 403
+// Customer tries to delete a shipped order — rejected with 403
+// Support tries to delete any order — rejected (no delete permission)
 ```
 
-**What happens here:** The client asks for active orders, but the `where: { customer_id: { $eq: '$user.id' } }` in the server config automatically injects `WHERE customer_id = ?` into every query. The logged-in user only sees **their own orders**, filtered by active status — without the client writing any authorization logic. The backend enforces it in the middleware before any data leaves the server.
-
 <Callout type="info">
-**The same Drizzle code, different results per user.** Two users running the exact same `db.select()` query will get completely different rows — each scoped to their own data. You never write `WHERE user_id = currentUser.id` in your frontend. The backend handles it.
+**Same query, different results per role.** A customer calling `db.select().from(orders)` gets their own orders. A support agent gets all orders. A store manager gets all orders plus internal fields like `notes`. The backend decides — your frontend code stays identical.
 </Callout>
 
 <Callout>
