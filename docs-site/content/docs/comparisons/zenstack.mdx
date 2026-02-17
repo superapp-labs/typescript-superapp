@@ -1,0 +1,362 @@
+---
+title: superapp vs ZenStack
+description: A detailed comparison of superapp and ZenStack — two TypeScript data layers with built-in authorization.
+icon: GitCompareArrows
+---
+
+Both **superapp** and **ZenStack** solve a similar problem: giving full-stack TypeScript apps a secure data layer with declarative access control. They take fundamentally different approaches to get there.
+
+This page provides an honest, detailed comparison so you can choose the right tool for your project.
+
+---
+
+## Summary
+
+| Aspect | superapp | ZenStack |
+|---|---|---|
+| **Architecture** | Backend middleware (proxy between client and DB) | ORM enhancement layer (wraps the ORM client) |
+| **Query engine** | DuckDB (in-process OLAP engine) | Kysely (SQL query builder) — V3 rewrote from Prisma |
+| **Client ORM** | Drizzle ORM (via Drizzle Proxy) | Prisma-compatible API (Kysely-powered in V3) |
+| **Schema definition** | TypeScript config object (`createEngine()`) | Custom DSL (`.zmodel` files — Prisma superset) |
+| **Access control** | MongoDB-style operators in JSON (`$eq`, `$in`, `$or`) | Expression-based policies in schema (`@@allow`, `@@deny`) |
+| **Auth** | Pluggable provider interface (better-auth default) | Auth-agnostic — pass user context to `enhance()` |
+| **API generation** | Single HTTP endpoint (Drizzle Proxy protocol) | Auto-generated REST/RPC APIs with framework adapters |
+| **Frontend hooks** | None (use Drizzle directly) | TanStack Query / SWR hooks generated from schema |
+| **Database support** | Postgres, MySQL, SQLite, CSV (via DuckDB ATTACH) | Postgres, MySQL, SQLite, SQL Server, CockroachDB |
+| **Multi-database** | Native — query across databases in one engine | Single database per project |
+| **Plugin system** | No (middleware-based extensibility) | Three-level plugin system (schema, generation, runtime) |
+| **Edge deployment** | Server-side only (DuckDB requires Node/Bun) | Pure TypeScript (V3) — edge-compatible |
+| **Custom DSL** | No — pure TypeScript throughout | Yes — ZModel language with Langium parser, VS Code extension |
+| **Metadata storage** | Turso/SQLite for sessions, roles, audit logs | No separate metadata — everything in the app database |
+
+---
+
+## Key Differences
+
+### 1. Architecture
+
+**superapp** acts as a **middleware proxy**. Your frontend sends parameterized SQL (via Drizzle Proxy protocol) to the superapp backend, which authenticates, applies permission filters, executes the query through DuckDB, and returns results. The authorization logic lives entirely on the server and is invisible to the client.
+
+**ZenStack** operates as an **ORM enhancement**. You create an "enhanced" ORM client by wrapping the base client with `enhance(client, { user })`. This enhanced client transparently injects WHERE clauses and validates writes based on policies declared in the schema. The authorization logic runs wherever the ORM client runs (server-side).
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Client is completely decoupled from auth logic — no authorization code leaks to the frontend. Single point of enforcement. Works with any frontend language that can make HTTP calls. | No separate server needed — authorization runs in-process. Lower latency for server-side rendering. Simpler deployment (one process). |
+| **Cons** | Requires deploying and managing a separate backend service. Network hop between client and backend adds latency. | Authorization logic must run wherever the ORM is used — every server entry point needs `enhance()`. Requires Node.js/Bun runtime. |
+
+---
+
+### 2. Schema and Configuration
+
+**superapp** uses **pure TypeScript** for everything. Permissions, roles, database connections, and auth are all configured in a single `createEngine()` call. No custom DSL, no code generation step for the permission layer.
+
+```typescript
+// superapp: TypeScript config
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  permissions: {
+    view_own_orders: {
+      table: 'main.orders',
+      operations: { select: true },
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: { viewer: ['view_own_orders'] },
+})
+```
+
+**ZenStack** uses **ZModel**, a custom DSL that extends Prisma's schema language. Models, relationships, and access policies are all co-located in `.zmodel` files. This requires a compilation step (`zenstack generate`) and a VS Code extension for editor support.
+
+```zmodel
+// ZenStack: ZModel DSL
+model Order {
+  id         Int    @id @default(autoincrement())
+  amount     Float
+  customerId String
+  customer   User   @relation(fields: [customerId], references: [id])
+
+  @@deny('all', auth() == null)
+  @@allow('read', customer == auth())
+  @@allow('all', auth().role == 'ADMIN')
+}
+```
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | No custom language to learn. Full TypeScript IDE support out of the box. Permissions can be dynamically composed at runtime. No compilation step needed for policy changes. | Policies are co-located with the data model — you see access rules right next to field definitions. Expressive syntax reads like natural language. Schema is the single source of truth. |
+| **Cons** | Permissions are defined separately from the schema — you must mentally map permission slugs to table names. Verbose JSON-like syntax for complex conditions. | Requires learning a custom DSL. Needs code generation step. VS Code extension required for good DX. Schema changes require `zenstack generate`. |
+
+---
+
+### 3. Access Control Model
+
+**superapp** uses **MongoDB-style operators** (`$eq`, `$in`, `$gte`, `$or`, `$and`, `$not`) with `$user.*` variable substitution. Permissions are standalone objects keyed by slug, mapped to roles separately. Multiple permissions on the same table merge with OR logic. Supports FK relationship traversal in filters.
+
+```typescript
+// superapp: Permission with FK traversal and array membership
+{
+  read_org_data: {
+    table: 'main.orders',
+    operations: { select: true },
+    columns: ['id', 'amount', 'status'],
+    filter: {
+      organization: {
+        members: {
+          user_id: { $eq: '$user.id' }
+        }
+      }
+    },
+  },
+}
+```
+
+**ZenStack** uses **expression-based policies** with `@@allow` / `@@deny` attributes. Rules are evaluated as: (1) any `@@deny` true = denied, (2) any `@@allow` true = allowed, (3) otherwise denied. Supports collection predicate expressions (`?[]` any, `![]` all, `^[]` none) for traversing relations.
+
+```zmodel
+// ZenStack: Policy with collection predicate and relation traversal
+model Order {
+  organization Org @relation(fields: [orgId], references: [id])
+  orgId        String
+
+  @@deny('all', auth() == null)
+  @@allow('read', organization.members?[userId == auth().id])
+}
+```
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Familiar syntax for developers who know MongoDB. Explicit column allowlisting — you declare exactly which fields each permission can access. Supports `preset` (auto-inject values on writes) and `check` (validate write payloads) as distinct concepts. Permission merging with OR gives flexible composition. | More concise and readable syntax. Compile-time type checking of policy expressions. Field-level `@allow`/`@deny` for granular column control. `future()` function for post-update validation. Secure-by-default (deny unless explicitly allowed). |
+| **Cons** | String-based `$user.*` substitution is not type-checked at compile time. No post-update validation built in. Secure-by-default requires explicit deny rules. | No explicit column allowlisting — field-level policies default to allowed. No built-in concept of presets (auto-injected values). Permission composition less flexible (no slug-based reuse across roles). |
+
+---
+
+### 4. Query Engine and ORM
+
+**superapp** runs all queries through **DuckDB**, an embedded OLAP engine that natively attaches to Postgres, MySQL, SQLite, and CSV files. Clients write standard **Drizzle ORM** queries that are sent as parameterized SQL over HTTP. The Drizzle Proxy driver serializes queries and deserializes results transparently.
+
+**ZenStack V3** replaced the Prisma engine with a custom ORM built on **Kysely**. It exposes a Prisma-compatible high-level API (`findMany`, `create`, `update`, `delete`) and also provides direct Kysely query builder access via `$queryBuilder()` for complex queries. The ORM is pure TypeScript with no Rust/WASM dependencies.
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Developers use real Drizzle ORM — no proprietary query API to learn. DuckDB enables multi-database queries (join Postgres + CSV in one query). DuckDB's OLAP engine is fast for analytical queries. | Pure TypeScript — no binary dependencies, edge-deployable. Dual API: high-level ORM + low-level query builder for escape hatches. Prisma-compatible API has a large existing ecosystem. Native polymorphism support (V3). |
+| **Cons** | DuckDB is a binary dependency — not edge-deployable. Query goes over HTTP (latency). Drizzle Proxy protocol limits some advanced Drizzle features. | Prisma-compatible API may not match Prisma exactly — migration risk. Developers must learn a new API if not from Prisma. No multi-database support. |
+
+---
+
+### 5. Authentication
+
+**superapp** has a **pluggable auth provider interface** with better-auth as the default. The auth pipeline is explicit: `verifyToken()` → `findUser()` → `resolveSession()`. The `resolveSession` step enriches the JWT with application-specific data (org IDs, roles, custom fields). Auth UI components (`AuthCard`, `UserButton`) are provided out of the box.
+
+**ZenStack** is **auth-agnostic**. It does not provide authentication — you bring your own (Auth.js, Clerk, Better Auth, Supabase Auth, etc.) and pass the current user object to `enhance()`. Official guides exist for several providers.
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Auth is integrated — one less thing to set up. Pre-built UI components save frontend work. `resolveSession` lets you enrich the user context with any data needed for permissions. Auth endpoints are auto-generated. | Complete flexibility — use any auth provider without adapter constraints. No lock-in to a specific auth system. Simpler core — auth is not ZenStack's concern. |
+| **Cons** | Tighter coupling to the auth provider. Custom providers require implementing the full interface. | No built-in auth UI or session management. Every framework integration requires manual auth extraction. Enriching user context must be done manually before calling `enhance()`. |
+
+---
+
+### 6. API Layer
+
+**superapp** exposes a **single HTTP endpoint** (`POST /data`) that accepts Drizzle Proxy protocol messages (parameterized SQL + params). Additional endpoints exist for schema introspection (`GET /schema`) and auth (`/auth/*`). There is no auto-generated REST or GraphQL API — the Drizzle Proxy protocol is the API.
+
+**ZenStack** **auto-generates CRUD APIs** from the schema with server adapters for Express, Next.js, Fastify, Hono, SvelteKit, Nuxt, Elysia, and TanStack Start. APIs follow REST or RPC patterns. An OpenAPI plugin generates 3.x specs. A tRPC plugin generates typed routers.
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Simple — one endpoint, one protocol. No API surface to maintain or version. The ORM is the API — whatever Drizzle supports, the API supports. | Rich API generation — REST, RPC, tRPC, OpenAPI out of the box. Ideal for teams that need public APIs. Framework adapters for every major Node.js framework. TanStack Query / SWR hooks auto-generated for the frontend. |
+| **Cons** | No auto-generated REST/GraphQL API — if you need a public API, you build it yourself. No generated frontend hooks — you call Drizzle directly. | More surface area to learn and configure. Generated APIs may not fit custom endpoint needs. Plugin configuration adds complexity. |
+
+---
+
+### 7. Frontend Integration
+
+**superapp** provides **no frontend-specific hooks**. You use Drizzle ORM directly from your frontend (or server components). Auth components (`AuthCard`, `UserButton`, `AuthProvider`) are provided for authentication flows, but data fetching is standard Drizzle.
+
+**ZenStack** generates **type-safe frontend hooks** via plugins:
+
+- **TanStack Query** hooks for React, Vue, Svelte, and Angular
+- **SWR** hooks for React
+- Hooks include `useFindMany`, `useCreate`, `useUpdate`, `useDelete` with automatic cache invalidation and optimistic updates
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | No abstraction over data fetching — use whatever you prefer (TanStack Query, SWR, vanilla fetch). Less generated code. More control over caching and data flow. | Massive DX boost — type-safe hooks generated automatically. Optimistic updates built in. Cache invalidation handled by the framework. Less boilerplate for CRUD-heavy UIs. |
+| **Cons** | More boilerplate for CRUD UIs. You wire up caching, invalidation, and loading states manually. | Generated hooks may not cover all use cases. Adds dependency on the hook library. More generated code to manage. Less flexibility in data fetching patterns. |
+
+---
+
+### 8. Database Support
+
+**superapp** connects through **DuckDB** which natively attaches to multiple databases simultaneously:
+
+| Database | Read | Write | Multi-DB |
+|---|---|---|---|
+| PostgreSQL | Yes | Yes | Yes |
+| MySQL | Yes | Yes | Yes |
+| SQLite | Yes | Yes | Yes |
+| CSV files | Yes | No | Yes |
+
+A key differentiator: superapp can query across databases — e.g., join a Postgres table with a CSV file or SQLite database in a single query.
+
+**ZenStack V3** supports databases via Kysely dialects:
+
+| Database | Read | Write |
+|---|---|---|
+| PostgreSQL | Yes | Yes |
+| MySQL | Yes | Yes |
+| SQLite | Yes | Yes |
+| SQL Server | Yes | Yes |
+| CockroachDB | Yes | Yes |
+| sql.js (browser) | Yes | Yes |
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Multi-database queries in a single engine instance. CSV import for analytics and data migration. DuckDB is fast for OLAP-style analytical queries. | Wider database support (SQL Server, CockroachDB). sql.js dialect enables browser/edge SQLite. No binary engine dependency. |
+| **Cons** | DuckDB is a native binary — limited to environments where it can run. No SQL Server or CockroachDB support. | Single database per project — no cross-database joins. No CSV import. No analytical query optimizations. |
+
+---
+
+### 9. Multi-Tenancy
+
+Both tools support multi-tenancy through their access control layers, but with different patterns.
+
+**superapp** uses `resolveSession` to enrich the user context with tenant data (e.g., `org_ids`), then references those values in permission filters with `$user.*` substitution:
+
+```typescript
+// superapp: Multi-tenant via session enrichment
+auth: betterAuthProvider({
+  resolveSession: async (user, db) => ({
+    ...user,
+    org_ids: await getOrgIds(user.id),
+  }),
+}),
+permissions: {
+  read_org_orders: {
+    table: 'main.orders',
+    filter: { organization_id: { $in: '$user.org_ids' } },
+  },
+},
+```
+
+**ZenStack** uses `auth()` in policy expressions with relation traversal:
+
+```zmodel
+// ZenStack: Multi-tenant via policy expressions
+model Order {
+  org   Org @relation(fields: [orgId], references: [id])
+  orgId String
+
+  @@allow('all', org.members?[userId == auth().id])
+}
+```
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Session enrichment runs once at auth time — permission checks are fast. `$in` operator handles multi-org membership naturally. Explicit control over what tenant data is available. | Policies are self-contained in the schema — no external session enrichment step. Relation traversal makes complex tenant hierarchies readable. Simpler auth context (just pass the user). |
+| **Cons** | Session enrichment requires a custom `resolveSession` callback. Tenant data must be pre-computed and attached to the session. | Relation traversal may generate complex SQL joins. No pre-computed tenant membership — evaluated per query. Performance may degrade with deeply nested org hierarchies. |
+
+---
+
+### 10. Developer Experience
+
+| Feature | superapp | ZenStack |
+|---|---|---|
+| **CLI** | `create-app` scaffolding, `generate` for types | `init`, `generate`, `migrate`, `check`, `format`, `info` |
+| **Code generation** | Schema introspection → Drizzle types | ZModel → TypeScript schema, Zod, hooks, tRPC routers |
+| **VS Code extension** | No (uses standard TypeScript) | Yes — syntax highlighting, IntelliSense, validation for `.zmodel` |
+| **Watch mode** | No | Yes (`zenstack generate -w`) |
+| **Schema format** | TypeScript (no custom syntax) | ZModel DSL (Prisma superset) |
+| **Error messages** | Runtime HTTP errors with status codes | Compile-time validation errors with line numbers |
+| **Migration** | Use your database's native migration tool | `zenstack migrate` (wraps Prisma migrations) |
+| **Audit logging** | Built-in with configurable retention | Not built-in (use plugins or middleware) |
+| **Admin UI** | Built-in admin panel (planned) | Not built-in |
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | No custom tooling needed — standard TypeScript, standard IDE. Built-in audit logging and admin panel. Use any migration tool you prefer. | Rich CLI with watch mode, formatting, and validation. VS Code extension with IntelliSense for ZModel. Integrated migration management. Comprehensive code generation (Zod, hooks, tRPC). |
+| **Cons** | Fewer CLI commands. No schema validation before runtime. No integrated migration tool. | Requires custom tooling (VS Code extension, CLI). Must run `generate` after schema changes. Learning curve for ZModel syntax. |
+
+---
+
+### 11. Plugin and Extensibility
+
+**superapp** does not have a formal plugin system. Extensibility comes through:
+- Custom auth providers (implement the provider interface)
+- Custom database providers (implement the provider interface)
+- Permission middleware (wrap individual permission checks with custom logic)
+- Server adapters (Hono, Express, Next.js, generic handler)
+
+**ZenStack** has a **three-level plugin system** (V3):
+1. **Schema level** — plugins define custom attributes, functions, and procedures in `plugin.zmodel`
+2. **Generation level** — plugins participate in `zenstack generate` to produce artifacts
+3. **Runtime level** — plugins leverage Kysely's query tree transformation
+
+Built-in plugins include: policy enforcement, Zod schema generation, TanStack Query hooks, SWR hooks, tRPC routers, and OpenAPI specs.
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Simpler mental model — no plugin system to learn. Custom providers and middleware are straightforward TypeScript interfaces. | Highly extensible at every level. Community plugins can add entirely new capabilities. Code generation plugins eliminate boilerplate. |
+| **Cons** | Less extensible — no way to add custom schema attributes or code generation. Feature additions require changes to the core. | Plugin system adds complexity. Three levels of plugins are harder to reason about. Plugin compatibility across versions can be fragile. |
+
+---
+
+### 12. Type Safety
+
+**superapp** achieves type safety through **Drizzle ORM's type system**. The CLI introspects your database schema and generates Drizzle table definitions. All queries are fully typed — `select`, `where`, `insert`, `update`, and `delete` operations benefit from TypeScript inference. Permissions are not type-checked at compile time (they reference tables and columns by string).
+
+**ZenStack V3** generates a **full TypeScript schema** from ZModel with complete type inference. The enhanced client provides typed CRUD methods with select/include inference. Policy expressions are type-checked at compile time by the ZModel compiler. Zod schemas are auto-generated for runtime validation.
+
+#### Pros and Cons
+
+| | superapp | ZenStack |
+|---|---|---|
+| **Pros** | Standard Drizzle types — well-documented, widely used. Type safety at the query level is excellent. No proprietary type system. | End-to-end type safety including policy expressions. Zod schemas auto-generated for runtime validation. Select/include type narrowing. Compile-time errors for invalid policy references. |
+| **Cons** | Permissions reference tables and columns by string — typos are caught at runtime, not compile time. No auto-generated validation schemas. | Proprietary type system generated from ZModel. Types may not match Prisma exactly. Zod generation adds to build output size. |
+
+---
+
+## When to Choose superapp
+
+- You want to use **Drizzle ORM** as your query interface
+- You need **multi-database queries** (join Postgres + SQLite + CSV)
+- You prefer **pure TypeScript configuration** with no custom DSL
+- You want **built-in auth** with UI components and session management
+- You need **audit logging** and admin capabilities out of the box
+- Your team is comfortable with **MongoDB-style filter operators**
+- You want a clear **client/server separation** where the backend is the single enforcement point
+
+## When to Choose ZenStack
+
+- You want **policies co-located with your data model** in a single schema file
+- You need **auto-generated APIs** (REST, tRPC, OpenAPI) from your schema
+- You want **frontend hooks** (TanStack Query, SWR) generated automatically
+- You need to deploy to **edge runtimes** (Cloudflare Workers, Vercel Edge)
+- You prefer **compile-time validation** of access control rules
+- You want a **plugin ecosystem** for code generation (Zod, tRPC, OpenAPI)
+- Your team is coming from **Prisma** and wants a familiar API
+- You need **polymorphic models** with OO-style inheritance
