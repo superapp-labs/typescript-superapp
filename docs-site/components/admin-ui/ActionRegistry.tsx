@@ -152,8 +152,8 @@ export function ActionRegistry() {
             >
               <div className="min-w-0 flex-1">
                 <div className="truncate text-xs font-mono font-medium text-fd-foreground">{a.name}</div>
-                <div className="mt-0.5 truncate text-[10px] text-fd-muted-foreground">{a.description}</div>
-                <div className="mt-1 flex items-center gap-2 text-[10px] text-fd-muted-foreground">
+                <div className="mt-0.5 truncate text-xs text-fd-muted-foreground">{a.description}</div>
+                <div className="mt-1 flex items-center gap-2 text-xs text-fd-muted-foreground">
                   <span>{a.callCount.toLocaleString()} calls</span>
                   <span className="text-fd-border">|</span>
                   <span>~{a.avgDuration}ms</span>
@@ -172,10 +172,10 @@ export function ActionRegistry() {
             </div>
             <button
               onClick={() => { setTestMode(!testMode); setTestResult(null) }}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
                 testMode
                   ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
-                  : 'bg-fd-primary text-fd-primary-foreground hover:opacity-90'
+                  : 'bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/80'
               }`}
             >
               {testMode ? 'Close Playground' : 'Test'}
@@ -184,10 +184,10 @@ export function ActionRegistry() {
 
           {/* Roles */}
           <div className="mt-3">
-            <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Allowed Roles</span>
+            <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Allowed Roles</span>
             <div className="mt-1 flex flex-wrap gap-1">
               {action.roles.map(role => (
-                <span key={role} className="rounded-full border border-fd-primary/30 bg-fd-primary/10 px-2 py-0.5 text-[11px] font-medium text-fd-primary">
+                <span key={role} className="rounded-full border border-fd-primary/30 bg-fd-primary/10 px-2 py-0.5 text-xs font-medium text-fd-primary">
                   {role}
                 </span>
               ))}
@@ -196,11 +196,11 @@ export function ActionRegistry() {
 
           {/* Schema */}
           <div className="mt-3 grid grid-cols-2 gap-3">
-            <div className="rounded-lg border border-fd-border p-3">
-              <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Input Schema</span>
+            <div className="rounded-md border border-fd-border p-3">
+              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Input Schema</span>
               <div className="mt-1.5 space-y-1">
                 {action.inputFields.map(f => (
-                  <div key={f.name} className="flex items-center gap-1.5 text-[11px] font-mono">
+                  <div key={f.name} className="flex items-center gap-1.5 text-xs font-mono">
                     <span className="text-fd-foreground">{f.name}</span>
                     {f.required && <span className="text-red-500">*</span>}
                     <span className={getTypeColor(f.type)}>{f.type}</span>
@@ -208,11 +208,11 @@ export function ActionRegistry() {
                 ))}
               </div>
             </div>
-            <div className="rounded-lg border border-fd-border p-3">
-              <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Output Schema</span>
+            <div className="rounded-md border border-fd-border p-3">
+              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Output Schema</span>
               <div className="mt-1.5 space-y-1">
                 {action.outputFields.map(f => (
-                  <div key={f.name} className="flex items-center gap-1.5 text-[11px] font-mono">
+                  <div key={f.name} className="flex items-center gap-1.5 text-xs font-mono">
                     <span className="text-fd-foreground">{f.name}</span>
                     <span className={getTypeColor(f.type)}>{f.type}</span>
                   </div>
@@ -223,12 +223,12 @@ export function ActionRegistry() {
 
           {/* Test Playground */}
           {testMode && (
-            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
+            <div className="mt-3 rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
               <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Playground</span>
               <div className="mt-2 space-y-2">
                 {action.inputFields.map(f => (
                   <div key={f.name} className="flex items-center gap-2">
-                    <label className="w-28 text-right text-[11px] font-mono text-fd-muted-foreground">{f.name}</label>
+                    <label className="w-28 text-right text-xs font-mono text-fd-muted-foreground">{f.name}</label>
                     <input
                       type="text"
                       placeholder={f.type}
@@ -241,7 +241,7 @@ export function ActionRegistry() {
                 <div className="flex justify-end">
                   <button
                     onClick={runTest}
-                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700"
+                    className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-amber-700"
                   >
                     Execute
                   </button>
@@ -249,8 +249,8 @@ export function ActionRegistry() {
               </div>
               {testResult && (
                 <div className="mt-2">
-                  <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Response</span>
-                  <pre className="mt-1 rounded bg-fd-background p-2 text-[11px] font-mono text-green-600 dark:text-green-400">{testResult}</pre>
+                  <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Response</span>
+                  <pre className="mt-1 rounded bg-fd-background p-2 text-xs font-mono text-green-600 dark:text-green-400">{testResult}</pre>
                 </div>
               )}
             </div>
@@ -258,17 +258,17 @@ export function ActionRegistry() {
 
           {/* Stats */}
           <div className="mt-3 flex gap-4">
-            <div className="rounded-lg bg-fd-accent/50 px-3 py-2">
-              <div className="text-[10px] text-fd-muted-foreground">Total Calls</div>
+            <div className="rounded-md bg-fd-accent/50 px-3 py-2">
+              <div className="text-xs text-fd-muted-foreground">Total Calls</div>
               <div className="text-sm font-semibold text-fd-foreground">{action.callCount.toLocaleString()}</div>
             </div>
-            <div className="rounded-lg bg-fd-accent/50 px-3 py-2">
-              <div className="text-[10px] text-fd-muted-foreground">Avg Duration</div>
+            <div className="rounded-md bg-fd-accent/50 px-3 py-2">
+              <div className="text-xs text-fd-muted-foreground">Avg Duration</div>
               <div className="text-sm font-semibold text-fd-foreground">{action.avgDuration}ms</div>
             </div>
-            <div className="rounded-lg bg-fd-accent/50 px-3 py-2">
-              <div className="text-[10px] text-fd-muted-foreground">Endpoint</div>
-              <div className="text-[11px] font-mono text-fd-foreground">POST /actions/{action.name}</div>
+            <div className="rounded-md bg-fd-accent/50 px-3 py-2">
+              <div className="text-xs text-fd-muted-foreground">Endpoint</div>
+              <div className="text-xs font-mono text-fd-foreground">POST /actions/{action.name}</div>
             </div>
           </div>
         </div>

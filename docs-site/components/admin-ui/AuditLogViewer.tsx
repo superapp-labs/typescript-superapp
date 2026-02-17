@@ -65,12 +65,12 @@ export function AuditLogViewer() {
             placeholder="Filter by user..."
             value={searchUser}
             onChange={e => setSearchUser(e.target.value)}
-            className="w-40 rounded-lg border border-fd-border bg-fd-background px-2.5 py-1 text-xs text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+            className="w-40 rounded-md border border-fd-border bg-fd-background px-2.5 py-1 text-xs text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
           />
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="rounded-lg border border-fd-border bg-fd-background px-2 py-1 text-xs text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+            className="rounded-md border border-fd-border bg-fd-background px-2 py-1 text-xs text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
           >
             <option value="all">All status</option>
             <option value="success">Success</option>
@@ -85,7 +85,7 @@ export function AuditLogViewer() {
           <button
             key={op}
             onClick={() => setFilter(op)}
-            className={`rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+            className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
               filter === op
                 ? 'bg-fd-primary text-fd-primary-foreground'
                 : 'text-fd-muted-foreground hover:bg-fd-accent'
@@ -104,13 +104,13 @@ export function AuditLogViewer() {
               onClick={() => setExpandedId(expandedId === entry.id ? null : entry.id)}
               className="flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-fd-accent/30"
             >
-              <span className="text-[11px] font-mono text-fd-muted-foreground w-16 shrink-0">{formatTime(entry.timestamp)}</span>
-              <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium uppercase w-14 text-center shrink-0 ${opColors[entry.operation]}`}>
+              <span className="text-xs font-mono text-fd-muted-foreground w-16 shrink-0">{formatTime(entry.timestamp)}</span>
+              <span className={`rounded px-1.5 py-0.5 text-xs font-medium uppercase w-14 text-center shrink-0 ${opColors[entry.operation]}`}>
                 {entry.operation}
               </span>
               <span className="text-xs font-mono text-fd-foreground truncate w-28 shrink-0">{entry.table}</span>
               <span className="text-xs text-fd-muted-foreground truncate flex-1">{entry.userName}</span>
-              <span className="text-[11px] font-mono text-fd-muted-foreground w-12 text-right shrink-0">{entry.durationMs}ms</span>
+              <span className="text-xs font-mono text-fd-muted-foreground w-12 text-right shrink-0">{entry.durationMs}ms</span>
               <span className={`h-2 w-2 rounded-full shrink-0 ${entry.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
               <svg
                 width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -141,12 +141,12 @@ export function AuditLogViewer() {
                 </div>
                 {entry.query && (
                   <div className="mt-2">
-                    <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Query</span>
-                    <pre className="mt-1 rounded-lg bg-fd-background p-2 text-[11px] font-mono text-fd-foreground overflow-x-auto">{entry.query}</pre>
+                    <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Query</span>
+                    <pre className="mt-1 rounded-md bg-fd-background p-2 text-xs font-mono text-fd-foreground overflow-x-auto">{entry.query}</pre>
                   </div>
                 )}
                 {!entry.query && (
-                  <div className="mt-2 text-[11px] text-fd-muted-foreground italic">Query logging disabled or query not captured</div>
+                  <div className="mt-2 text-xs text-fd-muted-foreground italic">Query logging disabled or query not captured</div>
                 )}
               </div>
             )}

@@ -54,13 +54,13 @@ export function SecurityPanel() {
         </div>
         <div className="p-4 space-y-4">
           <div>
-            <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Allowed Algorithms</span>
+            <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Allowed Algorithms</span>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {allAlgorithms.map(alg => (
                 <button
                   key={alg}
                   onClick={() => toggleAlgorithm(alg)}
-                  className={`rounded-lg border px-2.5 py-1 text-xs font-mono font-medium transition-colors ${
+                  className={`rounded-md border px-2.5 py-1 text-xs font-mono font-medium transition-colors ${
                     algorithms.includes(alg)
                       ? 'border-fd-primary bg-fd-primary/10 text-fd-primary'
                       : 'border-fd-border text-fd-muted-foreground hover:border-fd-primary/50'
@@ -71,7 +71,7 @@ export function SecurityPanel() {
               ))}
             </div>
             {algorithms.some(a => a.startsWith('HS')) && (
-              <p className="mt-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+              <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
                 Warning: HMAC algorithms (HS*) use symmetric keys. Use RS/ES for production.
               </p>
             )}
@@ -79,27 +79,27 @@ export function SecurityPanel() {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Issuer</label>
+              <label className="text-xs text-fd-muted-foreground uppercase tracking-wide">Issuer</label>
               <input
                 type="text"
                 value={issuer}
                 onChange={e => setIssuer(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+                className="mt-1 w-full rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
               />
             </div>
             <div>
-              <label className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Audience</label>
+              <label className="text-xs text-fd-muted-foreground uppercase tracking-wide">Audience</label>
               <input
                 type="text"
                 value={audience}
                 onChange={e => setAudience(e.target.value)}
-                className="mt-1 w-full rounded-lg border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+                className="mt-1 w-full rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
               />
             </div>
           </div>
 
           <div>
-            <label className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Clock Skew Tolerance</label>
+            <label className="text-xs text-fd-muted-foreground uppercase tracking-wide">Clock Skew Tolerance</label>
             <div className="mt-1 flex items-center gap-2">
               <input
                 type="range"
@@ -124,11 +124,11 @@ export function SecurityPanel() {
         <div className="p-4 space-y-3">
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Allowed Origins</span>
+              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Allowed Origins</span>
             </div>
             <div className="mt-1.5 space-y-1.5">
               {corsOrigins.map(origin => (
-                <div key={origin} className="flex items-center justify-between rounded-lg border border-fd-border bg-fd-background px-3 py-1.5">
+                <div key={origin} className="flex items-center justify-between rounded-md border border-fd-border bg-fd-background px-3 py-1.5">
                   <span className="text-xs font-mono text-fd-foreground">{origin}</span>
                   <button
                     onClick={() => removeOrigin(origin)}
@@ -145,11 +145,11 @@ export function SecurityPanel() {
                   value={newOrigin}
                   onChange={e => setNewOrigin(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addOrigin()}
-                  className="min-w-0 flex-1 rounded-lg border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+                  className="min-w-0 flex-1 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-xs font-mono text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
                 />
                 <button
                   onClick={addOrigin}
-                  className="rounded-lg bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground hover:opacity-90"
+                  className="rounded-md bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground hover:bg-fd-primary/80"
                 >
                   Add
                 </button>
@@ -160,7 +160,7 @@ export function SecurityPanel() {
           <div className="flex items-center justify-between">
             <div>
               <span className="text-xs text-fd-foreground">Allow Credentials</span>
-              <p className="text-[10px] text-fd-muted-foreground">Send cookies and auth headers in cross-origin requests</p>
+              <p className="text-xs text-fd-muted-foreground">Send cookies and auth headers in cross-origin requests</p>
             </div>
             <button
               onClick={() => setCorsCredentials(!corsCredentials)}
@@ -191,10 +191,10 @@ export function SecurityPanel() {
                 { key: 'logParams' as const, label: 'Log Parameters', desc: 'Record query bind parameters (may contain PII)' },
                 { key: 'logDuration' as const, label: 'Log Duration', desc: 'Record query execution time in milliseconds' },
               ].map(opt => (
-                <div key={opt.key} className="flex items-center justify-between rounded-lg bg-fd-accent/30 px-3 py-2">
+                <div key={opt.key} className="flex items-center justify-between rounded-md bg-fd-accent/30 px-3 py-2">
                   <div>
                     <span className="text-xs text-fd-foreground">{opt.label}</span>
-                    <p className="text-[10px] text-fd-muted-foreground">{opt.desc}</p>
+                    <p className="text-xs text-fd-muted-foreground">{opt.desc}</p>
                   </div>
                   <button
                     onClick={() => setAudit({ ...audit, [opt.key]: !audit[opt.key] })}
@@ -207,19 +207,19 @@ export function SecurityPanel() {
             </div>
 
             {audit.logParams && (
-              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+              <p className="text-xs text-amber-600 dark:text-amber-400">
                 Warning: Query parameters may contain PII. Consider disabling in production or reducing retention.
               </p>
             )}
 
             <div>
-              <span className="text-[10px] text-fd-muted-foreground uppercase tracking-wide">Retention Period</span>
+              <span className="text-xs text-fd-muted-foreground uppercase tracking-wide">Retention Period</span>
               <div className="mt-1.5 flex gap-1.5">
                 {retentionOptions.map(r => (
                   <button
                     key={r}
                     onClick={() => setAudit({ ...audit, retention: r })}
-                    className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors ${
+                    className={`rounded-md border px-2.5 py-1 text-xs font-medium transition-colors ${
                       audit.retention === r
                         ? 'border-fd-primary bg-fd-primary/10 text-fd-primary'
                         : 'border-fd-border text-fd-muted-foreground hover:border-fd-primary/50'

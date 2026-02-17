@@ -68,7 +68,7 @@ export function ConnectionManager() {
         </div>
         <button
           onClick={() => setShowAdd(!showAdd)}
-          className="rounded-lg bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground transition-colors hover:opacity-90"
+          className="rounded-md bg-fd-primary px-3 py-1.5 text-xs font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80"
         >
           + Add Connection
         </button>
@@ -82,24 +82,24 @@ export function ConnectionManager() {
               placeholder="Name (e.g. analytics)"
               value={newName}
               onChange={e => setNewName(e.target.value)}
-              className="w-36 rounded-lg border border-fd-border bg-fd-background px-3 py-1.5 text-sm text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+              className="w-36 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-sm text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-ring"
             />
             <input
               type="text"
               placeholder="postgres://user:pass@host:5432/db"
               value={newUrl}
               onChange={e => setNewUrl(e.target.value)}
-              className="min-w-0 flex-1 rounded-lg border border-fd-border bg-fd-background px-3 py-1.5 text-sm text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-primary"
+              className="min-w-0 flex-1 rounded-md border border-fd-border bg-fd-background px-3 py-1.5 text-sm text-fd-foreground placeholder:text-fd-muted-foreground focus:outline-none focus:ring-2 focus:ring-fd-ring"
             />
             <button
               onClick={addConnection}
-              className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700"
+              className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700"
             >
               Connect
             </button>
             <button
               onClick={() => setShowAdd(false)}
-              className="rounded-lg border border-fd-border px-3 py-1.5 text-xs text-fd-muted-foreground transition-colors hover:bg-fd-accent"
+              className="rounded-md border border-fd-border px-3 py-1.5 text-xs text-fd-muted-foreground transition-colors hover:bg-fd-accent"
             >
               Cancel
             </button>
@@ -120,7 +120,7 @@ export function ConnectionManager() {
               <div>
                 <div className="flex items-center gap-2">
                   <code className="text-sm font-semibold text-fd-foreground">{conn.name}</code>
-                  <span className="rounded bg-fd-accent px-1.5 py-0.5 text-[10px] font-medium text-fd-muted-foreground">{conn.type}</span>
+                  <span className="rounded bg-fd-accent px-1.5 py-0.5 text-xs font-medium text-fd-muted-foreground">{conn.type}</span>
                 </div>
                 <div className="mt-0.5 text-xs font-mono text-fd-muted-foreground">{conn.url}</div>
               </div>

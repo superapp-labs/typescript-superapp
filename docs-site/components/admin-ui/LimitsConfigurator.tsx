@@ -80,7 +80,7 @@ export function LimitsConfigurator() {
             <button
               key={p}
               onClick={() => applyPreset(p)}
-              className={`rounded-lg px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
+              className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
                 preset === p
                   ? 'bg-fd-primary text-fd-primary-foreground'
                   : 'text-fd-muted-foreground hover:bg-fd-accent'
@@ -101,12 +101,12 @@ export function LimitsConfigurator() {
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-medium text-fd-foreground">{limit.label}</span>
-                  <p className="text-[11px] text-fd-muted-foreground">{limit.description}</p>
+                  <p className="text-xs text-fd-muted-foreground">{limit.description}</p>
                 </div>
                 <div className="text-right">
                   <span className="text-sm font-mono font-semibold text-fd-foreground">{formatValue(limit.value, limit.unit)}</span>
-                  <span className="ml-1 text-[10px] text-fd-muted-foreground">{limit.unit !== 'ms' ? limit.unit : ''}</span>
-                  <div className={`text-[10px] font-medium ${levelStyles[level]}`}>{levelLabels[level]}</div>
+                  <span className="ml-1 text-xs text-fd-muted-foreground">{limit.unit !== 'ms' ? limit.unit : ''}</span>
+                  <div className={`text-xs font-medium ${levelStyles[level]}`}>{levelLabels[level]}</div>
                 </div>
               </div>
               <div className="relative mt-2">
@@ -128,7 +128,7 @@ export function LimitsConfigurator() {
                   className="absolute inset-0 h-1.5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fd-foreground [&::-webkit-slider-thumb]:shadow-sm"
                 />
               </div>
-              <div className="mt-0.5 flex justify-between text-[10px] text-fd-muted-foreground">
+              <div className="mt-0.5 flex justify-between text-xs text-fd-muted-foreground">
                 <span>{formatValue(limit.min, limit.unit)}</span>
                 <span>{formatValue(limit.max, limit.unit)}</span>
               </div>
