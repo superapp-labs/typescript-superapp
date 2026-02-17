@@ -23,34 +23,47 @@ const defaultLimits: LimitConfig[] = [
   { key: 'rateLimitPerIP', label: 'Rate Limit / IP', value: 500, min: 10, max: 5000, step: 10, unit: 'req/min', description: 'Maximum requests per minute per IP address' },
 ]
 
-function formatValue(value: number, unit: string): string {
-  if (unit === 'ms') return `${(value / 1000).toFixed(0)}s`
-  if (value >= 1000) return `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`
-  return String(value)
-}
+const queryLimitKeys = ['maxRows', 'maxRelationDepth', 'maxFilterNesting', 'maxFilterConditions', 'queryTimeout']
+const rateLimitKeys = ['rateLimitPerUser', 'rateLimitPerIP']
 
-function getLevel(key: string, value: number): 'low' | 'medium' | 'high' {
-  const thresholds: Record<string, [number, number]> = {
-    maxRows: [1000, 50000],
-    maxRelationDepth: [2, 5],
-    maxFilterNesting: [3, 10],
-    maxFilterConditions: [10, 50],
-    queryTimeout: [5000, 60000],
-    rateLimitPerUser: [50, 500],
-    rateLimitPerIP: [100, 1000],
+function LimitRow({
+  limit,
+  onUpdate,
+}: {
+  limit: LimitConfig
+  onUpdate: (key: string, value: number) => void
+}) {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value
+    if (raw === '') return
+    const num = Number(raw)
+    if (!Number.isNaN(num)) {
+      const clamped = Math.min(limit.max, Math.max(limit.min, num))
+      onUpdate(limit.key, clamped)
+    }
   }
-  const [low, high] = thresholds[key] ?? [0, 0]
-  if (value <= low) return 'low'
-  if (value >= high) return 'high'
-  return 'medium'
-}
 
-const levelStyles = {
-  low: 'text-green-600 dark:text-green-400',
-  medium: 'text-amber-600 dark:text-amber-400',
-  high: 'text-red-600 dark:text-red-400',
+  return (
+    <div className="flex items-start justify-between gap-4 py-2.5">
+      <div className="flex-1 min-w-0">
+        <label className="text-sm font-medium text-fd-foreground">{limit.label}</label>
+        <p className="text-xs text-fd-muted-foreground mt-0.5">{limit.description}</p>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <input
+          type="number"
+          min={limit.min}
+          max={limit.max}
+          step={limit.step}
+          value={limit.value}
+          onChange={handleChange}
+          className="h-9 w-24 rounded-lg border border-fd-border bg-fd-background px-3 text-sm text-fd-foreground outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50 font-mono tabular-nums text-right [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        />
+        <span className="text-xs text-fd-muted-foreground w-12">{limit.unit}</span>
+      </div>
+    </div>
+  )
 }
-const levelLabels = { low: 'Strict', medium: 'Balanced', high: 'Permissive' }
 
 export function LimitsConfigurator() {
   const [limits, setLimits] = useState<LimitConfig[]>(defaultLimits)
@@ -71,8 +84,11 @@ export function LimitsConfigurator() {
     setPreset('custom')
   }
 
+  const queryLimits = limits.filter(l => queryLimitKeys.includes(l.key))
+  const rateLimits = limits.filter(l => rateLimitKeys.includes(l.key))
+
   return (
-    <div className="not-prose rounded-xl border border-fd-border bg-fd-card overflow-hidden">
+    <div className="not-prose rounded-xl border border-fd-border overflow-hidden">
       <div className="flex items-center justify-between border-b border-fd-border px-4 py-3">
         <span className="text-sm font-medium text-fd-foreground">Rate Limits & Query Constraints</span>
         <div className="flex gap-1">
@@ -92,49 +108,26 @@ export function LimitsConfigurator() {
         </div>
       </div>
 
-      <div className="divide-y divide-fd-border">
-        {limits.map(limit => {
-          const level = getLevel(limit.key, limit.value)
-          const pct = ((limit.value - limit.min) / (limit.max - limit.min)) * 100
-          return (
-            <div key={limit.key} className="px-4 py-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-medium text-fd-foreground">{limit.label}</span>
-                  <p className="text-xs text-fd-muted-foreground">{limit.description}</p>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-mono font-semibold text-fd-foreground">{formatValue(limit.value, limit.unit)}</span>
-                  <span className="ml-1 text-xs text-fd-muted-foreground">{limit.unit !== 'ms' ? limit.unit : ''}</span>
-                  <div className={`text-xs font-medium ${levelStyles[level]}`}>{levelLabels[level]}</div>
-                </div>
-              </div>
-              <div className="relative mt-2">
-                <div className="h-1.5 rounded-full bg-fd-accent">
-                  <div
-                    className={`h-full rounded-full transition-all ${
-                      level === 'low' ? 'bg-green-500' : level === 'medium' ? 'bg-amber-500' : 'bg-red-500'
-                    }`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <input
-                  type="range"
-                  min={limit.min}
-                  max={limit.max}
-                  step={limit.step}
-                  value={limit.value}
-                  onChange={e => updateLimit(limit.key, Number(e.target.value))}
-                  className="absolute inset-0 h-1.5 w-full cursor-pointer appearance-none bg-transparent [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fd-foreground [&::-webkit-slider-thumb]:shadow-sm"
-                />
-              </div>
-              <div className="mt-0.5 flex justify-between text-xs text-fd-muted-foreground">
-                <span>{formatValue(limit.min, limit.unit)}</span>
-                <span>{formatValue(limit.max, limit.unit)}</span>
-              </div>
-            </div>
-          )
-        })}
+      <div className="px-4 py-3">
+        <div className="mb-1">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">Query Limits</h4>
+        </div>
+        <div className="divide-y divide-fd-border">
+          {queryLimits.map(limit => (
+            <LimitRow key={limit.key} limit={limit} onUpdate={updateLimit} />
+          ))}
+        </div>
+      </div>
+
+      <div className="border-t border-fd-border px-4 py-3">
+        <div className="mb-1">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-fd-muted-foreground">Rate Limits</h4>
+        </div>
+        <div className="divide-y divide-fd-border">
+          {rateLimits.map(limit => (
+            <LimitRow key={limit.key} limit={limit} onUpdate={updateLimit} />
+          ))}
+        </div>
       </div>
     </div>
   )

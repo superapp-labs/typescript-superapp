@@ -84,7 +84,7 @@ export function SecurityPanel() {
                 type="text"
                 value={issuer}
                 onChange={e => setIssuer(e.target.value)}
-                className="mt-1 h-8 w-full rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
+                className="mt-1 h-9 w-full rounded-lg border border-fd-border bg-fd-background px-3 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
               />
             </div>
             <div>
@@ -93,7 +93,7 @@ export function SecurityPanel() {
                 type="text"
                 value={audience}
                 onChange={e => setAudience(e.target.value)}
-                className="mt-1 h-8 w-full rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
+                className="mt-1 h-9 w-full rounded-lg border border-fd-border bg-fd-background px-3 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
               />
             </div>
           </div>
@@ -102,15 +102,15 @@ export function SecurityPanel() {
             <label className="text-xs font-medium text-fd-muted-foreground uppercase tracking-wide">Clock Skew Tolerance</label>
             <div className="mt-1 flex items-center gap-2">
               <input
-                type="range"
+                type="number"
                 min={0}
                 max={300}
                 step={5}
                 value={clockSkew}
                 onChange={e => setClockSkew(Number(e.target.value))}
-                className="flex-1 h-1.5 appearance-none rounded-full bg-fd-accent [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-fd-foreground"
+                className="h-9 w-28 rounded-lg border border-fd-border bg-fd-background px-3 text-sm font-mono outline-none transition-colors focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
               />
-              <span className="w-14 text-right text-sm font-mono text-fd-foreground">{clockSkew}s</span>
+              <span className="text-sm text-fd-muted-foreground">seconds</span>
             </div>
           </div>
         </div>
@@ -145,11 +145,11 @@ export function SecurityPanel() {
                   value={newOrigin}
                   onChange={e => setNewOrigin(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addOrigin()}
-                  className="min-w-0 flex-1 h-8 rounded-lg border border-fd-border bg-transparent px-2.5 py-1 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
+                  className="min-w-0 flex-1 h-9 rounded-lg border border-fd-border bg-fd-background px-3 text-sm font-mono outline-none transition-colors placeholder:text-fd-muted-foreground focus-visible:border-fd-ring focus-visible:ring-3 focus-visible:ring-fd-ring/50"
                 />
                 <button
                   onClick={addOrigin}
-                  className="inline-flex items-center justify-center rounded-lg border border-transparent bg-fd-primary px-2.5 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-8"
+                  className="inline-flex items-center justify-center rounded-lg border border-transparent bg-fd-primary px-3 text-sm font-medium text-fd-primary-foreground transition-colors hover:bg-fd-primary/80 h-9"
                 >
                   Add
                 </button>
