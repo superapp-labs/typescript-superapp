@@ -71,7 +71,7 @@ const engine = createEngine({
 
 **ZenStack** uses **ZModel**, a custom DSL that extends Prisma's schema language. Models, relationships, and access policies are all co-located in `.zmodel` files. This requires a compilation step (`zenstack generate`) and a VS Code extension for editor support.
 
-```zmodel
+```prisma
 // ZenStack: ZModel DSL
 model Order {
   id         Int    @id @default(autoincrement())
@@ -118,7 +118,7 @@ model Order {
 
 **ZenStack** uses **expression-based policies** with `@@allow` / `@@deny` attributes. Rules are evaluated as: (1) any `@@deny` true = denied, (2) any `@@allow` true = allowed, (3) otherwise denied. Supports collection predicate expressions (`?[]` any, `![]` all, `^[]` none) for traversing relations.
 
-```zmodel
+```prisma
 // ZenStack: Policy with collection predicate and relation traversal
 model Order {
   organization Org @relation(fields: [orgId], references: [id])
@@ -259,7 +259,7 @@ permissions: {
 
 **ZenStack** uses `auth()` in policy expressions with relation traversal:
 
-```zmodel
+```prisma
 // ZenStack: Multi-tenant via policy expressions
 model Order {
   org   Org @relation(fields: [orgId], references: [id])
