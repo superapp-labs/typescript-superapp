@@ -99,7 +99,7 @@ Rejects requests with JSON bodies larger than the configured size. Accepts strin
 
 ### queryTimeout
 
-Kills queries that run longer than the specified duration. The DuckDB instance is terminated and the client receives a `408` error. This protects against unoptimized queries or unexpected table scans.
+Kills queries that run longer than the specified duration. The database connection is released and the client receives a `408` error. This protects against unoptimized queries or unexpected table scans.
 
 ## Rate Limiting
 
