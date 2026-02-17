@@ -1,0 +1,38 @@
+---
+title: SingleStore
+description: Connect to SingleStore databases.
+---
+
+Connect to [SingleStore](https://www.singlestore.com) (formerly MemSQL), a distributed SQL database optimized for real-time analytics and transactions.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { singlestoreProvider } from '@superapp/backend/databases/singlestore'
+
+const engine = createEngine({
+  providers: [singlestoreProvider],
+  connections: {
+    main: { type: 'singlestore', connectionString: process.env.SINGLESTORE_URL! },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install mysql2
+```
+
+SingleStore uses the MySQL wire protocol, so it connects through the `mysql2` driver.
+
+## Connection URL Format
+
+```
+mysql://user:password@host:3306/database?ssl=true
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | SingleStore connection URL (MySQL format) |

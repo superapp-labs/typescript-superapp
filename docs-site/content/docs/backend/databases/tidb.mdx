@@ -1,0 +1,30 @@
+---
+title: TiDB Cloud
+description: Connect to TiDB Cloud serverless.
+---
+
+Connect to [TiDB Cloud](https://tidbcloud.com) serverless MySQL-compatible database.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { tidbProvider } from '@superapp/backend/databases/tidb'
+
+const engine = createEngine({
+  providers: [tidbProvider],
+  connections: {
+    main: { type: 'tidb', connectionString: process.env.TIDB_URL! },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @tidbcloud/serverless
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | TiDB Cloud connection URL |

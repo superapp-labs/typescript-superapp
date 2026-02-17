@@ -1,0 +1,42 @@
+---
+title: Cloudflare D1
+description: Connect to Cloudflare D1 SQLite.
+---
+
+Connect to [Cloudflare D1](https://developers.cloudflare.com/d1/) from Cloudflare Workers.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { d1Provider } from '@superapp/backend/databases/d1'
+
+export default {
+  async fetch(request: Request, env: Env) {
+    const engine = createEngine({
+      providers: [d1Provider],
+      connections: {
+        main: { type: 'd1', binding: env.DB },
+      },
+    })
+    // handle request...
+  },
+}
+```
+
+## How It Works
+
+D1 bindings are provided by the Cloudflare Workers runtime. Pass the binding directly -- no connection strings or authentication needed.
+
+## wrangler.toml
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "my-database"
+database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `binding` | `D1Database` | D1 binding from the Workers environment |

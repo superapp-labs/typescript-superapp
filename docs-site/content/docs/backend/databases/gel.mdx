@@ -1,0 +1,31 @@
+---
+title: Gel
+description: Connect to Gel (formerly EdgeDB).
+---
+
+Connect to [Gel](https://gel.dev) (formerly EdgeDB), a Postgres-based database with a graph-relational model.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { gelProvider } from '@superapp/backend/databases/gel'
+
+const engine = createEngine({
+  providers: [gelProvider],
+  connections: {
+    main: { type: 'gel', connectionString: process.env.GEL_URL! },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install gel
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | Gel connection URL |
+| `tlsSecurity` | `'strict' \| 'no_host_verification' \| 'insecure'` | TLS mode |

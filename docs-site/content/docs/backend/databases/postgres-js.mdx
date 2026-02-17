@@ -1,0 +1,40 @@
+---
+title: Postgres.js
+description: Connect with the postgres.js driver.
+---
+
+High-performance PostgreSQL driver for Node.js, Deno, and Bun.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { postgresJsProvider } from '@superapp/backend/databases/postgres-js'
+
+const engine = createEngine({
+  providers: [postgresJsProvider],
+  connections: {
+    main: { type: 'postgres-js', connectionString: process.env.PG_URL! },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install postgres
+```
+
+## Why Postgres.js
+
+- Fastest PostgreSQL driver for Node.js
+- Built-in connection pooling
+- Tagged template literal query interface
+- Supports Deno and Bun natively
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | Standard `postgres://` URL |
+| `max` | `number` | Max pool connections (default: 10) |
+| `idle_timeout` | `number` | Seconds before idle connections close |
+| `connect_timeout` | `number` | Seconds before connection attempt times out |

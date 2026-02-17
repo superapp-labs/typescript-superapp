@@ -1,0 +1,48 @@
+---
+title: PGlite
+description: In-browser and in-process Postgres via WASM.
+---
+
+[PGlite](https://pglite.dev) runs a full Postgres instance in-process using WASM. Works in Node.js, Bun, Deno, and the browser.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { pgliteProvider } from '@superapp/backend/databases/pglite'
+
+const engine = createEngine({
+  providers: [pgliteProvider],
+  connections: {
+    main: { type: 'pglite', dataDir: './data/pglite' },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @electric-sql/pglite
+```
+
+## Use Cases
+
+- **Local development** -- No external Postgres needed
+- **Testing** -- Ephemeral in-memory databases per test
+- **Embedded apps** -- Full Postgres without a server
+- **Browser** -- Client-side SQL with Postgres syntax
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `dataDir` | `string` | Directory for persistent data (optional, in-memory if omitted) |
+
+## In-Memory for Tests
+
+```typescript
+const engine = createEngine({
+  providers: [pgliteProvider],
+  connections: {
+    main: { type: 'pglite' },  // no dataDir = in-memory
+  },
+})
+```

@@ -1,0 +1,41 @@
+---
+title: PlanetScale
+description: Connect to PlanetScale serverless MySQL.
+---
+
+Connect to [PlanetScale](https://planetscale.com) using the serverless HTTP driver. Works on edge runtimes where TCP connections are unavailable.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { planetscaleProvider } from '@superapp/backend/databases/planetscale'
+
+const engine = createEngine({
+  providers: [planetscaleProvider],
+  connections: {
+    main: { type: 'planetscale', connectionString: process.env.PLANETSCALE_URL! },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @planetscale/database
+```
+
+## Connection URL Format
+
+```
+mysql://username:password@host/database?ssl={"rejectUnauthorized":true}
+```
+
+Get your connection string from the PlanetScale dashboard under **Connect** → **Connect with** → **@planetscale/database**.
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | PlanetScale connection URL |
+| `host` | `string` | PlanetScale host (alternative to URL) |
+| `username` | `string` | Database username |
+| `password` | `string` | Database password |

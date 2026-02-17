@@ -1,0 +1,46 @@
+---
+title: LibSQL / Turso
+description: Connect to Turso or LibSQL databases.
+---
+
+Connect to [Turso](https://turso.tech) or any LibSQL database. Supports both local files and remote edge replicas.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { libsqlProvider } from '@superapp/backend/databases/libsql'
+
+const engine = createEngine({
+  providers: [libsqlProvider],
+  connections: {
+    main: {
+      type: 'libsql',
+      url: process.env.TURSO_URL!,
+      authToken: process.env.TURSO_AUTH_TOKEN!,
+    },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @libsql/client
+```
+
+## Connection Modes
+
+| Mode | URL format | Use case |
+|---|---|---|
+| Remote | `libsql://your-db.turso.io` | Production with Turso |
+| Local file | `file:./data/local.db` | Development |
+| In-memory | `:memory:` | Testing |
+| Embedded replica | `file:./data/local.db` + `syncUrl` | Edge with local cache |
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `url` | `string` | Database URL |
+| `authToken` | `string` | Turso auth token (required for remote) |
+| `syncUrl` | `string` | Remote URL for embedded replicas |
+| `syncInterval` | `number` | Sync interval in seconds |

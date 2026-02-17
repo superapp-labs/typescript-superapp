@@ -1,0 +1,40 @@
+---
+title: Vercel Postgres
+description: Connect via Vercel's managed Postgres.
+---
+
+Connect to [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres) using the `@vercel/postgres` SDK.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { vercelPostgresProvider } from '@superapp/backend/databases/vercel-postgres'
+
+const engine = createEngine({
+  providers: [vercelPostgresProvider],
+  connections: {
+    main: { type: 'vercel-postgres' },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @vercel/postgres
+```
+
+## How It Works
+
+The Vercel Postgres SDK reads connection credentials from the `POSTGRES_URL` environment variable automatically when deployed on Vercel. No connection string needed in the config.
+
+For local development, add the Vercel env vars to `.env.local`:
+
+```bash
+npx vercel env pull .env.local
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | Override the auto-detected URL (optional) |

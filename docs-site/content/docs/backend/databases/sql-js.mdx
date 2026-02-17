@@ -1,0 +1,37 @@
+---
+title: sql.js
+description: In-browser SQLite via WASM.
+---
+
+Run SQLite in the browser using [sql.js](https://sql.js.org), a WASM build of SQLite.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { sqlJsProvider } from '@superapp/backend/databases/sql-js'
+
+const engine = createEngine({
+  providers: [sqlJsProvider],
+  connections: {
+    main: { type: 'sql-js' },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install sql.js
+```
+
+## Use Cases
+
+- **Browser apps** -- Client-side SQL without a server
+- **Offline-first** -- Store data locally in the browser
+- **Demos** -- Interactive SQL sandboxes
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `data` | `ArrayLike<number>` | Initial database binary (optional) |
+| `locateFile` | `(filename: string) => string` | Custom path to WASM file |

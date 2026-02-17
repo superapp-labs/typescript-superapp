@@ -1,0 +1,29 @@
+---
+title: Bun SQLite
+description: Connect using Bun's native SQLite driver.
+---
+
+Use Bun's built-in `bun:sqlite` driver for zero-dependency SQLite access.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { bunSqliteProvider } from '@superapp/backend/databases/bun-sqlite'
+
+const engine = createEngine({
+  providers: [bunSqliteProvider],
+  connections: {
+    main: { type: 'bun-sqlite', filename: './data/app.db' },
+  },
+})
+```
+
+## No Install Needed
+
+`bun:sqlite` is built into the Bun runtime. No npm packages required.
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `filename` | `string` | Path to SQLite file |
+| `readonly` | `boolean` | Open in read-only mode |

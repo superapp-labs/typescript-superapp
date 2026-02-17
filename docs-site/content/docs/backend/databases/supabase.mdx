@@ -1,0 +1,40 @@
+---
+title: Supabase
+description: Connect to Supabase Postgres.
+---
+
+Connect to [Supabase](https://supabase.com) Postgres using the Supabase client SDK.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { supabaseProvider } from '@superapp/backend/databases/supabase'
+
+const engine = createEngine({
+  providers: [supabaseProvider],
+  connections: {
+    main: {
+      type: 'supabase',
+      url: process.env.SUPABASE_URL!,
+      serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @supabase/supabase-js
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `url` | `string` | Supabase project URL |
+| `serviceRoleKey` | `string` | Service role key (bypasses RLS) |
+| `anonKey` | `string` | Anon key (respects RLS) |
+
+<Callout>
+Use `serviceRoleKey` for backend access. The anon key enforces Row-Level Security and is intended for client-side use.
+</Callout>

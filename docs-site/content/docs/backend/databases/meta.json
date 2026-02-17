@@ -1,5 +1,32 @@
 {
   "title": "Databases",
   "icon": "Database",
-  "pages": ["supported-databases", "postgres", "mysql", "sqlite", "csv", "custom-provider"]
+  "pages": [
+    "supported-databases",
+    "---PostgreSQL---",
+    "postgres",
+    "postgres-js",
+    "neon-serverless",
+    "vercel-postgres",
+    "supabase",
+    "xata",
+    "pglite",
+    "aws-data-api",
+    "---MySQL---",
+    "mysql",
+    "planetscale",
+    "tidb",
+    "---SQLite---",
+    "sqlite",
+    "libsql",
+    "d1",
+    "bun-sqlite",
+    "expo-sqlite",
+    "sql-js",
+    "---Other---",
+    "singlestore",
+    "gel",
+    "csv",
+    "custom-provider"
+  ]
 }

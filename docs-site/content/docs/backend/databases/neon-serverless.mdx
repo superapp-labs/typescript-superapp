@@ -1,0 +1,46 @@
+---
+title: Neon Serverless
+description: Connect to Neon via WebSocket or HTTP.
+---
+
+Connect to [Neon](https://neon.tech) serverless Postgres using the `@neondatabase/serverless` driver. Works on edge runtimes (Cloudflare Workers, Vercel Edge) where TCP connections are unavailable.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { neonProvider } from '@superapp/backend/databases/neon'
+
+const engine = createEngine({
+  providers: [neonProvider],
+  connections: {
+    main: { type: 'neon', connectionString: process.env.NEON_URL! },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @neondatabase/serverless
+```
+
+## HTTP vs WebSocket
+
+| Mode | Best for | Transactions |
+|---|---|---|
+| HTTP | Single queries on edge/serverless | No |
+| WebSocket | Multiple queries, sessions | Yes |
+
+The provider auto-selects based on runtime capabilities. Force a mode with the `transport` option:
+
+```typescript
+connections: {
+  main: { type: 'neon', connectionString: process.env.NEON_URL!, transport: 'http' },
+}
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `connectionString` | `string` | Neon `postgres://` connection string |
+| `transport` | `'http' \| 'ws'` | Force transport mode |

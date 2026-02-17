@@ -1,0 +1,36 @@
+---
+title: Xata
+description: Connect to Xata serverless database.
+---
+
+Connect to [Xata](https://xata.io) serverless database via the HTTP API.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { xataProvider } from '@superapp/backend/databases/xata'
+
+const engine = createEngine({
+  providers: [xataProvider],
+  connections: {
+    main: {
+      type: 'xata',
+      apiKey: process.env.XATA_API_KEY!,
+      branch: process.env.XATA_BRANCH || 'main',
+    },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @xata.io/client
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `apiKey` | `string` | Xata API key |
+| `branch` | `string` | Database branch (default: `main`) |
+| `databaseURL` | `string` | Override the auto-detected database URL |

@@ -1,0 +1,38 @@
+---
+title: AWS Data API
+description: Connect to Aurora Serverless via AWS RDS Data API.
+---
+
+Connect to [Amazon Aurora Serverless](https://aws.amazon.com/rds/aurora/serverless/) using the RDS Data API. No VPC or persistent connections required.
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { awsDataApiProvider } from '@superapp/backend/databases/aws-data-api'
+
+const engine = createEngine({
+  providers: [awsDataApiProvider],
+  connections: {
+    main: {
+      type: 'aws-data-api',
+      resourceArn: process.env.AURORA_RESOURCE_ARN!,
+      secretArn: process.env.AURORA_SECRET_ARN!,
+      database: process.env.AURORA_DATABASE!,
+    },
+  },
+})
+```
+
+## Install
+
+```bash
+npm install @aws-sdk/client-rds-data
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `resourceArn` | `string` | Aurora cluster ARN |
+| `secretArn` | `string` | Secrets Manager ARN for credentials |
+| `database` | `string` | Database name |
+| `region` | `string` | AWS region (optional, uses default) |

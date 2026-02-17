@@ -1,0 +1,30 @@
+---
+title: Expo SQLite
+description: Connect from React Native using Expo SQLite.
+---
+
+Use SQLite in React Native apps with [Expo SQLite](https://docs.expo.dev/versions/latest/sdk/sqlite/).
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { expoSqliteProvider } from '@superapp/backend/databases/expo-sqlite'
+
+const engine = createEngine({
+  providers: [expoSqliteProvider],
+  connections: {
+    main: { type: 'expo-sqlite', databaseName: 'app.db' },
+  },
+})
+```
+
+## Install
+
+```bash
+npx expo install expo-sqlite
+```
+
+## Connection Options
+
+| Option | Type | Description |
+|---|---|---|
+| `databaseName` | `string` | Name of the SQLite database file |
