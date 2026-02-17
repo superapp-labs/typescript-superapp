@@ -1,0 +1,472 @@
+---
+title: Simplifying the Design
+description: "How to make superapp an even thinner layer — same capabilities, less surface area."
+icon: Minimize
+---
+
+superapp already positions itself as a thin, secure data layer between your frontend and any database. But it can be thinner. This page outlines concrete changes that would reduce the surface area, flatten the learning curve, and make the system more elegant — without removing any capability.
+
+The core thesis: **most of the power in superapp comes from three ideas** — DuckDB as a universal connector, declarative permissions that compile to SQL, and Drizzle Proxy as the transport. Everything else is configuration. The simpler we make that configuration, the less there is to learn, break, or maintain.
+
+## Current Complexity Map
+
+Before simplifying, it helps to see where the complexity lives today:
+
+```text
+  createEngine({
+    mode               ← 2 modes (programmatic, admin_ui)
+    superapp_db        ← metadata database config
+    masterKey          ← admin auth
+    integrations[]     ← database provider plugins
+    connections{}      ← named database configs
+    auth               ← pluggable auth provider
+    permissions{}      ← declarative permission objects
+      → filter         ← row-level WHERE injection
+      → check          ← write validation
+      → preset         ← auto-set values
+      → columns        ← column restrictions
+      → customSql      ← escape hatch
+      → middleware      ← custom TypeScript hooks
+    roles{}            ← role → permission mappings
+    actions{}          ← server-side mutations
+    duckdb{}           ← pool tuning
+    limits{}           ← rate + query limits
+    audit{}            ← logging config
+  })
+```
+
+That's 14 top-level config keys, some with deep nesting. A new user has to understand all of them before they can reason about the system. The simplification strategy is to reduce the number of concepts without reducing the number of things you can do.
+
+## Principle 1: Merge the Three Packages into One
+
+**Current state:** Three npm packages — `@superapp/backend`, `@superapp/db`, `@superapp/auth`.
+
+**Problem:** Three packages means three install commands, three import paths to memorize, and a mental model split between "server stuff" and "client stuff" that often confuses new users. The auth client is especially awkward — it's a thin wrapper around better-auth that exists mainly to re-export a few components.
+
+**Proposed:** One package — `superapp` — with subpath exports.
+
+```typescript
+// Server
+import { createEngine }         from 'superapp/server'
+import { hono }                 from 'superapp/server/hono'
+import { postgres }             from 'superapp/server/postgres'
+
+// Client
+import { createClient }         from 'superapp/client'
+import { AuthProvider, AuthCard } from 'superapp/client/components'
+import { useSession }           from 'superapp/client/hooks'
+```
+
+**Why this works:**
+- One `npm install superapp`. Done.
+- Subpath exports already solve tree-shaking — bundlers only pull in what you import.
+- The server subpaths have a `"node"` condition in `package.json` exports, so they never ship to browsers.
+- No confusion about which package to install for what.
+
+```json
+// package.json exports (simplified)
+{
+  "exports": {
+    "./server":          { "node": "./dist/server/index.js" },
+    "./server/hono":     { "node": "./dist/server/adapters/hono.js" },
+    "./server/postgres": { "node": "./dist/server/integrations/postgres.js" },
+    "./client":          "./dist/client/index.js",
+    "./client/hooks":    "./dist/client/hooks.js",
+    "./client/components": "./dist/client/components/index.js"
+  }
+}
+```
+
+## Principle 2: Convention Over Configuration
+
+**Current state:** Every connection requires an explicit `integrations` array AND a `connections` object. You import a provider, register it, then declare a connection that uses it.
+
+```typescript
+// Current: 2 concepts (integration + connection) for 1 database
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+**Problem:** The `integrations` array is boilerplate. If you declare a connection with `type: 'postgres'`, the engine already knows which provider to use.
+
+**Proposed:** Auto-resolve providers from connection type. Kill the `integrations` array entirely.
+
+```typescript
+const engine = createEngine({
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+})
+```
+
+The engine internally maps `type: 'postgres'` to the postgres provider, `type: 'mysql'` to mysql, etc. If you need a custom provider, pass it inline:
+
+```typescript
+connections: {
+  warehouse: { type: 'custom', provider: myCustomProvider, url: '...' },
+}
+```
+
+**What this removes:** The `integrations` config key. One fewer concept, one fewer import.
+
+## Principle 3: Flatten the Permission Model
+
+**Current state:** Permissions have six sub-concepts: `filter`, `check`, `preset`, `columns`, `customSql`, and `middleware`.
+
+**Problem:** The mental model is heavy. Users need to understand what each one does, when to use which, and how they interact. In practice, 90% of apps use only `filter` and `columns`.
+
+**Proposed:** Keep all six capabilities, but restructure them into two tiers.
+
+### Tier 1: Declarative (covers 90% of use cases)
+
+```typescript
+permissions: {
+  view_own_orders: {
+    table: 'main.orders',
+    allow: ['select'],
+    columns: ['id', 'amount', 'status', 'created_at'],
+    where: { customer_id: '$user.id' },
+  },
+  edit_own_orders: {
+    table: 'main.orders',
+    allow: ['update'],
+    columns: ['amount', 'status', 'notes'],
+    where: { customer_id: '$user.id' },
+    validate: { status: { $in: ['draft', 'active'] } },
+    defaults: { updated_by: '$user.id' },
+  },
+}
+```
+
+**Changes:**
+- `operations: { select: true }` becomes `allow: ['select']` — shorter, reads like English.
+- `filter` becomes `where` — matches SQL vocabulary everyone already knows.
+- `check` becomes `validate` — clearer intent.
+- `preset` becomes `defaults` — standard terminology.
+- `name` is removed — the key (`view_own_orders`) is already a descriptive name.
+
+### Tier 2: Programmatic (covers the remaining 10%)
+
+For complex cases, use a function instead of an object:
+
+```typescript
+permissions: {
+  complex_access: {
+    table: 'main.orders',
+    allow: ['select', 'update'],
+    resolve: async ({ user, operation, db }) => {
+      const orgs = await db.select()
+        .from(schema.orgMembers)
+        .where(eq(schema.orgMembers.userId, user.id))
+
+      return {
+        where: { org_id: { $in: orgs.map(o => o.orgId) } },
+        columns: operation === 'select'
+          ? ['id', 'amount', 'status']
+          : ['status'],
+        validate: { amount: { $lte: user.spendLimit } },
+      }
+    },
+  },
+}
+```
+
+This replaces both `customSql` and `middleware` with one escape hatch (`resolve`) that returns the same declarative shape. No new concepts — just a function that produces the same config dynamically.
+
+## Principle 4: Infer the Adapter
+
+**Current state:** You import an adapter, create the middleware, and wire it into your HTTP framework manually.
+
+```typescript
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+```
+
+**Problem:** This is three lines of glue code that look exactly the same in every project.
+
+**Proposed:** The engine returns the handler directly. You tell it which adapter at config time.
+
+```typescript
+import { createEngine } from 'superapp/server'
+import { hono } from 'superapp/server/hono'
+
+const engine = createEngine({
+  adapter: hono({ port: 3001 }),
+  connections: { /* ... */ },
+})
+
+engine.start()  // starts the Hono server
+```
+
+Or, if you need to mount the engine inside an existing app, export the handler:
+
+```typescript
+const engine = createEngine({
+  adapter: hono(),
+  connections: { /* ... */ },
+})
+
+// Mount inside your existing Hono app
+app.route('/api/superapp', engine.handler)
+```
+
+**What this removes:** The adapter import dance. The engine knows how to serve itself.
+
+## Principle 5: Single Auth Path
+
+**Current state:** Auth is pluggable — better-auth by default, but you can write a custom provider with `verifyToken`, `findUser`, and `resolveSession`.
+
+**Problem:** Pluggability is good for library authors. But for 95% of users, it means reading about an abstraction they'll never swap. The custom provider interface has three methods that are easy to get wrong.
+
+**Proposed:** Make better-auth the built-in default. Support "bring your own JWT" as the escape hatch.
+
+```typescript
+// Default: better-auth (no import needed, just config)
+const engine = createEngine({
+  auth: {
+    secret: process.env.AUTH_SECRET!,
+  },
+  // ...
+})
+
+// Escape hatch: any JWT-issuing provider
+const engine = createEngine({
+  auth: {
+    jwt: {
+      issuer: 'https://auth.example.com',
+      audience: 'my-app',
+      jwksUrl: 'https://auth.example.com/.well-known/jwks.json',
+    },
+    resolveUser: async (claims) => ({
+      id: claims.sub,
+      email: claims.email,
+      role: claims.role,
+      orgIds: claims.org_ids,
+    }),
+  },
+  // ...
+})
+```
+
+**What this removes:** The `AuthProvider` interface, the `betterAuthProvider` import, and the three-method contract. You either use the built-in (zero imports) or point at a JWKS endpoint (standard OAuth2).
+
+## Principle 6: Flatten Roles into Permissions
+
+**Current state:** Roles and permissions are separate concepts. You define permissions, then group them into roles.
+
+```typescript
+permissions: {
+  view_orders: { /* ... */ },
+  edit_orders: { /* ... */ },
+  delete_orders: { /* ... */ },
+},
+roles: {
+  viewer: ['view_orders'],
+  editor: ['view_orders', 'edit_orders'],
+  admin: ['view_orders', 'edit_orders', 'delete_orders'],
+},
+```
+
+**Problem:** Two parallel objects that must stay in sync. Rename a permission key and you must update every role that references it.
+
+**Proposed:** Attach roles directly to permissions.
+
+```typescript
+permissions: {
+  view_orders: {
+    table: 'main.orders',
+    allow: ['select'],
+    where: { customer_id: '$user.id' },
+    roles: ['viewer', 'editor', 'admin'],
+  },
+  edit_orders: {
+    table: 'main.orders',
+    allow: ['update'],
+    where: { customer_id: '$user.id' },
+    roles: ['editor', 'admin'],
+  },
+  delete_orders: {
+    table: 'main.orders',
+    allow: ['delete'],
+    where: { customer_id: '$user.id' },
+    roles: ['admin'],
+  },
+}
+```
+
+**What this removes:** The `roles` config key. Every permission declares who can use it. No separate mapping to maintain, no dangling references.
+
+The engine still resolves roles the same way internally — it just builds the mapping from the `roles` arrays on each permission instead of from a separate object.
+
+## The Full Before/After
+
+### Before (current design)
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+import { postgresProvider } from '@superapp/backend/integrations/postgres'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { Hono } from 'hono'
+import { serve } from '@hono/node-server'
+
+const engine = createEngine({
+  integrations: [postgresProvider],
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: betterAuthProvider({ secret: process.env.AUTH_SECRET! }),
+  permissions: {
+    view_own_orders: {
+      name: 'View own orders',
+      table: 'main.orders',
+      operations: { select: true },
+      columns: ['id', 'amount', 'status', 'created_at'],
+      filter: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  roles: {
+    viewer: ['view_own_orders'],
+  },
+})
+
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+```
+
+**6 imports. 26 lines. 5 concepts** (integrations, connections, auth provider, permissions, roles).
+
+### After (simplified design)
+
+```typescript
+import { createEngine } from 'superapp/server'
+import { hono } from 'superapp/server/hono'
+
+const engine = createEngine({
+  adapter: hono({ port: 3001 }),
+  connections: {
+    main: { type: 'postgres', url: process.env.PG_URL! },
+  },
+  auth: {
+    secret: process.env.AUTH_SECRET!,
+  },
+  permissions: {
+    view_own_orders: {
+      table: 'main.orders',
+      allow: ['select'],
+      columns: ['id', 'amount', 'status', 'created_at'],
+      where: { customer_id: '$user.id' },
+      roles: ['viewer'],
+    },
+  },
+})
+
+engine.start()
+```
+
+**2 imports. 19 lines. 3 concepts** (connections, auth, permissions).
+
+Same security. Same row-level filtering. Same DuckDB fan-out. Less to learn.
+
+## Client Side Before/After
+
+### Before
+
+```typescript
+// lib/superapp.ts — 3 imports from 2 packages
+import { drizzle } from '@superapp/db'
+import { createAuth } from '@superapp/auth'
+import * as schema from '../generated/schema'
+
+export const authClient = createAuth('http://localhost:3001')
+
+export function createDb(token: string) {
+  return drizzle({ connection: 'http://localhost:3001', token, schema })
+}
+```
+
+```tsx
+// hooks/use-db.ts — manual token wiring
+import { useMemo } from 'react'
+import { useSession } from '@superapp/auth'
+import { createDb } from '@/lib/superapp'
+
+export function useDb() {
+  const { data: session } = useSession()
+  return useMemo(
+    () => session?.token ? createDb(session.token) : null,
+    [session?.token],
+  )
+}
+```
+
+Two files. Manual token threading. The developer must remember to pass the JWT from the auth client to the data client every time.
+
+### After
+
+```typescript
+// lib/superapp.ts — 1 import, 1 package
+import { createClient } from 'superapp/client'
+import * as schema from '../generated/schema'
+
+export const superapp = createClient({
+  url: 'http://localhost:3001',
+  schema,
+})
+```
+
+```tsx
+// Any component — token wiring is automatic
+import { superapp } from '@/lib/superapp'
+
+// Auth hooks
+const { session } = superapp.useSession()
+
+// Database client — token is injected automatically from the active session
+const orders = await superapp.db.select()
+  .from(schema.orders)
+  .where(eq(schema.orders.status, 'active'))
+```
+
+One file. One client object. Auth and data are unified — the client automatically attaches the session token to every query. No `useDb` hook, no `createDb` factory, no manual token passing.
+
+## Migration Path
+
+These changes are not all-or-nothing. They can be adopted incrementally:
+
+| Change | Breaking? | Migration effort |
+|---|---|---|
+| Single package (`superapp`) | Yes — import paths change | Find-and-replace imports |
+| Drop `integrations` array | No — auto-resolve is additive | Remove `integrations` line |
+| `filter` → `where`, `check` → `validate`, `preset` → `defaults` | Yes — key renames | Find-and-replace in permission objects |
+| `operations` → `allow` | Yes — key rename | Find-and-replace |
+| Inline roles on permissions | Yes — structural change | Move role arrays onto permissions, delete `roles` |
+| Built-in better-auth | No — simplified config | Remove `betterAuthProvider` import, flatten config |
+| Adapter config | Yes — startup change | Move adapter to config, replace `serve()` with `engine.start()` |
+| Unified client | Yes — client API change | Replace `createAuth` + `drizzle` with `createClient` |
+
+A codemod (`npx superapp migrate`) could automate the mechanical changes (import rewrites, key renames, role inlining).
+
+## What Stays the Same
+
+The simplification is cosmetic and ergonomic — the engine internals don't change:
+
+- **DuckDB** still ATTACHes to external databases and runs permission-filtered SQL.
+- **CASL** still evaluates permissions and injects WHERE clauses.
+- **Drizzle Proxy** still transports parameterized SQL over HTTP.
+- **The 9-step request pipeline** is identical.
+- **Row-level security, column restrictions, write validation, and presets** all work exactly as before.
+- **The admin UI** still works in `admin_ui` mode.
+- **Type generation** (`npx superapp generate`) still introspects your schema.
+
+The goal is fewer concepts to learn, fewer files to write, and fewer ways to make mistakes — while keeping the same security guarantees and the same power under the hood.
