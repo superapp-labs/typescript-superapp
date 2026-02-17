@@ -1,0 +1,44 @@
+---
+title: Connections
+icon: Database
+description: Manage database connections — add, remove, and monitor connection health from the admin dashboard.
+---
+
+Manage all named database connections from a single panel. The engine auto-detects the database type from the URL protocol. Add, remove, and monitor connection health in real time.
+
+<ConnectionManager />
+
+Each connection creates a namespace — `main.*`, `warehouse.*`, etc. — that permissions and queries reference. Try adding a new connection above to see how the type detection works.
+
+## URL detection
+
+The URL pattern determines which database adapter is used:
+
+| URL Pattern | Detected Type |
+|---|---|
+| `postgres://` or `postgresql://` | PostgreSQL |
+| `mysql://` | MySQL |
+| File path ending in `.db` or `.sqlite` | SQLite |
+| `libsql://` | Turso |
+| `{ directory: string }` | CSV |
+
+## Connection lifecycle
+
+1. **Add** — provide a name and URL. The engine detects the type and connects.
+2. **Health check** — the dashboard polls each connection and shows live status.
+3. **Schema sync** — on connect, the engine introspects the schema and exposes tables under the connection namespace.
+4. **Remove** — disconnect and remove the namespace. Any permissions referencing this connection's tables are invalidated.
+
+## Multiple connections
+
+You can connect to as many databases as you need. Each one gets its own namespace:
+
+```typescript
+connections: {
+  main: 'postgres://localhost:5432/mydb',         // main.orders, main.users
+  warehouse: 'mysql://user:pass@host:3306/wh',    // warehouse.events, warehouse.reports
+  local: './data/app.db',                          // local.settings
+}
+```
+
+See [Configuration](/docs/backend/configuration) for the full connection setup reference.

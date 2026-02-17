@@ -12,6 +12,14 @@
 | **Backend** | | |
 | `docs/backend/overview.mdx` | Overview | What @superapp/backend does, how it works, and what routes it exposes. |
 | `docs/backend/configuration.mdx` | Configuration | Configure and initialize the superapp backend engine with connections, auth, permissions, and more. |
+| **Admin UI** | | |
+| `docs/backend/admin-ui/index.mdx` | Overview | Visual dashboard to configure connections, permissions, actions, limits, security, and audit logging — all from the browser. |
+| `docs/backend/admin-ui/index.mdx` | Overview | Visual dashboard to configure connections, permissions, actions, limits, security, and audit logging — all from the browser. |
+| `docs/backend/admin-ui/connections.mdx` | Connections | Manage database connections — add, remove, and monitor connection health from the admin dashboard. |
+| `docs/backend/admin-ui/permissions-roles.mdx` | Permissions & Roles | Visual permission editor and role access matrix — manage who can access what, down to the row and column level. |
+| `docs/backend/admin-ui/actions.mdx` | Actions | Browse registered server-side actions, view typed schemas, and test them from the built-in playground. |
+| `docs/backend/admin-ui/limits-security.mdx` | Limits & Security | Configure rate limits, query constraints, JWT validation, CORS policies, and audit logging. |
+| `docs/backend/admin-ui/audit-log.mdx` | Audit Log | Filter and inspect every query that passes through the engine — by operation, status, user, and more. |
 | **Databases** | | |
 | `docs/backend/databases/index.mdx` | Databases | Connect to any database with Drizzle-compatible adapters. |
 | `docs/backend/databases/supported-databases.mdx` | Supported Databases | Every database supported through Drizzle ORM adapters. |
@@ -48,7 +56,6 @@
 | `docs/backend/permissions/sql.mdx` | Raw SQL | Write advanced WHERE clauses with raw SQL for cases that standard operators cannot express. |
 | `docs/backend/permissions/middleware.mdx` | Middleware | Run custom TypeScript before and after query execution — modify where clauses, transform input, restrict columns, and run side effects. |
 | `docs/backend/actions.mdx` | Actions | Typed server-side functions callable by the client, with full access to the database, user session, and any table. |
-| `docs/backend/admin-ui.mdx` | Admin UI | Visual dashboard to configure connections, permissions, actions, limits, security, and audit logging — all from the browser. |
 | **Server Adapters** | | |
 | `docs/backend/adapters/hono.mdx` | Hono | Deploy the superapp backend with Hono, the recommended adapter for Node.js and edge runtimes. |
 | `docs/backend/adapters/nextjs.mdx` | Next.js | Integrate the superapp backend into a Next.js App Router project with a catch-all route handler. |
@@ -104,4 +111,4 @@
 | `docs/reference/cli/generate.mdx` | generate | Generate TypeScript types from your engine. |
 | `docs/llms-txt.mdx` | llms.txt | Machine-readable documentation for AI agents and LLMs. |
 
-**Total: 81 pages**
+**Total: 87 pages**

@@ -4,11 +4,11 @@
   "pages": [
     "overview",
     "configuration",
+    "admin-ui",
     "databases",
     "auth",
     "permissions",
     "actions",
-    "admin-ui",
     "adapters"
   ]
 }

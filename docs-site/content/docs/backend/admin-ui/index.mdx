@@ -1,0 +1,46 @@
+---
+title: Overview
+icon: LayoutDashboard
+description: Visual dashboard to configure connections, permissions, actions, limits, security, and audit logging — all from the browser.
+---
+
+The Admin UI is a built-in dashboard that ships with the engine when running in [interactive mode](/docs/advanced/engine-modes). It gives non-technical admins a visual interface to manage every aspect of the backend — no code changes, no redeployments.
+
+<Callout type="info" title="Interactive mode required">
+The Admin UI is fully editable only when the engine runs in `interactive` mode. In `programmatic` mode, the dashboard is read-only — useful for inspecting the current configuration without risk of accidental changes.
+</Callout>
+
+```typescript
+const engine = createEngine({
+  mode: 'interactive',
+  superapp_db: process.env.TURSO_URL,
+  masterKey: process.env.SUPERAPP_MASTER_KEY!,
+  auth: betterAuthProvider({ /* ... */ }),
+})
+```
+
+Access the dashboard at `http://localhost:3001/admin` using your master key.
+
+## What you can manage
+
+| Section | What it covers |
+|---|---|
+| [Connections](/docs/backend/admin-ui/connections) | Add, remove, and monitor database connections |
+| [Permissions & Roles](/docs/backend/admin-ui/permissions-roles) | Visual permission editor and role access matrix |
+| [Actions](/docs/backend/admin-ui/actions) | Browse registered actions, view schemas, test from a playground |
+| [Limits & Security](/docs/backend/admin-ui/limits-security) | Rate limits, query constraints, JWT, CORS, and defense layers |
+| [Audit Log](/docs/backend/admin-ui/audit-log) | Filter and inspect every query that passes through the engine |
+
+## Programmatic vs Interactive
+
+| | Programmatic (default) | Interactive |
+|---|---|---|
+| **Permissions stored** | In code (`createEngine` config) | In metadata database |
+| **Admin UI** | Read-only dashboard | Full create/edit/delete |
+| **Changes take effect** | After redeploy | Immediately |
+| **Version controlled** | Yes (code review + PR) | Audit-logged |
+| **Best for** | Engineering teams, CI/CD | Non-technical admins, rapid iteration |
+
+A common pattern: run interactive in staging to prototype rules, then export and deploy via CI/CD to production in programmatic mode.
+
+See [Engine Modes](/docs/advanced/engine-modes) for the full comparison.

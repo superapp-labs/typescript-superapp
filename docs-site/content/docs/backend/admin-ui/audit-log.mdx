@@ -1,0 +1,63 @@
+---
+title: Audit Log
+icon: ScrollText
+description: Filter and inspect every query that passes through the engine — by operation, status, user, and more.
+---
+
+The audit log records every query that passes through the engine. Filter by operation, status, or user to investigate specific activity. Expand any entry to see the full SQL query, parameters, and execution context.
+
+<AuditLogViewer />
+
+Click any row to expand it and see the full query, user details, IP address, and role. Use the filters at the top to narrow down by operation type, success/error status, or user email.
+
+## What gets logged
+
+Every request through the engine creates an audit entry with these fields:
+
+| Field | Description |
+|---|---|
+| `timestamp` | When the request was made |
+| `user_id` | Authenticated user ID |
+| `table` | Target table (e.g., `main.orders`) |
+| `operation` | `select`, `insert`, `update`, or `delete` |
+| `query` | Generated SQL (if `logQuery` enabled) |
+| `params` | Query parameters (if `logParams` enabled) |
+| `duration_ms` | Execution time (if `logDuration` enabled) |
+| `ip_address` | Client IP address |
+| `role` | User's role at time of request |
+| `status` | `success` or `error` |
+
+## Querying the audit log
+
+The audit log is queryable via the admin API using your master key:
+
+```bash
+# Recent entries
+curl -H "Authorization: Bearer $MASTER_KEY" \
+  https://myapp.com/admin/api/audit?limit=100
+
+# Filter by user
+curl -H "Authorization: Bearer $MASTER_KEY" \
+  https://myapp.com/admin/api/audit?user_id=usr_123
+
+# Filter by table and operation
+curl -H "Authorization: Bearer $MASTER_KEY" \
+  https://myapp.com/admin/api/audit?table=main.orders&operation=delete
+```
+
+## Retention
+
+Audit logs are auto-deleted based on the retention period configured in [Limits & Security](/docs/backend/admin-ui/limits-security). Common settings:
+
+| Retention | Use case |
+|---|---|
+| `7d` | Development — quick debugging |
+| `30d` | Staging — catch issues before production |
+| `90d` | Production — standard compliance |
+| `365d` / `1y` | Regulated industries — long-term audit trail |
+
+<Callout type="warn" title="PII in parameters">
+If `logParams` is enabled, query parameters are stored in plain text. This may include user-submitted data. Consider disabling `logParams` in production or reducing the retention period.
+</Callout>
+
+See [Audit Logging](/docs/advanced/audit-logging) for the full configuration reference.

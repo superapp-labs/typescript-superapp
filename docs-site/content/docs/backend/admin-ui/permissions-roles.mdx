@@ -1,0 +1,68 @@
+---
+title: Permissions & Roles
+icon: Shield
+description: Visual permission editor and role access matrix — manage who can access what, down to the row and column level.
+---
+
+## Roles overview
+
+See all roles at a glance — what permissions and actions each role has access to, and how many users belong to each. Toggle between a card view and a full access matrix.
+
+<RoleOverview />
+
+Roles are declared inline on each permission and action — there's no separate "roles" config. The dashboard aggregates them into a unified view. Click any role to see its full access profile, or switch to the **Matrix** view to compare roles side-by-side.
+
+---
+
+## Permission editor
+
+The permission editor lets you create and manage access rules for every table. Each permission binds a table to one or more roles and defines what operations (read, create, update, delete) are allowed — with optional row filters, column restrictions, validation rules, defaults, and overwrites.
+
+<PermissionBuilder />
+
+Click the operations to toggle them, click **Edit** on roles to change access, and explore the detail panels to see how `where`, `validate`, `default`, and `overwrite` rules compose together.
+
+## What each operation controls
+
+| Operation | What it does | Key options |
+|---|---|---|
+| **Read** | Row-level filtering on SELECT queries | `where`, `columns`, `limit` |
+| **Create** | Controls which columns can be inserted | `columns`, `validate`, `default` |
+| **Update** | Restricts which rows and columns can change | `columns`, `where`, `validate`, `overwrite` |
+| **Delete** | Restricts which rows can be deleted | `where` |
+
+## Permission building blocks
+
+### Where clauses
+
+Filter rows by column values. Applied to `select`, `update`, and `delete` operations:
+
+```typescript
+where: { status: { $ne: 'deleted' }, organization_id: { $in: '$user.org_ids' } }
+```
+
+### Validate rules
+
+Check request body values before the query executes. Applied to `insert` and `update`:
+
+```typescript
+validate: { total: { $gt: 0, $lte: 100_000 }, status: { $in: ['draft', 'active'] } }
+```
+
+### Defaults
+
+Fill missing values when the client doesn't provide them. The client can override:
+
+```typescript
+default: { status: 'draft', priority: 3 }
+```
+
+### Overwrites
+
+Always applied regardless of client input. The client cannot override:
+
+```typescript
+overwrite: { updated_at: '$now', updated_by: '$user.id' }
+```
+
+See [Permissions](/docs/backend/permissions/where) for the full documentation on writing permission rules.

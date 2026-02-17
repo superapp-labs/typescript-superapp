@@ -1,0 +1,12 @@
+{
+  "title": "Admin UI",
+  "icon": "LayoutDashboard",
+  "pages": [
+    "index",
+    "connections",
+    "permissions-roles",
+    "actions",
+    "limits-security",
+    "audit-log"
+  ]
+}

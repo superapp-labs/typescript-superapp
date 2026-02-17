@@ -1,0 +1,67 @@
+---
+title: Limits & Security
+icon: ShieldCheck
+description: Configure rate limits, query constraints, JWT validation, CORS policies, and audit logging.
+---
+
+## Rate limits & query constraints
+
+Configure limits that protect the engine from abuse. Use presets for common scenarios or fine-tune each value individually. Every slider shows the current security posture — strict, balanced, or permissive.
+
+<LimitsConfigurator />
+
+| Limit | What it prevents |
+|---|---|
+| **Max Rows** | Queries returning excessive data |
+| **Relation Depth** | Deeply nested joins that slow the database |
+| **Filter Nesting** | Complex `$and/$or/$not` trees |
+| **Filter Conditions** | Queries with too many conditions |
+| **Query Timeout** | Runaway queries that block connections |
+| **Rate Limit / User** | Authenticated users hammering the API |
+| **Rate Limit / IP** | Unauthenticated or bot traffic floods |
+
+---
+
+## Security settings
+
+Configure JWT validation rules, CORS policies, and audit logging from a unified security panel. Every change is validated and takes effect immediately in interactive mode.
+
+<SecurityPanel />
+
+## Defense layers
+
+The engine applies security in order — each layer must pass before the next runs:
+
+1. **Rate limiting** — per-user and per-IP throttle
+2. **JWT validation** — algorithm allowlist, issuer, audience, expiry
+3. **Permission check** — table, operation, columns, row-level filters
+4. **Query isolation** — per-request connection, sandboxed execution
+5. **Audit log** — every query recorded with user, table, operation, duration
+
+### JWT configuration
+
+| Setting | What it does |
+|---|---|
+| **Algorithms** | Allowlist of signing algorithms. Use RS/ES for production — HMAC (HS*) uses symmetric keys. |
+| **Issuer** | Reject tokens not issued by your auth server |
+| **Audience** | Reject tokens not intended for your API |
+| **Clock Skew** | Tolerance for clock drift between servers (in seconds) |
+
+### CORS configuration
+
+| Setting | What it does |
+|---|---|
+| **Allowed Origins** | Which domains can make cross-origin requests to the API |
+| **Credentials** | Whether to allow cookies and auth headers in cross-origin requests |
+
+### Audit logging
+
+| Setting | What it does |
+|---|---|
+| **Enabled** | Master toggle for audit logging |
+| **Log Query** | Record the generated SQL statement |
+| **Log Params** | Record query bind parameters (may contain PII) |
+| **Log Duration** | Record query execution time in milliseconds |
+| **Retention** | How long to keep logs before auto-deletion |
+
+See [Security](/docs/advanced/security) for the full defense-in-depth architecture.

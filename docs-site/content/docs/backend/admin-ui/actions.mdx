@@ -1,0 +1,58 @@
+---
+title: Actions
+icon: Zap
+description: Browse registered server-side actions, view typed schemas, and test them from the built-in playground.
+---
+
+Actions are named server-side functions with typed input/output. The action registry shows all registered actions, their Zod schemas, allowed roles, and usage statistics. Use the built-in playground to test actions directly from the dashboard.
+
+<ActionRegistry />
+
+Each action declares its own `roles` array — no need to reference a global roles config. Click **Test** on any action to open the playground and send a request through the full pipeline: auth, role check, input validation, handler execution, and output validation.
+
+## What the registry shows
+
+| Field | Description |
+|---|---|
+| **Name** | The action identifier clients use to call it |
+| **Roles** | Which roles are allowed to execute this action |
+| **Input Schema** | Zod-validated input fields with types and required markers |
+| **Output Schema** | The typed response structure |
+| **Total Calls** | Lifetime invocation count |
+| **Avg Duration** | Average execution time in milliseconds |
+| **Endpoint** | The HTTP route (`POST /actions/{name}`) |
+
+## Playground
+
+The playground lets you test any action without writing client code:
+
+1. Select an action from the list
+2. Click **Test** to open the playground
+3. Fill in the input fields
+4. Click **Execute** to send a real request
+5. See the typed response (or error) inline
+
+This is useful for validating new actions during development and debugging production issues.
+
+## Action lifecycle
+
+```text
+POST /actions/{name} + Bearer JWT + { input }
+  │
+  ▼
+1. Auth — JWT verification, session resolution
+  │
+  ▼
+2. Role check — is the user's role in the action's roles array?
+  │
+  ▼
+3. Input validation — parse input against Zod schema
+  │
+  ▼
+4. Execute — handler(ctx, validatedInput)
+  │
+  ▼
+5. Response — return value sent as JSON
+```
+
+See [Actions](/docs/backend/actions) for the full guide on defining actions in code.
