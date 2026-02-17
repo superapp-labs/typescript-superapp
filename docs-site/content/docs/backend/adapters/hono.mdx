@@ -9,14 +9,12 @@ Hono is the recommended adapter. It works on Node.js, Bun, Deno, and Cloudflare 
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 
@@ -31,14 +29,12 @@ serve({ fetch: app.fetch, port: 3001 })
 import { createEngine } from '@superapp/backend'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth: betterAuthProvider({
     secret: process.env.AUTH_SECRET!,
@@ -51,13 +47,12 @@ const engine = createEngine({
     view_own_orders: {
       name: 'View own orders',
       table: 'main.orders',
-      operations: { select: true },
-      columns: '*',
-      filter: { customer_id: { $eq: '$user.id' } },
+      roles: ['viewer'],
+      select: {
+        columns: '*',
+        where: { customer_id: { $eq: '$user.id' } },
+      },
     },
-  },
-  roles: {
-    viewer: ['view_own_orders'],
   },
 })
 

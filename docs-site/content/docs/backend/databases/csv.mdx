@@ -8,35 +8,27 @@ Point at a directory of CSV files and query them as read-only tables. Useful for
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { csvProvider } from '@superapp/backend/integrations/csv'
 
 const engine = createEngine({
-  integrations: [csvProvider],
   connections: {
-    reports: { type: 'csv', path: './data/reports' },
+    reports: { directory: './data/reports' },
   },
 })
 ```
 
 ## Connection Config
 
+CSV connections use an object with a `directory` field:
+
 | Option | Type | Description |
 |---|---|---|
-| `type` | `'csv'` | Provider type |
-| `path` | `string` | Directory containing `.csv` files |
+| `directory` | `string` | Path to directory containing `.csv` files |
 
 Each `.csv` file in the directory becomes a table. The file name (without extension) is the table name: `orders.csv` becomes `reports.orders`.
 
-## What DuckDB Generates
+## How It Works
 
-For each CSV file in the directory, the provider creates a view:
-
-```sql
-CREATE VIEW reports.orders AS SELECT * FROM read_csv_auto('./data/reports/orders.csv');
-CREATE VIEW reports.customers AS SELECT * FROM read_csv_auto('./data/reports/customers.csv');
-```
-
-DuckDB's `read_csv_auto` automatically detects column types, delimiters, and headers.
+When the engine starts, it scans the directory and loads each CSV file into memory as a read-only table. Column types, delimiters, and headers are auto-detected.
 
 ## Capabilities
 
@@ -89,14 +81,10 @@ const orders = await db.reports.orders.findMany({
 A common pattern is a primary Postgres database alongside CSV files for imported data:
 
 ```typescript
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
-import { csvProvider } from '@superapp/backend/integrations/csv'
-
 const engine = createEngine({
-  integrations: [postgresProvider, csvProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
-    imports: { type: 'csv', path: './data/imports' },
+    main: process.env.PG_URL!,
+    imports: { directory: './data/imports' },
   },
 })
 ```

@@ -11,7 +11,7 @@ import { createEngine } from '@superapp/backend'
 
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   audit: {
     enabled: true,

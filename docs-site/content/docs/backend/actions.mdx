@@ -12,13 +12,14 @@ Actions use Zod schemas for input and output validation, and the types flow end-
 import { z } from 'zod'
 
 const engine = createEngine({
-  connections: { main: { type: 'postgres', url: process.env.PG_URL! } },
+  connections: { main: process.env.PG_URL! },
   permissions: {
     view_products: { /* ... */ },
     edit_products: { /* ... */ },
   },
   actions: {
     incrementStock: {
+      roles: ['warehouse_manager'],
       input: z.object({ productId: z.string(), amount: z.number().positive() }),
       output: z.object({ id: z.string(), stock: z.number() }),
       run: async ({ user, db }, { productId, amount }) => {
@@ -30,10 +31,6 @@ const engine = createEngine({
         return updated
       },
     },
-  },
-  roles: {
-    warehouse_manager: ['view_products', 'edit_products', 'action_incrementStock'],
-    customer: ['view_products'],
   },
 })
 ```
@@ -51,7 +48,7 @@ const result = await db.action('incrementStock', {
 
 1. Client sends `POST /actions/{actionName}` with a JSON body
 2. Engine authenticates the user and resolves the session
-3. Engine checks if `action_{actionName}` is in the user's role array
+3. Engine checks if the user's role is listed in the action's `roles` array
 4. Engine validates the input against the Zod schema — rejects with `400` if invalid
 5. Engine calls `run` with `{ user, db }` and the validated input
 6. Engine validates the output against the Zod schema (if defined)
@@ -64,7 +61,7 @@ const result = await db.action('incrementStock', {
   1. Auth — JWT verification, session resolution
     │
     ▼
-  2. Role check — is 'action_incrementStock' in the user's role array?
+  2. Role check — is the user's role in the action's roles array?
     │
     ▼
   3. Input validation — parse input against Zod schema
@@ -78,10 +75,11 @@ const result = await db.action('incrementStock', {
 
 ## Defining Actions
 
-Each action has three fields:
+Each action has four fields:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
+| `roles` | `string[]` | Yes | Roles allowed to call this action |
 | `input` | `ZodSchema` | Yes | Zod schema that validates and types the client's request body |
 | `output` | `ZodSchema` | No | Zod schema that validates and types the return value |
 | `run` | `({ user, db }, input) => Promise<Output>` | Yes | The function that executes the action |
@@ -94,6 +92,7 @@ const engine = createEngine({
   permissions: { /* ... */ },
   actions: {
     myAction: {
+      roles: ['editor', 'admin'],
       input: z.object({ id: z.string() }),
       output: z.object({ success: z.boolean() }),
       run: async ({ user, db }, { id }) => {
@@ -103,14 +102,10 @@ const engine = createEngine({
       },
     },
   },
-  roles: {
-    editor: ['view_orders', 'edit_orders', 'action_myAction'],
-    admin: ['view_orders', 'edit_orders', 'delete_orders', 'action_myAction'],
-  },
 })
 ```
 
-Action names are defined without a prefix (e.g., `myAction`), but referenced in `roles` with the `action_` prefix (e.g., `action_myAction`). This makes it immediately clear which entries are table permissions and which are server-side functions.
+Each action declares its own `roles` array inline -- no need to reference actions in a top-level roles config.
 
 The `run` function receives:
 
@@ -249,6 +244,7 @@ import { z } from 'zod'
 
 actions: {
   incrementStock: {
+    roles: ['warehouse_manager', 'admin'],
     input: z.object({ productId: z.string(), amount: z.number().positive() }),
     output: z.object({ id: z.string(), stock: z.number() }),
     run: async ({ user, db }, { productId, amount }) => {
@@ -266,6 +262,7 @@ actions: {
   },
 
   decrementStock: {
+    roles: ['warehouse_manager', 'admin'],
     input: z.object({ productId: z.string(), amount: z.number().positive() }),
     output: z.object({ id: z.string(), stock: z.number() }),
     run: async ({ user, db }, { productId, amount }) => {
@@ -291,6 +288,7 @@ actions: {
   },
 
   resetStock: {
+    roles: ['admin'],
     input: z.object({ productId: z.string() }),
     run: async ({ user, db }, { productId }) => {
       await db
@@ -303,10 +301,6 @@ actions: {
         .where(eq(products.id, productId))
     },
   },
-},
-roles: {
-  warehouse_manager: ['view_products', 'edit_products', 'action_incrementStock', 'action_decrementStock'],
-  admin: ['view_products', 'edit_products', 'action_incrementStock', 'action_decrementStock', 'action_resetStock'],
 }
 ```
 
@@ -326,6 +320,7 @@ A fintech app where users transfer money between their own accounts. The transfe
 ```typescript
 actions: {
   transfer: {
+    roles: ['account_holder'],
     input: z.object({
       fromAccountId: z.string(),
       toAccountId: z.string(),
@@ -369,9 +364,6 @@ actions: {
       })
     },
   },
-},
-roles: {
-  account_holder: ['view_accounts', 'view_transactions', 'action_transfer'],
 }
 ```
 
@@ -392,6 +384,7 @@ An online store where the client sends a discount code and the server validates 
 ```typescript
 actions: {
   applyDiscount: {
+    roles: ['customer'],
     input: z.object({ orderId: z.string(), code: z.string().min(1) }),
     output: z.object({ discountAmount: z.number(), newTotal: z.number() }),
     run: async ({ user, db }, { orderId, code }) => {
@@ -434,9 +427,6 @@ actions: {
       })
     },
   },
-},
-roles: {
-  customer: ['view_products', 'view_own_orders', 'action_applyDiscount'],
 }
 ```
 
@@ -456,6 +446,7 @@ A multi-tenant app where admins invite new members to their organization. The ac
 ```typescript
 actions: {
   inviteMember: {
+    roles: ['admin', 'owner'],
     input: z.object({
       email: z.string().email(),
       role: z.enum(['viewer', 'editor', 'admin']),
@@ -492,10 +483,6 @@ actions: {
       return { memberId: member.id, status: 'invited' as const }
     },
   },
-},
-roles: {
-  admin: ['view_members', 'edit_members', 'action_inviteMember'],
-  owner: ['view_members', 'edit_members', 'delete_members', 'action_inviteMember'],
 }
 ```
 
@@ -515,6 +502,7 @@ A dashboard where the client requests a revenue report. The aggregation query us
 ```typescript
 actions: {
   revenueReport: {
+    roles: ['analyst', 'admin', 'owner'],
     input: z.object({
       startDate: z.string().date(),
       endDate: z.string().date(),
@@ -546,11 +534,6 @@ actions: {
         .orderBy(sql`month`)
     },
   },
-},
-roles: {
-  analyst: ['view_orders', 'action_revenueReport'],
-  admin: ['view_orders', 'edit_orders', 'action_revenueReport'],
-  owner: ['view_orders', 'edit_orders', 'delete_orders', 'action_revenueReport'],
 }
 ```
 
@@ -570,7 +553,7 @@ const report = await db.action('revenueReport', {
 | **Scope** | Single table | Single table (wraps CRUD) | Any table, any logic |
 | **Client sends** | SQL via Drizzle Proxy | SQL via Drizzle Proxy | Action name + typed JSON |
 | **Defined on** | Permission object | Permission object | Engine config (top-level) |
-| **Access control** | Role → permission → table | Inherits from permission | Role includes `action_*` slug |
+| **Access control** | Role → permission → table | Inherits from permission | Inline `roles` array on each action |
 | **Type safety** | Schema-generated table types | Inherits from permission | Zod input/output schemas |
 | **Use when** | Standard reads and writes | Intercept or extend a CRUD query | Multi-table logic, workflows, aggregations |
 

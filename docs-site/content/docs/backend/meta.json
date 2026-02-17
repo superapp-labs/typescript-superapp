@@ -7,7 +7,6 @@
     "databases",
     "auth",
     "adapters",
-    "roles",
     "permissions",
     "actions"
   ]

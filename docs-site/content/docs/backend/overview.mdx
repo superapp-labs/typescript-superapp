@@ -14,7 +14,7 @@ import { Hono } from 'hono'
 
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 
@@ -38,15 +38,14 @@ serve({ fetch: app.fetch, port: 3001 })
 Every `/data` request passes through a 10-step pipeline:
 
 ```text
-Request → Rate Limit → Validate → JWT → Session → Roles → Permissions → Query Build → DuckDB → Audit → Response
+Request → Rate Limit → Validate → JWT → Session → Roles → Permissions → Query Build → Execute → Audit → Response
 ```
 
 ## Key Concepts
 
 - **Databases** -- Named database sources (Postgres, MySQL, SQLite, CSV) attached to DuckDB
 - **Auth Providers** -- Pluggable authentication (better-auth or custom); client-side auth lives in `@superapp/auth`
-- **Permissions** -- Row-level security with filters, checks, and presets
-- **Roles** -- Named groups of permissions assigned to users
+- **Permissions** -- Row-level security with operation blocks (`select`, `insert`, `update`, `delete`), each with inline `roles`
 - **Adapters** -- Framework bindings for Hono, Next.js, Express, and generic handlers
 
 ## Next Steps
@@ -54,4 +53,4 @@ Request → Rate Limit → Validate → JWT → Session → Roles → Permission
 - [Configuration](/docs/backend/configuration) -- Configure your engine
 - [Databases](/docs/backend/databases) -- Add database sources
 - [Authentication](/docs/backend/auth) -- Set up auth
-- [Permissions](/docs/backend/permissions/filters) -- Define access rules
+- [Permissions](/docs/backend/permissions/where) -- Define access rules

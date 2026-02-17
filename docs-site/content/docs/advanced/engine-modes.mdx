@@ -27,29 +27,29 @@ In programmatic mode, permissions, connections, and roles are defined entirely i
 const engine = createEngine({
   mode: 'programmatic',  // this is the default
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   permissions: {
     view_own_orders: {
       name: 'View own orders',
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'created_at'],
-      filter: { customer_id: { $eq: '$user.customer_id' } },
+      roles: ['viewer', 'editor'],
+      select: {
+        columns: ['id', 'amount', 'status', 'created_at'],
+        where: { customer_id: { $eq: '$user.customer_id' } },
+      },
     },
     edit_own_orders: {
       name: 'Edit own orders',
       table: 'main.orders',
-      operations: { update: true },
-      columns: ['amount', 'status', 'notes'],
-      filter: { customer_id: { $eq: '$user.customer_id' } },
-      check: { status: { $in: ['draft', 'active'] } },
-      preset: { updated_by: '$user.id' },
+      roles: ['editor'],
+      update: {
+        columns: ['amount', 'status', 'notes'],
+        where: { customer_id: { $eq: '$user.customer_id' } },
+        validate: { status: { $in: ['draft', 'active'] } },
+        overwrite: { updated_by: '$user.id' },
+      },
     },
-  },
-  roles: {
-    viewer: ['view_own_orders'],
-    editor: ['view_own_orders', 'edit_own_orders'],
   },
 })
 ```
@@ -96,8 +96,8 @@ const engine = createEngine({
 In `admin_ui` mode, the admin UI provides:
 
 - **Connection management** -- Add, edit, and test database connections.
-- **Permission editor** -- Visual builder for filter, columns, check, and preset rules.
-- **Role management** -- Create roles and assign permissions with one click.
+- **Permission editor** -- Visual builder for where clauses, columns, validate, and default/overwrite rules.
+- **Role management** -- Assign roles inline on permissions and actions.
 - **User management** -- View users, assign roles, manage sessions.
 - **Audit log viewer** -- Browse query and admin action logs.
 - **Schema browser** -- Explore attached database tables and columns.
@@ -120,7 +120,6 @@ Switching from `admin_ui` back to programmatic requires exporting your current p
 const engine = createEngine({
   mode: 'programmatic',
   permissions: { /* ... */ },
-  roles: { /* ... */ },
 })
 
 // Later, switch to admin_ui mode for production
@@ -145,9 +144,6 @@ const engine = createEngine({
   permissions: {
     // These are always available as a baseline
     view_own_orders: { /* ... */ },
-  },
-  roles: {
-    viewer: ['view_own_orders'],
   },
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
 })

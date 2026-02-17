@@ -12,7 +12,7 @@ import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth: betterAuthProvider({
     secret: process.env.AUTH_SECRET!,
@@ -74,7 +74,7 @@ resolveSession: async (user, db) => {
 }
 ```
 
-Any property you return becomes available as a `$user.*` variable in [filters](/docs/backend/permissions/filters), [checks](/docs/backend/permissions/checks), and [presets](/docs/backend/permissions/presets).
+Any property you return becomes available as a `$user.*` variable in [where clauses](/docs/backend/permissions/where), [validate](/docs/backend/permissions/validate), and [defaults & overwrite](/docs/backend/permissions/defaults).
 
 ## Available Providers
 

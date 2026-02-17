@@ -10,7 +10,7 @@ Connection secrets -- database URLs, API keys, passwords -- are encrypted at res
 const engine = createEngine({
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 ```
@@ -130,7 +130,7 @@ When connections are defined in code (not through the admin UI), the URL comes f
 ```typescript
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 ```

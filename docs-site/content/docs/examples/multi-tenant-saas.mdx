@@ -22,7 +22,7 @@ const auth = betterAuthProvider({
 
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth,
 
@@ -39,58 +39,52 @@ const engine = createEngine({
   },
 
   permissions: {
-    // Read orders — scoped to user's orgs
-    read_org_orders: {
+    orders: {
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'organization_id', 'created_at'],
-      filter: { organization_id: { $in: '$user.org_ids' } },
-    },
 
-    // Create orders — org_id must match user's orgs, amount must be positive
-    create_org_orders: {
-      table: 'main.orders',
-      operations: { insert: true },
-      columns: ['amount', 'status', 'organization_id'],
-      check: {
-        organization_id: { $in: '$user.org_ids' },
-        amount: { $gt: 0 },
-        status: { $eq: 'draft' },
+      // Read orders — scoped to user's orgs
+      select: {
+        roles: ['viewer', 'editor', 'admin'],
+        columns: ['id', 'amount', 'status', 'organization_id', 'created_at'],
+        where: { organization_id: { $in: '$user.org_ids' } },
       },
-      preset: {
-        created_by: '$user.id',
-        created_at: '$now',
+
+      // Create orders — org_id must match user's orgs, amount must be positive
+      insert: {
+        roles: ['editor', 'admin'],
+        columns: ['amount', 'status', 'organization_id'],
+        validate: {
+          organization_id: { $in: '$user.org_ids' },
+          amount: { $gt: 0 },
+          status: { $eq: 'draft' },
+        },
+        overwrite: {
+          created_by: '$user.id',
+          created_at: '$now',
+        },
+      },
+
+      // Update orders — only within user's orgs
+      update: {
+        roles: ['editor', 'admin'],
+        columns: ['amount', 'status'],
+        where: { organization_id: { $in: '$user.org_ids' } },
+        validate: {
+          amount: { $gt: 0 },
+          status: { $in: ['draft', 'active', 'cancelled'] },
+        },
+        overwrite: { updated_at: '$now' },
+      },
+
+      // Delete draft orders — only within user's orgs
+      delete: {
+        roles: ['admin'],
+        where: {
+          organization_id: { $in: '$user.org_ids' },
+          status: { $eq: 'draft' },
+        },
       },
     },
-
-    // Update orders — only within user's orgs
-    update_org_orders: {
-      table: 'main.orders',
-      operations: { update: true },
-      columns: ['amount', 'status'],
-      filter: { organization_id: { $in: '$user.org_ids' } },
-      check: {
-        amount: { $gt: 0 },
-        status: { $in: ['draft', 'active', 'cancelled'] },
-      },
-      preset: { updated_at: '$now' },
-    },
-
-    // Delete draft orders — only within user's orgs
-    delete_org_draft_orders: {
-      table: 'main.orders',
-      operations: { delete: true },
-      filter: {
-        organization_id: { $in: '$user.org_ids' },
-        status: { $eq: 'draft' },
-      },
-    },
-  },
-
-  roles: {
-    viewer: ['read_org_orders'],
-    editor: ['read_org_orders', 'create_org_orders', 'update_org_orders'],
-    admin: ['read_org_orders', 'create_org_orders', 'update_org_orders', 'delete_org_draft_orders'],
   },
 })
 ```
@@ -98,8 +92,8 @@ const engine = createEngine({
 **How org scoping works:**
 
 1. `resolveSession` fetches the user's org memberships and returns `org_ids`
-2. Every permission uses `filter: { organization_id: { $in: '$user.org_ids' } }` — injected as a WHERE clause
-3. On inserts, `check` validates the `organization_id` the client sends matches one of the user's orgs
+2. Every operation uses `where: { organization_id: { $in: '$user.org_ids' } }` — injected as a WHERE clause
+3. On inserts, `validate` checks that the `organization_id` the client sends matches one of the user's orgs
 4. The client never filters by org — the server handles it automatically
 
 ## Client

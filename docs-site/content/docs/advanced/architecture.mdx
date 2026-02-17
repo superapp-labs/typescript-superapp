@@ -30,7 +30,7 @@ superapp is three npm packages: `@superapp/backend` (server), `@superapp/db` (da
   │  Validate SQL + inject filters    │
   │         │                         │
   │         ▼                         │
-  │  DuckDB (in-process)              │
+  │  Query Execution (native drivers)  │
   └─────────┬─────────────────────────┘
             │
     ┌───────┼───────┬───────┐
@@ -47,7 +47,7 @@ The backend is the single source of truth for all data access. It:
 - **Receives parameterized SQL** from the Drizzle Proxy client over HTTP.
 - **Verifies JWTs** through a pluggable auth provider.
 - **Enforces permissions** using CASL-based rules that validate the SQL, inject row filters, restrict columns, validate writes, and preset values.
-- **Executes the permission-filtered SQL** through DuckDB, which fans out to attached databases.
+- **Executes the permission-filtered SQL** directly against the target database using its native driver.
 - **Stores metadata** (sessions, roles, audit logs) in a Turso or local SQLite database via Drizzle ORM.
 
 ```typescript
@@ -87,7 +87,7 @@ import { AuthCard, AuthProvider, UserButton } from '@superapp/auth/components'
 
 | Layer | Technology | Role |
 |---|---|---|
-| Query engine | DuckDB | In-process OLAP engine, ATTACH to external databases |
+| Query execution | Native drivers | Direct connections via `pg`, `mysql2`, `better-sqlite3` |
 | HTTP framework | Hono | Lightweight, edge-compatible HTTP routing |
 | Metadata store | Turso + Drizzle | Sessions, roles, audit logs, admin configuration |
 | Authentication | better-auth | JWT-based auth with session management |
@@ -100,15 +100,15 @@ import { AuthCard, AuthProvider, UserButton } from '@superapp/auth/components'
 
 ```text
   createEngine()
-  ├── integrations[]  → Database providers     ──→ DuckDB ATTACH
-  ├── connections{}   → Named DB configs       ──→ DuckDB ATTACH
+  ├── integrations[]  → Database providers     ──→ Native driver pools
+  ├── connections{}   → Named DB configs       ──→ Native driver pools
   ├── auth            → AuthProvider
   │                     ├── verifyToken()
   │                     ├── findUser()
   │                     └── resolveSession()
   ├── permissions{}   → Permission definitions ──→ CASL abilities
   ├── roles{}         → Role → permission mappings
-  ├── duckdb{}        → Pool config
+  ├── connections{}   → Connection pool config
   ├── limits{}        → Rate and query limits
   ├── audit{}         → Audit logging
   └── adapter         → HTTP adapter
@@ -124,7 +124,7 @@ Every query follows this exact path:
 1. **HTTP** -- Adapter receives `POST /data` with JWT in `Authorization` header. The body contains parameterized SQL + params from the Drizzle Proxy client.
 2. **Auth** -- `verifyToken()` validates the JWT signature. `findUser()` retrieves the user record. `resolveSession()` enriches with roles and org memberships.
 3. **Permissions** -- CASL evaluates which permissions apply based on the user's role. The engine validates the incoming SQL, injects WHERE filters, strips unauthorized columns, and for writes, validates data against `check` rules and injects `preset` values.
-4. **DuckDB** -- Executes the permission-filtered SQL against the attached database (Postgres, MySQL, SQLite, or CSV).
+4. **Query Execution** -- Executes the permission-filtered SQL directly against the target database (Postgres, MySQL, SQLite, or CSV) using its native driver.
 5. **Response** -- Results are serialized to JSON and returned to the client.
 
 No step can be skipped. There is no "bypass" mode in production. All SQL is parameterized (preventing injection), and the server validates and modifies every query before execution.

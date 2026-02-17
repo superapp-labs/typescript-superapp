@@ -1,37 +1,35 @@
 ---
 title: Databases
 icon: Database
-description: Connect to any database through DuckDB.
+description: Connect to any database with native drivers.
 ---
 
-Every database in `@superapp/backend` is accessed through a **provider** -- a thin adapter that tells DuckDB how to attach and query the source.
+Every database in `@superapp/backend` is accessed through its native driver. Just pass a connection URL and the engine infers the database type from the protocol.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 ```
 
 ## Native vs Custom Providers
 
-**Native providers** use DuckDB's built-in `ATTACH` extensions. DuckDB handles the wire protocol directly, which means full SQL pushdown and maximum performance. Postgres, MySQL, SQLite, and CSV are all native.
+**Native providers** connect directly using the database's own driver (`pg`, `mysql2`, `better-sqlite3`). Queries are executed directly against the database with no intermediary.
 
-**Custom providers** implement a `CustomIntegrationProvider` interface for sources DuckDB cannot attach natively -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary databases. Queries are translated into provider-specific calls and results are returned as virtual tables.
+**Custom providers** implement a `CustomIntegrationProvider` interface for non-database sources -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary systems. Queries are translated into provider-specific calls and results are returned as virtual tables.
 
 ## Built-in Providers
 
-| Provider | Import | Read | Write | Transport |
+| Provider | Connection format | Read | Write | Driver |
 |---|---|---|---|---|
-| PostgreSQL | `@superapp/backend/integrations/postgres` | Yes | Yes | Native (`postgres_scanner`) |
-| MySQL | `@superapp/backend/integrations/mysql` | Yes | Yes | Native (`mysql_scanner`) |
-| SQLite | `@superapp/backend/integrations/sqlite` | Yes | Yes | Native (`sqlite_scanner`) |
-| CSV | `@superapp/backend/integrations/csv` | Yes | No | Native (`read_csv_auto`) |
+| PostgreSQL | `'postgres://...'` | Yes | Yes | `pg` |
+| MySQL | `'mysql://...'` | Yes | Yes | `mysql2` |
+| SQLite | `'./path/to/file.db'` | Yes | Yes | `better-sqlite3` |
+| CSV | `{ directory: './data/' }` | Yes | No | built-in |
 
 ## Provider Interface
 
@@ -40,9 +38,9 @@ Every native provider exports a single object that satisfies the `IntegrationPro
 ```typescript
 interface IntegrationProvider {
   type: string
-  attachSQL: (name: string, config: ConnectionConfig) => string
-  detachSQL: (name: string) => string
-  introspect: (name: string) => Promise<TableSchema[]>
+  connect: (config: ConnectionConfig) => Promise<DriverConnection>
+  disconnect: (connection: DriverConnection) => Promise<void>
+  introspect: (connection: DriverConnection) => Promise<TableSchema[]>
   capabilities: {
     read: boolean
     write: boolean
@@ -51,23 +49,18 @@ interface IntegrationProvider {
 }
 ```
 
-The `attachSQL` method returns the DuckDB `ATTACH` statement for the given connection config. The engine calls it once on startup (or when a connection is added via the admin UI) and caches the result for the lifetime of the process.
+The `connect` method initializes the native driver connection pool. The engine calls it once on startup (or when a connection is added via the admin UI) and maintains the pool for the lifetime of the process.
 
-## Registering Multiple Providers
+## Multiple Connections
 
-Pass all providers you need in the `integrations` array. Only connections whose `type` matches a registered provider will be attached:
+Pass all connections in the `connections` object. The engine infers the type from the protocol or format:
 
 ```typescript
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
-import { mysqlProvider } from '@superapp/backend/integrations/mysql'
-import { csvProvider } from '@superapp/backend/integrations/csv'
-
 const engine = createEngine({
-  integrations: [postgresProvider, mysqlProvider, csvProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
-    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
-    reports: { type: 'csv', path: './data/reports' },
+    main: process.env.PG_URL!,
+    warehouse: process.env.MYSQL_URL!,
+    reports: { directory: './data/reports' },
   },
 })
 ```

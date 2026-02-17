@@ -1,100 +1,85 @@
 ---
 title: Session Isolation
 icon: Lock
-description: Every user gets an isolated DuckDB instance.
+description: Every request gets an isolated database connection.
 ---
 
-Each authenticated user session runs queries against an ephemeral DuckDB instance that is sandboxed from the filesystem, other sessions, and dangerous SQL statements.
+Each request runs queries against an isolated database connection acquired from a per-driver connection pool. Connections are sandboxed from other sessions and dangerous SQL statements are blocked before execution.
 
 ```
-User A ──→ DuckDB Instance A (read-only attach, sandboxed)
-User B ──→ DuckDB Instance B (read-only attach, sandboxed)
-User C ──→ DuckDB Instance C (read-only attach, sandboxed)
+User A ──→ Connection from pool (permission-filtered, sandboxed)
+User B ──→ Connection from pool (permission-filtered, sandboxed)
+User C ──→ Connection from pool (permission-filtered, sandboxed)
 ```
 
 ## How It Works
 
-When a user makes their first `/data` request, the engine allocates a DuckDB instance from a pool. The instance has the user's attached databases loaded but runs in a restricted mode that blocks dangerous operations. When the session expires or the instance is idle beyond the timeout, it is destroyed and returned to the pool.
+When a user makes a `/data` request, the engine acquires a database connection from the appropriate pool (Postgres, MySQL, or SQLite). The permission-filtered SQL is executed against this connection. After the query completes, the connection is returned to the pool for reuse.
 
 ## What Is Blocked
 
-DuckDB instances are hardened by disabling capabilities that could be used for data exfiltration or denial of service:
+The engine validates and rewrites all incoming SQL before execution. Dangerous operations are rejected at the permission layer:
 
 | Blocked Category | Examples |
 |---|---|
-| Filesystem access | `COPY TO`, `EXPORT DATABASE`, `read_csv('/etc/passwd')` |
-| External access | `httpfs` extension, `read_parquet('https://...')` |
 | Schema modification | `CREATE TABLE`, `DROP TABLE`, `ALTER TABLE` |
-| System functions | `current_setting()`, `pg_read_file()` |
-| Unsafe extensions | Loading arbitrary extensions at runtime |
+| Filesystem access | `COPY TO`, `pg_read_file()`, `LOAD_FILE()` |
+| System functions | `current_setting()`, `pg_sleep()`, system catalogs |
+| Raw SQL execution | Only parameterized SQL from Drizzle Proxy is accepted |
+| Unauthorized tables | Any table not covered by a permission is inaccessible |
 
 All data access goes through the engine's permission layer, which validates and modifies the parameterized SQL received from the Drizzle Proxy client. Users cannot bypass permission filters or access unauthorized tables.
 
-## Instance Pooling
+## Connection Pooling
 
-Creating a DuckDB instance is fast but not free. The engine maintains a pool of pre-initialized instances to minimize latency:
+Each database driver maintains its own connection pool to minimize latency:
 
 ```typescript
 const engine = createEngine({
-  duckdb: {
-    poolSize: 10,        // max concurrent instances
-    idleTimeout: 300_000, // destroy idle instances after 5 minutes
-    maxMemory: '256MB',   // memory limit per instance
-    threads: 2,           // CPU threads per instance
+  connections: {
+    main: process.env.PG_URL!,       // Postgres pool
+    warehouse: process.env.MYSQL_URL!, // MySQL pool
+    local: './data/app.db',            // SQLite (single connection, serialized)
+  },
+  limits: {
+    queryTimeout: 30_000,   // Kill queries after 30 seconds
   },
 })
 ```
 
-| Setting | Default | Description |
-|---|---|---|
-| `poolSize` | `10` | Maximum number of concurrent DuckDB instances |
-| `idleTimeout` | `300_000` | Milliseconds before an idle instance is destroyed |
-| `maxMemory` | `'256MB'` | Maximum memory per instance |
-| `threads` | `2` | CPU threads allocated per instance |
+- Each incoming request acquires a connection from the relevant pool
+- After the query completes, the connection is returned to the pool
+- If all connections are busy, new requests wait until one is available
 
 ## Resource Limits
 
-Each instance is constrained to prevent a single user from consuming all server resources:
+Each request is constrained to prevent a single user from consuming all server resources:
 
-- **Memory** -- hard cap via `maxMemory`. Queries exceeding the limit are terminated.
-- **CPU** -- limited to `threads` cores. Long-running queries are killed after `queryTimeout`.
 - **Time** -- `queryTimeout` (default 30 seconds) applies to every query. Exceeded queries return `408 Request Timeout`.
+- **Rate** -- `rateLimitPerUser` and `rateLimitPerIP` cap request frequency per minute.
+- **Complexity** -- `maxLimit`, `maxIncludeDepth`, and `maxFilterDepth` cap query complexity.
 
 ```typescript
 const engine = createEngine({
-  duckdb: {
-    maxMemory: '256MB',
-    threads: 2,
+  limits: {
     queryTimeout: 30_000,
+    rateLimitPerUser: 200,
+    rateLimitPerIP: 500,
+    maxLimit: 10_000,
   },
 })
 ```
 
-## DuckDB Hardening
-
-The engine applies the following DuckDB settings to every session instance:
-
-```sql
-SET enable_external_access = false;
-SET enable_fsst_vectors = false;
-SET allow_unsigned_extensions = false;
-SET lock_configuration = true;
-```
-
-- `enable_external_access = false` -- blocks `httpfs`, `s3`, and any network I/O from within DuckDB
-- `allow_unsigned_extensions = false` -- prevents loading untrusted extensions
-- `lock_configuration = true` -- prevents the session from changing any settings after initialization
-
-## Session Lifecycle
+## Request Lifecycle
 
 ```
 1. Request arrives with JWT
 2. JWT validated → user identity extracted
-3. Instance allocated from pool (or created if pool is empty)
-4. Databases attached in read-only mode
-5. Query executed with permission filters applied
+3. Permissions evaluated → SQL validated and filtered
+4. Connection acquired from pool
+5. Permission-filtered SQL executed against the database
 6. Results returned to client
-7. Instance returned to pool (or destroyed if pool is full)
+7. Connection returned to pool
 ```
 
-Instances do not persist any state between requests. Each query starts from a clean slate with only the attached databases visible.
+Connections do not persist any user state between requests. Each query starts from a clean slate with the permission-filtered SQL.

@@ -4,16 +4,14 @@ description: Connect to PostgreSQL databases.
 icon: Database
 ---
 
-Attach a PostgreSQL database and get full CRUD through DuckDB's native `postgres_scanner` extension.
+Connect to a PostgreSQL database and get full CRUD through a direct `pg` driver connection.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 ```
@@ -35,17 +33,9 @@ postgres://user:password@host:5432/database?sslmode=require
 | `database` | Database name |
 | `sslmode` | `disable`, `require`, `verify-ca`, `verify-full` |
 
-## What DuckDB Generates
+## How It Works
 
-When the engine starts, the Postgres provider generates:
-
-```sql
-INSTALL postgres;
-LOAD postgres;
-ATTACH 'postgres://user:password@host:5432/database' AS main (TYPE POSTGRES, READ_WRITE);
-```
-
-All tables in the target database become available under the `main` schema. DuckDB pushes filters, joins, and aggregations down to Postgres whenever possible.
+When the engine starts, it detects the `postgres://` protocol and initializes a connection pool using the `pg` driver. All tables in the target database become available under the `main` namespace. Queries are executed directly against Postgres with no intermediary.
 
 ## Capabilities
 
@@ -62,16 +52,14 @@ All tables in the target database become available under the `main` schema. Duck
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth: betterAuthProvider({
     secret: process.env.AUTH_SECRET!,
@@ -82,15 +70,13 @@ const engine = createEngine({
     },
   }),
   permissions: {
-    read_orders: {
-      name: 'Read orders',
+    orders: {
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      select: {
+        roles: ['viewer'],
+        columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      },
     },
-  },
-  roles: {
-    viewer: ['read_orders'],
   },
 })
 
@@ -105,10 +91,9 @@ Attach several Postgres databases under different names:
 
 ```typescript
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
-    analytics: { type: 'postgres', url: process.env.ANALYTICS_PG_URL! },
+    main: process.env.PG_URL!,
+    analytics: process.env.ANALYTICS_PG_URL!,
   },
 })
 ```

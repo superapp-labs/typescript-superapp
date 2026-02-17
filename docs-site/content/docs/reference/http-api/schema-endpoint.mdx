@@ -13,7 +13,7 @@ The schema endpoint is disabled by default. Enable it in your `createEngine` con
 ```typescript
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   schemaEndpoint: true,  // enable with defaults
 })
@@ -24,7 +24,7 @@ To require authentication:
 ```typescript
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   schemaEndpoint: {
     enabled: true,

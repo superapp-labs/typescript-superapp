@@ -48,16 +48,14 @@ The scaffolded `server.ts` includes a working engine with SQLite for local devel
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 
 const engine = createEngine({
-  integrations: [sqliteProvider],
   connections: {
-    main: { type: 'sqlite', path: './data/dev.db' },
+    main: './data/dev.db',
   },
   auth: betterAuthProvider({
     secret: process.env.AUTH_SECRET!,
@@ -69,14 +67,12 @@ const engine = createEngine({
   }),
   permissions: {
     read_orders: {
-      name: 'Read orders',
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      roles: ['viewer'],
+      select: {
+        columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      },
     },
-  },
-  roles: {
-    viewer: ['read_orders'],
   },
 })
 
@@ -100,15 +96,12 @@ Open `http://localhost:3000` to see the app. Sign up, sign in, and the dashboard
 
 ## Switching to Postgres
 
-When you are ready to move off SQLite, update the backend config:
+When you are ready to move off SQLite, update the connection string:
 
 ```typescript
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
-
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   // ... rest of config
 })

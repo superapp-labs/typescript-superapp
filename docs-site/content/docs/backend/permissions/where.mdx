@@ -1,19 +1,20 @@
 ---
-title: Filters
+title: Where Clauses
 description: Inject WHERE clauses to restrict which rows users can access, from simple equality to FK traversal.
 icon: ListFilter
 ---
 
-Filters add WHERE clauses to every query, ensuring users only see and modify rows they have access to. They apply to `select`, `update`, and `delete` operations.
+Where clauses add SQL WHERE conditions to every query, ensuring users only see and modify rows they have access to. They live inside operation blocks — `select`, `update`, and `delete`.
 
 ```typescript
 permissions: {
   view_own_orders: {
-    name: 'View own orders',
     table: 'main.orders',
-    operations: { select: true },
-    columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
-    filter: { customer_id: { $eq: '$user.id' } },
+    roles: ['customer'],
+    select: {
+      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+      where: { customer_id: { $eq: '$user.id' } },
+    },
   },
 }
 ```
@@ -23,28 +24,28 @@ permissions: {
 ```sql
 SELECT id, amount, status, customer_id, created_at
 FROM main.orders
-WHERE customer_id = 'usr_123'  -- injected by filter
+WHERE customer_id = 'usr_123'  -- injected by where clause
 ```
 
-## Simple Filters
+## Simple Where Clauses
 
 Direct column comparisons:
 
 ```typescript
 // Exact match
-filter: { customer_id: { $eq: '$user.id' } }
+where: { customer_id: { $eq: '$user.id' } }
 // → WHERE customer_id = 'usr_123'
 
 // Multiple values
-filter: { status: { $in: ['active', 'pending'] } }
+where: { status: { $in: ['active', 'pending'] } }
 // → WHERE status IN ('active', 'pending')
 
 // Range
-filter: { amount: { $gte: 0, $lte: 50_000 } }
+where: { amount: { $gte: 0, $lte: 50_000 } }
 // → WHERE amount >= 0 AND amount <= 50000
 
 // Multiple conditions (AND)
-filter: {
+where: {
   organization_id: { $eq: '$user.current_org_id' },
   status: { $ne: 'deleted' },
 }
@@ -56,7 +57,7 @@ filter: {
 When `$user.*` resolves to an array, use `$in`:
 
 ```typescript
-filter: { organization_id: { $in: '$user.org_ids' } }
+where: { organization_id: { $in: '$user.org_ids' } }
 // If $user.org_ids = ['org_1', 'org_2', 'org_3']
 // → WHERE organization_id IN ('org_1', 'org_2', 'org_3')
 ```
@@ -66,10 +67,13 @@ filter: { organization_id: { $in: '$user.org_ids' } }
 Filter through foreign key relationships by nesting objects. Each key is a related table, and the engine follows the FK path:
 
 ```typescript
-filter: {
-  organization: {
-    members: {
-      user_id: { $eq: '$user.id' },
+select: {
+  columns: '*',
+  where: {
+    organization: {
+      members: {
+        user_id: { $eq: '$user.id' },
+      },
     },
   },
 }
@@ -91,7 +95,7 @@ WHERE main.orders.organization_id IN (
 
 ### How Path Resolution Works
 
-The engine resolves nested filter objects by inspecting FK relationships in your schema:
+The engine resolves nested where objects by inspecting FK relationships in your schema:
 
 ```text
 main.orders
@@ -109,9 +113,12 @@ main.orders
 Filter orders by their customer's status:
 
 ```typescript
-filter: {
-  customer: {
-    status: { $eq: 'active' },
+select: {
+  columns: '*',
+  where: {
+    customer: {
+      status: { $eq: 'active' },
+    },
   },
 }
 ```
@@ -129,11 +136,14 @@ WHERE customer_id IN (
 Filter orders where the user is an admin or owner of the organization:
 
 ```typescript
-filter: {
-  organization: {
-    members: {
-      user_id: { $eq: '$user.id' },
-      role: { $in: ['owner', 'admin'] },
+select: {
+  columns: '*',
+  where: {
+    organization: {
+      members: {
+        user_id: { $eq: '$user.id' },
+        role: { $in: ['owner', 'admin'] },
+      },
     },
   },
 }
@@ -151,16 +161,19 @@ WHERE organization_id IN (
 )
 ```
 
-### Combined Direct and FK Filters
+### Combined Direct and FK Where Clauses
 
-Mix direct column filters with FK traversal:
+Mix direct column conditions with FK traversal:
 
 ```typescript
-filter: {
-  status: { $ne: 'deleted' },
-  organization: {
-    members: {
-      user_id: { $eq: '$user.id' },
+select: {
+  columns: '*',
+  where: {
+    status: { $ne: 'deleted' },
+    organization: {
+      members: {
+        user_id: { $eq: '$user.id' },
+      },
     },
   },
 }
@@ -188,52 +201,85 @@ limits: {
 }
 ```
 
-If a filter exceeds this depth, the request returns `400 Bad Request`.
+If a where clause exceeds this depth, the request returns `400 Bad Request`.
 
-## Complex Filters with Logical Operators
+## Complex Where Clauses with Logical Operators
 
 Combine conditions with `$or`, `$and`, and `$not`:
 
 ```typescript
-filter: {
-  $or: [
-    { customer_id: { $eq: '$user.id' } },
-    { organization_id: { $in: '$user.org_ids' } },
-  ],
+select: {
+  columns: '*',
+  where: {
+    $or: [
+      { customer_id: { $eq: '$user.id' } },
+      { organization_id: { $in: '$user.org_ids' } },
+    ],
+  },
 }
 // → WHERE (customer_id = 'usr_123' OR organization_id IN ('org_1', 'org_2'))
 ```
 
 ```typescript
-filter: {
-  $and: [
-    { status: { $ne: 'deleted' } },
-    {
-      $or: [
-        { customer_id: { $eq: '$user.id' } },
-        { assigned_to: { $eq: '$user.id' } },
-      ],
-    },
-  ],
+select: {
+  columns: '*',
+  where: {
+    $and: [
+      { status: { $ne: 'deleted' } },
+      {
+        $or: [
+          { customer_id: { $eq: '$user.id' } },
+          { assigned_to: { $eq: '$user.id' } },
+        ],
+      },
+    ],
+  },
 }
 // → WHERE status != 'deleted' AND (customer_id = 'usr_123' OR assigned_to = 'usr_123')
 ```
 
-## Filter Merging
+## Where Clause Merging
 
-When a user has multiple permissions for the same table, filters are merged with OR:
+When a user has multiple permissions for the same table, where clauses are merged with OR:
 
 ```typescript
 // Permission 1: view_own_orders
-filter: { customer_id: { $eq: '$user.id' } }
+select: { where: { customer_id: { $eq: '$user.id' } } }
 
 // Permission 2: view_org_orders
-filter: { organization_id: { $in: '$user.org_ids' } }
+select: { where: { organization_id: { $in: '$user.org_ids' } } }
 
 // Merged result:
 // → WHERE (customer_id = 'usr_123') OR (organization_id IN ('org_1', 'org_2'))
 ```
 
-## All Filter Operators
+## Where Clauses on Update and Delete
+
+Where clauses also work inside `update` and `delete` operation blocks to restrict which rows can be modified or removed:
+
+```typescript
+permissions: {
+  edit_own_orders: {
+    table: 'main.orders',
+    roles: ['customer'],
+    update: {
+      columns: ['status', 'amount'],
+      where: { customer_id: { $eq: '$user.id' } },
+    },
+  },
+  delete_own_drafts: {
+    table: 'main.orders',
+    roles: ['customer'],
+    delete: {
+      where: {
+        customer_id: { $eq: '$user.id' },
+        status: { $eq: 'draft' },
+      },
+    },
+  },
+}
+```
+
+## All Where Operators
 
 See [Permission Operators](/docs/backend/permissions/operators) for the complete list of comparison and logical operators.

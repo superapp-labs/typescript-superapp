@@ -4,66 +4,128 @@ description: "Complete permission shape reference."
 icon: Lock
 ---
 
-A permission object defines what a user can do with a specific table. Permissions are identified by `snake_case` slugs and assigned to users through roles.
+A permission object defines what a user can do with a specific table. Permissions are identified by `snake_case` slugs. Each permission declares which roles have access and which operations (select, insert, update, delete) are allowed — using the same patterns as Drizzle ORM.
 
 ## TypeScript Interface
 
 ```typescript
 interface Permission {
+  /** Target table in connection.table format */
+  table: string
+
+  /** Roles that have this permission */
+  roles: string[]
+
   /** Human-readable name for display in admin UI */
-  name: string
+  name?: string
 
   /** Optional description explaining the permission's purpose */
   description?: string
 
-  /** Target table in connection.table format */
-  table: string
-
-  /** Which CRUD operations this permission grants */
-  operations: {
-    select?: boolean
-    insert?: boolean
-    update?: boolean
-    delete?: boolean
+  /** SELECT operation config */
+  select?: {
+    /** Allowed columns to return. Omit for all columns. */
+    columns?: string[]
+    /** WHERE clause — restricts which rows are visible */
+    where?: Record<string, any>
+    /** Raw SQL appended to WHERE clause */
+    sql?: string
+    /** Max rows per query */
+    limit?: number
+    /** Custom middleware wrapping query execution */
+    middleware?: MiddlewareFn
   }
 
-  /** Allowed columns (allowlist). Omit to allow all columns. */
-  columns?: string[]
+  /** INSERT operation config */
+  insert?: {
+    /** Allowed columns the client can write */
+    columns?: string[]
+    /** Validate incoming values — reject with 403 if invalid */
+    validate?: Record<string, any>
+    /** Default values — used when client doesn't provide a value */
+    default?: Record<string, any>
+    /** Override values — always applied, client cannot override */
+    overwrite?: Record<string, any>
+    /** Custom middleware wrapping query execution */
+    middleware?: MiddlewareFn
+  }
 
-  /** Row-level filter injected into WHERE clauses (SELECT, UPDATE, DELETE) */
-  filter?: Record<string, any>
+  /** UPDATE operation config */
+  update?: {
+    /** Allowed columns the client can write */
+    columns?: string[]
+    /** WHERE clause — restricts which rows can be updated */
+    where?: Record<string, any>
+    /** Raw SQL appended to WHERE clause */
+    sql?: string
+    /** Validate incoming values — reject with 403 if invalid */
+    validate?: Record<string, any>
+    /** Default values — used when client doesn't provide a value */
+    default?: Record<string, any>
+    /** Override values — always applied, client cannot override */
+    overwrite?: Record<string, any>
+    /** Custom middleware wrapping query execution */
+    middleware?: MiddlewareFn
+  }
 
-  /** Validation condition for incoming data (INSERT, UPDATE) */
-  check?: Record<string, any>
-
-  /** Server-injected values that override client data (INSERT, UPDATE) */
-  preset?: Record<string, any>
-
-  /** Maximum number of rows this permission can return per query */
-  limit?: number
-
-  /** Custom SQL fragment for advanced filtering (use with caution) */
-  customSql?: string
-
-  /** Custom TypeScript that wraps query execution */
-  middleware?: (
-    params: { user, db, table, operation, columns, query, input?, filter? },
-    next: (overrides?) => Promise<any[]>,
-  ) => Promise<any[]>
+  /** DELETE operation config */
+  delete?: {
+    /** WHERE clause — restricts which rows can be deleted */
+    where?: Record<string, any>
+    /** Raw SQL appended to WHERE clause */
+    sql?: string
+    /** Custom middleware wrapping query execution */
+    middleware?: MiddlewareFn
+  }
 }
+
+type MiddlewareFn = (
+  params: { user; db; table; operation; columns; query; input?; filter? },
+  next: (overrides?) => Promise<any[]>,
+) => Promise<any[]>
 ```
 
 ## Field Reference
+
+### `table`
+
+| | |
+|---|---|
+| **Type** | `string` |
+| **Required** | Yes |
+| **Format** | `connection_name.table_name` |
+
+The fully qualified table name this permission applies to. Must match a table in one of your configured connections.
+
+```typescript
+table: 'main.orders'
+table: 'warehouse.events'
+table: 'imports.products'
+```
+
+### `roles`
+
+| | |
+|---|---|
+| **Type** | `string[]` |
+| **Required** | Yes |
+
+Which roles have this permission. When a user authenticates and `resolveSession` returns their role, the engine checks if that role is listed in the permission's `roles` array.
+
+```typescript
+roles: ['viewer', 'editor', 'admin']
+roles: ['sales_rep']
+```
 
 ### `name`
 
 | | |
 |---|---|
 | **Type** | `string` |
-| **Required** | Yes |
+| **Required** | No |
 | **Used in** | Admin UI display, audit logs |
 
-Human-readable label for the permission. Shown in the admin UI and audit logs.
+Human-readable label for the permission.
 
 ```typescript
 name: 'View own orders'
@@ -83,220 +145,280 @@ Explains what this permission does and why it exists.
 description: 'Allows users to read orders belonging to their organization. Restricted to non-financial columns.'
 ```
 
-### `table`
+### `select`
 
 | | |
 |---|---|
-| **Type** | `string` |
-| **Required** | Yes |
-| **Format** | `connection_name.table_name` |
-
-The fully qualified table name this permission applies to. Must match a table in one of your configured connections.
-
-```typescript
-table: 'main.orders'
-table: 'warehouse.events'
-table: 'imports.products'
-```
-
-### `operations`
-
-| | |
-|---|---|
-| **Type** | `{ select?: boolean; insert?: boolean; update?: boolean; delete?: boolean }` |
-| **Required** | Yes |
-| **Default per key** | `false` |
-
-Which CRUD operations this permission grants. At least one must be `true`.
-
-```typescript
-// Read-only
-operations: { select: true }
-
-// Full CRUD
-operations: { select: true, insert: true, update: true, delete: true }
-
-// Write-only (insert and update, no read)
-operations: { insert: true, update: true }
-```
-
-### `columns`
-
-| | |
-|---|---|
-| **Type** | `string[]` |
+| **Type** | `SelectConfig` |
 | **Required** | No |
-| **Default** | All columns (no restriction) |
-| **Applies to** | SELECT (returned columns), INSERT/UPDATE (writable columns) |
 
-An allowlist of column names. For SELECT, only these columns are returned. For INSERT/UPDATE, only these columns can be set by the client. Omit to allow all columns.
+Configures the SELECT operation. If omitted, select is not allowed.
 
 ```typescript
-// Only these columns are visible/writable
-columns: ['id', 'amount', 'status', 'created_at']
-
-// All columns allowed (omit the field)
-// columns: undefined
+select: {
+  columns: ['id', 'amount', 'status', 'created_at'],
+  where: { organization_id: { $eq: '$user.current_org_id' } },
+  limit: 1000,
+}
 ```
 
-### `filter`
+#### `select.columns`
 
-| | |
-|---|---|
-| **Type** | `Record<string, any>` |
-| **Required** | No |
-| **Applies to** | SELECT (WHERE), UPDATE (WHERE), DELETE (WHERE) |
-| **Supports** | `$user.*` substitution, all filter operators |
+An allowlist of column names returned in SELECT results. Omit to allow all columns.
 
-A condition injected into the query's WHERE clause. The user cannot see, modify, or remove this filter. Supports all [filter operators](/docs/reference/client-api/filter-operators) and `$user.*` variable substitution.
+```typescript
+select: { columns: ['id', 'name', 'status'] }
+```
+
+#### `select.where`
+
+A condition injected into the query's WHERE clause. The user cannot see, modify, or remove this. Supports all [operators](/docs/backend/permissions/operators) and `$user.*` variable substitution.
 
 ```typescript
 // Simple equality
-filter: { customer_id: { $eq: '$user.customer_id' } }
+select: { where: { customer_id: { $eq: '$user.id' } } }
 
 // Array membership
-filter: { organization_id: { $in: '$user.org_ids' } }
+select: { where: { organization_id: { $in: '$user.org_ids' } } }
 
 // Multiple conditions (AND)
-filter: {
-  organization_id: { $eq: '$user.current_org_id' },
-  status: { $ne: 'archived' },
+select: {
+  where: {
+    organization_id: { $eq: '$user.current_org_id' },
+    status: { $ne: 'archived' },
+  },
 }
 
-// Nested relationship filter
-filter: {
-  organization: {
-    members: { user_id: { $eq: '$user.id' } },
+// Nested relationship traversal
+select: {
+  where: {
+    organization: {
+      members: { user_id: { $eq: '$user.id' } },
+    },
   },
 }
 ```
 
-### `check`
+#### `select.sql`
 
-| | |
-|---|---|
-| **Type** | `Record<string, any>` |
-| **Required** | No |
-| **Applies to** | INSERT (validates data), UPDATE (validates new values) |
-| **Supports** | All filter operators (applied to the incoming data, not existing rows) |
-
-A validation condition that the incoming data must satisfy. If the data fails the check, the operation is rejected with a permission error. Unlike `filter`, `check` validates the *new* data, not existing rows.
+A raw SQL fragment appended to the WHERE clause for advanced filtering that operators cannot express.
 
 ```typescript
-// Ensure amount is non-negative
-check: { amount: { $gte: 0 } }
-
-// Ensure status is one of the allowed values
-check: { status: { $in: ['draft', 'active', 'cancelled'] } }
-
-// Multiple validations
-check: {
-  amount: { $gte: 0, $lte: 1_000_000 },
-  status: { $in: ['draft', 'active', 'cancelled'] },
-  priority: { $in: ['low', 'medium', 'high'] },
+select: {
+  where: { organization_id: { $in: '$user.org_ids' } },
+  sql: "created_at >= CURRENT_DATE - INTERVAL '30 days'",
 }
 ```
 
-### `preset`
+#### `select.limit`
+
+Maximum rows this permission can return per query. The client's `limit` is capped to whichever is lower: the permission limit or the global `limits.maxLimit`.
+
+```typescript
+select: { limit: 100 }
+```
+
+#### `select.middleware`
+
+Custom TypeScript that wraps query execution. See [Middleware](/docs/backend/permissions/middleware).
+
+### `insert`
 
 | | |
 |---|---|
-| **Type** | `Record<string, any>` |
+| **Type** | `InsertConfig` |
 | **Required** | No |
-| **Applies to** | INSERT (injects values), UPDATE (injects values) |
-| **Supports** | `$user.*` substitution, literal values |
 
-Key-value pairs injected into the data before writing. Preset values override anything the client sends for those columns. Use this for server-controlled fields like `created_by`, `organization_id`, or `updated_at`.
+Configures the INSERT operation. If omitted, insert is not allowed.
 
 ```typescript
-// Inject the current user's ID
-preset: { created_by: '$user.id' }
-
-// Inject organization and timestamp
-preset: {
-  organization_id: '$user.current_org_id',
-  updated_by: '$user.id',
-  updated_at: '$now',
+insert: {
+  columns: ['amount', 'status'],
+  validate: {
+    amount: { $gt: 0 },
+    status: { $eq: 'draft' },
+  },
+  default: {
+    created_at: '$now',
+  },
+  overwrite: {
+    created_by: '$user.id',
+    organization_id: '$user.current_org_id',
+  },
 }
-
-// Literal value
-preset: { source: 'api' }
 ```
 
-### `limit`
+#### `insert.columns`
+
+An allowlist of column names the client can write. Omit to allow all columns.
+
+#### `insert.validate`
+
+Validation conditions the incoming data must satisfy. If the data fails, the operation is rejected with `403`. Unlike `where`, `validate` checks the *new* data, not existing rows.
+
+```typescript
+insert: {
+  validate: {
+    amount: { $gte: 0, $lte: 1_000_000 },
+    status: { $in: ['draft'] },
+  },
+}
+```
+
+#### `insert.default`
+
+Default values applied when the client doesn't provide a value for the column. If the client sends a value, their value is used.
+
+```typescript
+insert: {
+  default: {
+    created_at: '$now',
+    status: 'draft',
+  },
+}
+```
+
+#### `insert.overwrite`
+
+Values that are always applied, regardless of what the client sends. The client cannot override these. Use for server-controlled fields like `created_by` or `organization_id`.
+
+```typescript
+insert: {
+  overwrite: {
+    created_by: '$user.id',
+    organization_id: '$user.current_org_id',
+  },
+}
+```
+
+#### `insert.middleware`
+
+Custom TypeScript that wraps query execution. See [Middleware](/docs/backend/permissions/middleware).
+
+### `update`
 
 | | |
 |---|---|
-| **Type** | `number` |
+| **Type** | `UpdateConfig` |
 | **Required** | No |
-| **Default** | Uses global `limits.maxLimit` |
-| **Applies to** | SELECT |
 
-Maximum number of rows this permission can return in a single query. Overrides the global `maxLimit` for this specific permission. The client's `limit` is capped to whichever is lower: the permission limit or the global limit.
+Configures the UPDATE operation. If omitted, update is not allowed.
 
 ```typescript
-// Cap to 100 rows per query
-limit: 100
-
-// Allow up to 50,000 rows (for export-type permissions)
-limit: 50_000
+update: {
+  columns: ['amount', 'status'],
+  where: { organization_id: { $in: '$user.org_ids' } },
+  validate: {
+    amount: { $gt: 0 },
+    status: { $in: ['draft', 'active', 'cancelled'] },
+  },
+  default: { updated_at: '$now' },
+  overwrite: { updated_by: '$user.id' },
+}
 ```
 
-### `customSql`
+#### `update.columns`
+
+An allowlist of column names the client can write.
+
+#### `update.where`
+
+A condition injected into the query's WHERE clause, restricting which rows can be updated.
+
+```typescript
+update: {
+  where: { organization_id: { $in: '$user.org_ids' } },
+}
+```
+
+#### `update.sql`
+
+A raw SQL fragment appended to the WHERE clause.
+
+#### `update.validate`
+
+Validation conditions the new values must satisfy.
+
+```typescript
+update: {
+  validate: {
+    amount: { $gt: 0 },
+    status: { $in: ['draft', 'active', 'cancelled'] },
+  },
+}
+```
+
+#### `update.default`
+
+Default values applied when the client doesn't provide a value for the column. If the client sends a value, their value is used.
+
+```typescript
+update: {
+  default: { updated_at: '$now' },
+}
+```
+
+#### `update.overwrite`
+
+Values that are always applied, regardless of what the client sends.
+
+```typescript
+update: {
+  overwrite: { updated_by: '$user.id' },
+}
+```
+
+#### `update.middleware`
+
+Custom TypeScript that wraps query execution. See [Middleware](/docs/backend/permissions/middleware).
+
+### `delete`
 
 | | |
 |---|---|
-| **Type** | `string` |
+| **Type** | `DeleteConfig` |
 | **Required** | No |
-| **Applies to** | SELECT (appended to WHERE clause) |
 
-A raw SQL fragment appended to the WHERE clause. Use this for advanced filtering that cannot be expressed with the standard filter operators. The fragment is parameterized with `$user.*` substitution.
+Configures the DELETE operation. If omitted, delete is not allowed.
 
 ```typescript
-// Spatial query
-customSql: "ST_Distance(location, ST_Point($user.longitude, $user.latitude)) < 10000"
-
-// Date range
-customSql: "created_at >= CURRENT_DATE - INTERVAL '30 days'"
+delete: {
+  where: {
+    customer_id: { $eq: '$user.id' },
+    status: { $eq: 'draft' },
+  },
+}
 ```
 
-<Callout type="warn">
-`customSql` bypasses the filter operator validation. Use it sparingly and ensure the SQL is safe. Never interpolate user input directly.
-</Callout>
+#### `delete.where`
 
-### `middleware`
+A condition injected into the query's WHERE clause, restricting which rows can be deleted.
 
-| | |
-|---|---|
-| **Type** | `(params, next) => Promise<any[]>` |
-| **Required** | No |
-| **Applies to** | All operations |
+#### `delete.sql`
 
-A function that wraps query execution. Receives destructured parameters (`user`, `db`, `table`, `operation`, `columns`, `query`, `input`, `filter`) and a `next()` function. Pass overrides to `next({ filter, input, columns, db })` to modify the query. Transform rows after `next()` to shape results. Wrap in `db.transaction()` for atomic operations.
+A raw SQL fragment appended to the WHERE clause.
+
+#### `delete.middleware`
+
+Custom TypeScript that wraps query execution. See [Middleware](/docs/backend/permissions/middleware).
+
+## default vs overwrite
+
+| | `default` | `overwrite` |
+|---|---|---|
+| **Purpose** | Fill in missing values | Force server-controlled values |
+| **Client control** | Client value wins if provided | Client value is always replaced |
+| **Use case** | Sensible defaults, timestamps | Ownership fields, org scoping |
+| **Available on** | `insert`, `update` | `insert`, `update` |
 
 ```typescript
-middleware: async ({ user, db, operation, input }, next) => {
-  // Before: validate
-  if (operation === 'insert') {
-    const org = await db.query.organizations.findFirst({
-      where: eq(organizations.id, user.current_org_id),
-    })
-    if (org.order_count >= org.order_limit) {
-      throw new PermissionError('Order limit reached')
-    }
-  }
-
-  const rows = await next()
-
-  // After: redact
-  if (!user.roles.includes('admin')) {
-    return rows.map(({ ssn, ...row }) => row)
-  }
-  return rows
-},
+insert: {
+  // If client doesn't send created_at, use current time
+  default: { created_at: '$now' },
+  // Always set created_by to the current user, no matter what client sends
+  overwrite: { created_by: '$user.id' },
+}
 ```
-
-See [Middleware](/docs/backend/permissions/middleware) for full documentation and examples.
 
 ## Complete Examples
 
@@ -304,15 +426,14 @@ See [Middleware](/docs/backend/permissions/middleware) for full documentation an
 
 ```typescript
 view_own_orders: {
-  name: 'View own orders',
-  description: 'Read orders belonging to the user\'s organization',
   table: 'main.orders',
-  operations: { select: true },
-  columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
-  filter: {
-    organization_id: { $eq: '$user.current_org_id' },
+  roles: ['viewer', 'editor', 'admin'],
+  description: 'Read orders belonging to the user\'s organization',
+  select: {
+    columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+    where: { organization_id: { $eq: '$user.current_org_id' } },
+    limit: 1000,
   },
-  limit: 1000,
 }
 ```
 
@@ -320,21 +441,35 @@ view_own_orders: {
 
 ```typescript
 manage_team_tasks: {
-  name: 'Manage team tasks',
-  description: 'Full CRUD on tasks for the user\'s team',
   table: 'main.tasks',
-  operations: { select: true, insert: true, update: true, delete: true },
-  columns: ['id', 'title', 'description', 'status', 'priority', 'assigned_to', 'due_date'],
-  filter: {
-    team_id: { $in: '$user.team_ids' },
+  roles: ['editor', 'admin'],
+  description: 'Full CRUD on tasks for the user\'s team',
+  select: {
+    columns: ['id', 'title', 'description', 'status', 'priority', 'assigned_to', 'due_date'],
+    where: { team_id: { $in: '$user.team_ids' } },
   },
-  check: {
-    status: { $in: ['todo', 'in_progress', 'done', 'cancelled'] },
-    priority: { $in: ['low', 'medium', 'high', 'critical'] },
+  insert: {
+    columns: ['title', 'description', 'status', 'priority', 'assigned_to', 'due_date'],
+    validate: {
+      status: { $in: ['todo', 'in_progress', 'done', 'cancelled'] },
+      priority: { $in: ['low', 'medium', 'high', 'critical'] },
+    },
+    overwrite: {
+      organization_id: '$user.current_org_id',
+      created_by: '$user.id',
+    },
   },
-  preset: {
-    organization_id: '$user.current_org_id',
-    updated_by: '$user.id',
+  update: {
+    columns: ['title', 'description', 'status', 'priority', 'assigned_to', 'due_date'],
+    where: { team_id: { $in: '$user.team_ids' } },
+    validate: {
+      status: { $in: ['todo', 'in_progress', 'done', 'cancelled'] },
+      priority: { $in: ['low', 'medium', 'high', 'critical'] },
+    },
+    overwrite: { updated_by: '$user.id' },
+  },
+  delete: {
+    where: { team_id: { $in: '$user.team_ids' } },
   },
 }
 ```
@@ -343,19 +478,20 @@ manage_team_tasks: {
 
 ```typescript
 submit_feedback: {
-  name: 'Submit feedback',
-  description: 'Users can submit feedback but cannot read or modify existing entries',
   table: 'main.feedback',
-  operations: { insert: true },
-  columns: ['message', 'category', 'rating'],
-  check: {
-    rating: { $gte: 1, $lte: 5 },
-    category: { $in: ['bug', 'feature', 'general'] },
-  },
-  preset: {
-    user_id: '$user.id',
-    submitted_at: '$now',
-    status: 'pending',
+  roles: ['user'],
+  description: 'Users can submit feedback but cannot read or modify existing entries',
+  insert: {
+    columns: ['message', 'category', 'rating'],
+    validate: {
+      rating: { $gte: 1, $lte: 5 },
+      category: { $in: ['bug', 'feature', 'general'] },
+    },
+    default: { status: 'pending' },
+    overwrite: {
+      user_id: '$user.id',
+      submitted_at: '$now',
+    },
   },
 }
 ```
@@ -364,13 +500,14 @@ submit_feedback: {
 
 ```typescript
 delete_draft_orders: {
-  name: 'Delete draft orders',
-  description: 'Users can only delete their own orders that are still in draft status',
   table: 'main.orders',
-  operations: { delete: true },
-  filter: {
-    customer_id: { $eq: '$user.customer_id' },
-    status: { $eq: 'draft' },
+  roles: ['sales_rep', 'admin'],
+  description: 'Users can only delete their own orders that are still in draft status',
+  delete: {
+    where: {
+      customer_id: { $eq: '$user.customer_id' },
+      status: { $eq: 'draft' },
+    },
   },
 }
 ```

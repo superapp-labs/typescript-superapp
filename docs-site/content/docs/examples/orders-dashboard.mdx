@@ -22,89 +22,67 @@ const auth = betterAuthProvider({
 
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth,
 
   permissions: {
-    // Rep sees only orders they created
-    read_own_orders: {
+    orders: {
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'created_by', 'created_at'],
-      filter: { created_by: { $eq: '$user.id' } },
-    },
 
-    // Admin sees all orders
-    read_all_orders: {
-      table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'created_by', 'created_at'],
-    },
-
-    // Rep creates orders — ownership is enforced, amount must be positive,
-    // new orders can only start as draft
-    create_own_orders: {
-      table: 'main.orders',
-      operations: { insert: true },
-      columns: ['amount', 'status'],
-      check: {
-        amount: { $gt: 0 },
-        status: { $eq: 'draft' },
+      // Rep sees only orders they created; admin sees all
+      select: {
+        roles: ['sales_rep', 'admin'],
+        columns: ['id', 'amount', 'status', 'created_by', 'created_at'],
+        where: { created_by: { $eq: '$user.id' } },
       },
-      preset: {
-        created_by: '$user.id',
-        created_at: '$now',
-      },
-    },
 
-    // Rep updates only their own orders — amount stays positive,
-    // status transitions are restricted
-    update_own_orders: {
-      table: 'main.orders',
-      operations: { update: true },
-      columns: ['amount', 'status'],
-      filter: { created_by: { $eq: '$user.id' } },
-      check: {
-        amount: { $gt: 0 },
-        status: { $in: ['draft', 'active', 'cancelled'] },
+      // Rep creates orders — ownership is enforced, amount must be positive,
+      // new orders can only start as draft
+      insert: {
+        roles: ['sales_rep', 'admin'],
+        columns: ['amount', 'status'],
+        validate: {
+          amount: { $gt: 0 },
+          status: { $eq: 'draft' },
+        },
+        overwrite: {
+          created_by: '$user.id',
+          created_at: '$now',
+        },
       },
-      preset: { updated_at: '$now' },
-    },
 
-    // Rep can only delete their own draft orders
-    delete_own_draft_orders: {
-      table: 'main.orders',
-      operations: { delete: true },
-      filter: {
-        created_by: { $eq: '$user.id' },
-        status: { $eq: 'draft' },
+      // Rep updates only their own orders — amount stays positive,
+      // status transitions are restricted
+      update: {
+        roles: ['sales_rep', 'admin'],
+        columns: ['amount', 'status'],
+        where: { created_by: { $eq: '$user.id' } },
+        validate: {
+          amount: { $gt: 0 },
+          status: { $in: ['draft', 'active', 'cancelled'] },
+        },
+        overwrite: { updated_at: '$now' },
+      },
+
+      // Rep can only delete their own draft orders
+      delete: {
+        roles: ['sales_rep', 'admin'],
+        where: {
+          created_by: { $eq: '$user.id' },
+          status: { $eq: 'draft' },
+        },
       },
     },
-  },
-
-  roles: {
-    sales_rep: [
-      'read_own_orders',
-      'create_own_orders',
-      'update_own_orders',
-      'delete_own_draft_orders',
-    ],
-    admin: [
-      'read_all_orders',
-      'create_own_orders',
-      'update_own_orders',
-      'delete_own_draft_orders',
-    ],
   },
 })
 ```
 
 **How it works:**
 
-- **`filter`** — injects a WHERE clause. A rep querying orders automatically gets `WHERE created_by = ?` — they never see other reps' orders.
-- **`check`** — validates incoming data. Sending `amount: -5` or `status: 'shipped'` is rejected with `403` before any SQL runs.
-- **`preset`** — auto-sets `created_by` and timestamps. The client cannot override these — ownership is enforced server-side.
+- **`where`** — injects a WHERE clause. A rep querying orders automatically gets `WHERE created_by = ?` — they never see other reps' orders.
+- **`validate`** — validates incoming data. Sending `amount: -5` or `status: 'shipped'` is rejected with `403` before any SQL runs.
+- **`overwrite`** — always applied server-side. The client cannot override these — `created_by` and timestamps are enforced automatically.
 
 ## Client
 

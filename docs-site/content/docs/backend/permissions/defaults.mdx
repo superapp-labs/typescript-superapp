@@ -1,0 +1,176 @@
+---
+title: Defaults & Overwrite
+icon: SlidersHorizontal
+description: Automatically fill missing values with default or force values with overwrite on insert and update.
+---
+
+`default` and `overwrite` automatically set column values on write operations. They live inside `insert` and `update` operation blocks.
+
+- **`default`** — fills in values when the client does not provide them. The client can override these by sending their own value.
+- **`overwrite`** — always applied regardless of what the client sends. The client cannot override these.
+
+```typescript
+permissions: {
+  create_orders: {
+    table: 'main.orders',
+    roles: ['sales'],
+    insert: {
+      columns: ['amount', 'status', 'customer_id'],
+      default: {
+        status: 'draft',
+        priority: 3,
+      },
+      overwrite: {
+        created_by: '$user.id',
+        organization_id: '$user.current_org_id',
+      },
+    },
+  },
+}
+```
+
+When a user inserts an order:
+- `status` is set to `'draft'` only if the client does not send a `status` value
+- `priority` is set to `3` only if the client does not send a `priority` value
+- `created_by` and `organization_id` are always set from the session — even if the user sends different values in the request body
+
+## How They Work
+
+### default
+
+1. User sends request body: `{ amount: 500, customer_id: 'cust_1' }`
+2. Engine checks for missing fields that have defaults: `status` is missing, `priority` is missing
+3. Default values are merged: `{ amount: 500, customer_id: 'cust_1', status: 'draft', priority: 3 }`
+4. If the user had sent `{ amount: 500, status: 'active' }`, the `status` would remain `'active'`
+
+### overwrite
+
+1. User sends request body: `{ amount: 500, status: 'draft', created_by: 'someone_else' }`
+2. Engine resolves overwrite variables: `$user.id` becomes `'usr_123'`
+3. Overwrite values replace any user-provided values: `created_by` is forced to `'usr_123'`
+4. Final insert: `{ amount: 500, status: 'draft', created_by: 'usr_123', organization_id: 'org_456' }`
+
+## $user.* Variables
+
+Both `default` and `overwrite` reference the session object returned by `resolveSession`. Any property on the session object is available:
+
+| Variable | Example Value | Description |
+|---|---|---|
+| `$user.id` | `'usr_123'` | User ID from the user table |
+| `$user.email` | `'alice@example.com'` | User email |
+| `$user.name` | `'Alice'` | User name |
+| `$user.current_org_id` | `'org_456'` | Current organization (from resolveSession) |
+| `$user.org_ids` | `['org_1', 'org_2']` | All organization IDs (from resolveSession) |
+
+The available variables depend on what your `resolveSession` function returns.
+
+## Common Patterns
+
+### Audit Columns on Insert
+
+```typescript
+insert: {
+  columns: ['amount', 'status'],
+  overwrite: {
+    created_by: '$user.id',
+    created_at: '$now',
+  },
+}
+```
+
+### Audit Columns on Update
+
+```typescript
+update: {
+  columns: ['amount', 'status'],
+  overwrite: {
+    updated_by: '$user.id',
+    updated_at: '$now',
+  },
+}
+```
+
+### Organization Scoping
+
+Ensure records always belong to the user's current organization:
+
+```typescript
+insert: {
+  columns: ['name', 'description'],
+  overwrite: {
+    organization_id: '$user.current_org_id',
+  },
+}
+```
+
+### Sensible Defaults for Optional Fields
+
+Let the client optionally provide values, falling back to defaults:
+
+```typescript
+insert: {
+  columns: ['name', 'description', 'status', 'priority'],
+  default: {
+    status: 'draft',
+    priority: 3,
+  },
+}
+```
+
+### Combined Insert Permission
+
+```typescript
+permissions: {
+  create_orders: {
+    table: 'main.orders',
+    roles: ['sales'],
+    insert: {
+      columns: ['amount', 'status', 'customer_id'],
+      validate: {
+        amount: { $gte: 0 },
+        status: { $in: ['draft'] },
+      },
+      default: {
+        priority: 3,
+      },
+      overwrite: {
+        created_by: '$user.id',
+        organization_id: '$user.current_org_id',
+      },
+    },
+  },
+}
+```
+
+This permission:
+- Allows inserting `amount`, `status`, and `customer_id`
+- Validates that `amount >= 0` and `status` is `'draft'`
+- Sets `priority` to `3` if the client does not provide it
+- Always sets `created_by` and `organization_id` from the session
+
+## Default vs. Overwrite vs. Validate
+
+| | Default | Overwrite | Validate |
+|---|---|---|---|
+| **Purpose** | Fill missing values | Force values | Validate values |
+| **User control** | Can override by sending value | Cannot override | Must provide valid value |
+| **When applied** | Only when field is missing | Always, after validation | Before query |
+| **Failure** | Never fails | Never fails | Returns 403 on invalid data |
+| **Operations** | `insert`, `update` | `insert`, `update` | `insert`, `update` |
+
+## Static Values
+
+Both `default` and `overwrite` can use static values instead of session variables:
+
+```typescript
+insert: {
+  columns: ['name'],
+  default: {
+    source: 'api',
+    version: 2,
+  },
+  overwrite: {
+    tenant: 'main',
+  },
+}
+```

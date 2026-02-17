@@ -4,16 +4,14 @@ description: Connect to MySQL databases.
 icon: Database
 ---
 
-Attach a MySQL database and get full CRUD through DuckDB's native `mysql_scanner` extension.
+Connect to a MySQL database and get full CRUD through a direct `mysql2` driver connection.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { mysqlProvider } from '@superapp/backend/integrations/mysql'
 
 const engine = createEngine({
-  integrations: [mysqlProvider],
   connections: {
-    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+    warehouse: process.env.MYSQL_URL!,
   },
 })
 ```
@@ -34,17 +32,9 @@ mysql://user:password@host:3306/database
 | `3306` | Port (default: 3306) |
 | `database` | Database name |
 
-## What DuckDB Generates
+## How It Works
 
-When the engine starts, the MySQL provider generates:
-
-```sql
-INSTALL mysql;
-LOAD mysql;
-ATTACH 'host=host user=user password=password port=3306 database=database' AS warehouse (TYPE MYSQL, READ_WRITE);
-```
-
-All tables in the target database become available under the `warehouse` schema. DuckDB pushes filters and aggregations down to MySQL whenever possible.
+When the engine starts, it detects the `mysql://` protocol and initializes a connection pool using the `mysql2` driver. All tables in the target database become available under the `warehouse` namespace. Queries are executed directly against MySQL with no intermediary.
 
 ## Capabilities
 
@@ -61,26 +51,22 @@ All tables in the target database become available under the `warehouse` schema.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { mysqlProvider } from '@superapp/backend/integrations/mysql'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 
 const engine = createEngine({
-  integrations: [mysqlProvider],
   connections: {
-    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+    warehouse: process.env.MYSQL_URL!,
   },
   permissions: {
-    read_customers: {
-      name: 'Read customers',
+    customers: {
       table: 'warehouse.customers',
-      operations: { select: true },
-      columns: ['id', 'name', 'email', 'created_at'],
+      select: {
+        roles: ['viewer'],
+        columns: ['id', 'name', 'email', 'created_at'],
+      },
     },
-  },
-  roles: {
-    viewer: ['read_customers'],
   },
 })
 
@@ -94,14 +80,10 @@ serve({ fetch: app.fetch, port: 3001 })
 MySQL works alongside any other provider. A common pattern is Postgres for your primary database and MySQL for a legacy warehouse:
 
 ```typescript
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
-import { mysqlProvider } from '@superapp/backend/integrations/mysql'
-
 const engine = createEngine({
-  integrations: [postgresProvider, mysqlProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
-    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+    main: process.env.PG_URL!,
+    warehouse: process.env.MYSQL_URL!,
   },
 })
 ```

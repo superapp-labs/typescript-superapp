@@ -4,42 +4,32 @@ icon: Database
 description: Connect to SQLite databases.
 ---
 
-Attach a local SQLite file and get full CRUD through DuckDB's native `sqlite_scanner` extension. Ideal for development, testing, and embedded use cases.
+Connect to a local SQLite file and get full CRUD through a direct `better-sqlite3` driver connection. Ideal for development, testing, and embedded use cases.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
 
 const engine = createEngine({
-  integrations: [sqliteProvider],
   connections: {
-    local: { type: 'sqlite', path: './data/app.db' },
+    local: './data/app.db',
   },
 })
 ```
 
 ## Connection Config
 
-SQLite uses a file path instead of a URL:
+SQLite connections are just file path strings:
 
-| Option | Type | Description |
-|---|---|---|
-| `type` | `'sqlite'` | Provider type |
-| `path` | `string` | Absolute or relative path to the `.db` file |
+| Format | Description |
+|---|---|
+| `'./data/app.db'` | Relative path to the `.db` file |
+| `'/absolute/path/app.db'` | Absolute path to the `.db` file |
 
 The file must exist before the engine starts. To create a new database, use the `sqlite3` CLI or any SQLite tool.
 
-## What DuckDB Generates
+## How It Works
 
-When the engine starts, the SQLite provider generates:
-
-```sql
-INSTALL sqlite;
-LOAD sqlite;
-ATTACH './data/app.db' AS local (TYPE SQLITE, READ_WRITE);
-```
-
-All tables in the SQLite file become available under the `local` schema.
+When the engine starts, it detects the file path and opens a connection using the `better-sqlite3` driver. All tables in the SQLite file become available under the `local` namespace.
 
 ## Capabilities
 
@@ -75,9 +65,8 @@ SQL
 
 ```typescript
 const engine = createEngine({
-  integrations: [sqliteProvider],
   connections: {
-    main: { type: 'sqlite', path: './data/dev.db' },
+    main: './data/dev.db',
   },
 })
 ```
@@ -88,7 +77,6 @@ For tests, create a temporary database before each test run:
 
 ```typescript
 import { createEngine } from '@superapp/backend'
-import { sqliteProvider } from '@superapp/backend/integrations/sqlite'
 import { mkdtempSync, cpSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -98,9 +86,8 @@ function createTestEngine() {
   cpSync('./fixtures/test.db', join(dir, 'test.db'))
 
   return createEngine({
-    integrations: [sqliteProvider],
     connections: {
-      main: { type: 'sqlite', path: join(dir, 'test.db') },
+      main: join(dir, 'test.db'),
     },
   })
 }

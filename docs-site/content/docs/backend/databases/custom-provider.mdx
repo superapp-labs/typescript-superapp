@@ -4,7 +4,7 @@ icon: Puzzle
 description: Build a provider for any data source.
 ---
 
-When your data source is not a database DuckDB can attach natively -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary systems -- build a custom provider.
+When your data source is not a database with a built-in driver -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary systems -- build a custom provider.
 
 ```typescript
 import { createEngine, CustomIntegrationProvider } from '@superapp/backend'
@@ -40,7 +40,7 @@ const httpProvider: CustomIntegrationProvider = {
 }
 
 const engine = createEngine({
-  integrations: [httpProvider],
+  providers: [httpProvider],
   connections: {
     crm: { type: 'http-api', baseUrl: 'https://api.crm.com', apiKey: process.env.CRM_API_KEY! },
   },
@@ -50,9 +50,9 @@ const engine = createEngine({
 ## When to Use Custom Providers
 
 - **REST APIs** -- wrap a third-party API as queryable tables
-- **Edge runtimes** -- environments where DuckDB extensions cannot be loaded
-- **Proprietary databases** -- systems without a DuckDB scanner extension
-- **Data virtualization** -- combine API data with SQL databases in a single query layer
+- **Edge runtimes** -- environments where native drivers cannot be loaded
+- **Proprietary databases** -- systems without a built-in driver
+- **Data virtualization** -- expose API data as queryable tables alongside SQL databases
 
 ## CustomIntegrationProvider Interface
 
@@ -184,15 +184,13 @@ async execute(config, query) {
 
 ## Registering the Provider
 
-Pass your custom provider in the `integrations` array alongside native providers:
+Pass your custom provider in the `providers` array. Built-in databases (Postgres, MySQL, SQLite) do not need provider imports -- the engine infers them from the URL protocol:
 
 ```typescript
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
-
 const engine = createEngine({
-  integrations: [postgresProvider, httpProvider],
+  providers: [httpProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
     crm: { type: 'http-api', baseUrl: 'https://api.crm.com', apiKey: process.env.CRM_API_KEY! },
   },
 })

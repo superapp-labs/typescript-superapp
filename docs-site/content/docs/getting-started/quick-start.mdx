@@ -27,7 +27,6 @@ Create `server.ts` in your backend project:
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const auth = betterAuthProvider({
   secret: process.env.AUTH_SECRET!,
@@ -40,27 +39,24 @@ const auth = betterAuthProvider({
 
 export const engine = createEngine({
   superapp_db: './superapp.db',
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth,
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   permissions: {
     view_own_orders: {
-      name: 'View own orders',
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
-      filter: {
-        organization: {
-          members: { user_id: { $eq: '$user.id' } },
+      roles: ['viewer'],
+      select: {
+        columns: ['id', 'amount', 'status', 'customer_id', 'created_at'],
+        where: {
+          organization: {
+            members: { user_id: { $eq: '$user.id' } },
+          },
         },
       },
     },
-  },
-  roles: {
-    viewer: ['view_own_orders'],
   },
 })
 ```
@@ -226,7 +222,7 @@ Browser                       Backend                        Database
   |                              |-- Verify JWT                |
   |                              |-- Resolve session ($user)   |
   |                              |-- Check permissions         |
-  |                              |-- Inject WHERE filters      |
+  |                              |-- Inject WHERE clauses      |
   |                              |                              |
   |                              |-- Execute SQL via DuckDB -->|
   |                              |<-------- Results -----------|
@@ -238,4 +234,4 @@ Browser                       Backend                        Database
 
 - [Backend Configuration](/docs/backend) — Full reference for `createEngine` options, connections, DuckDB tuning, and security settings.
 - [Client Queries](/docs/client/queries) — All query methods: `db.select()`, `db.insert()`, `db.update()`, `db.delete()`.
-- [Permissions](/docs/backend/permissions/filters) — Row-level filters, column restrictions, write checks, and preset values.
+- [Permissions](/docs/backend/permissions/where) — Where clauses, validation, defaults, overwrite, and middleware.

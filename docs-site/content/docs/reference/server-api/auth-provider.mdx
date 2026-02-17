@@ -167,11 +167,10 @@ const firebaseAuth: AuthProvider = {
 
 const engine = createEngine({
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth: firebaseAuth,
   permissions: { /* ... */ },
-  roles: { /* ... */ },
 })
 ```
 
@@ -277,9 +276,9 @@ Whatever you return from `resolveSession` becomes available as `$user.*` in perm
 }
 
 // Available in permissions as:
-filter: { customer_id: { $eq: '$user.customer_id' } }           // 'cust_002'
-filter: { organization_id: { $in: '$user.org_ids' } }           // ['org_1', 'org_2']
-filter: { team_id: { $in: '$user.team_ids' } }                  // ['team_a', 'team_b']
-preset: { created_by: '$user.id' }                               // 'usr_42'
-preset: { organization_id: '$user.current_org_id' }              // 'org_1'
+where: { customer_id: { $eq: '$user.customer_id' } }             // 'cust_002'
+where: { organization_id: { $in: '$user.org_ids' } }             // ['org_1', 'org_2']
+where: { team_id: { $in: '$user.team_ids' } }                    // ['team_a', 'team_b']
+overwrite: { created_by: '$user.id' }                             // 'usr_42'
+overwrite: { organization_id: '$user.current_org_id' }            // 'org_1'
 ```

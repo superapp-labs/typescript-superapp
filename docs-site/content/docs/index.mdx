@@ -65,31 +65,28 @@ superapp is three packages:
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
 import { Hono } from 'hono'
 import { serve } from '@hono/node-server'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
   auth: betterAuthProvider({ secret: process.env.AUTH_SECRET! }),
   permissions: {
     view_own_orders: {
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'created_at'],
+      roles: ['viewer'],
+      select: {
+        columns: ['id', 'amount', 'status', 'created_at'],
 
-      // ⬇️ THIS IS THE KEY LINE — it scopes every query to the logged-in user.
-      // '$user.id' is replaced at runtime with the authenticated user's ID.
-      // The backend injects: WHERE customer_id = '<current user id>'
-      filter: { customer_id: { $eq: '$user.id' } },
+        // ⬇️ THIS IS THE KEY LINE — it scopes every query to the logged-in user.
+        // '$user.id' is replaced at runtime with the authenticated user's ID.
+        // The backend injects: WHERE customer_id = '<current user id>'
+        where: { customer_id: { $eq: '$user.id' } },
+      },
     },
-  },
-  roles: {
-    viewer: ['view_own_orders'],
   },
 })
 
@@ -140,7 +137,7 @@ const orders = await db.select()
 // ❌ Alice can NEVER see Bob's orders — the backend enforces it
 ```
 
-**What happens here:** The client asks for active orders, but the `filter: { customer_id: { $eq: '$user.id' } }` in the server config automatically injects `WHERE customer_id = ?` into every query. The logged-in user only sees **their own orders**, filtered by active status — without the client writing any authorization logic. The backend enforces it in the middleware before any data leaves the server.
+**What happens here:** The client asks for active orders, but the `where: { customer_id: { $eq: '$user.id' } }` in the server config automatically injects `WHERE customer_id = ?` into every query. The logged-in user only sees **their own orders**, filtered by active status — without the client writing any authorization logic. The backend enforces it in the middleware before any data leaves the server.
 
 <Callout type="info">
 **The same Drizzle code, different results per user.** Two users running the exact same `db.select()` query will get completely different rows — each scoped to their own data. You never write `WHERE user_id = currentUser.id` in your frontend. The backend handles it.

@@ -9,12 +9,10 @@ The generic adapter works with any runtime that supports the standard `Request`/
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { createHandler } from '@superapp/backend/adapters/generic'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 
@@ -30,12 +28,10 @@ export default {
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { createHandler } from '@superapp/backend/adapters/generic'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 
@@ -53,12 +49,10 @@ export default {
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { createHandler } from '@superapp/backend/adapters/generic'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: Deno.env.get('PG_URL')! },
+    main: Deno.env.get('PG_URL')!,
   },
 })
 
@@ -72,12 +66,10 @@ Deno.serve({ port: 3001 }, (req) => handler(req))
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { createHandler } from '@superapp/backend/adapters/generic'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
 
 const engine = createEngine({
-  integrations: [postgresProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: process.env.PG_URL!,
   },
 })
 

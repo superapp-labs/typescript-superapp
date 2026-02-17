@@ -10,10 +10,8 @@ description: "Complete configuration reference."
 import { createEngine } from '@superapp/backend'
 
 const engine = createEngine({
-  mode: 'programmatic',
-  superapp_db: './superapp.db',
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
+    main: 'postgres://localhost:5432/mydb',
   },
 })
 ```
@@ -23,13 +21,11 @@ const engine = createEngine({
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode. `programmatic` = config in code, `admin_ui` = config in admin UI. |
-| `superapp_db` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables (sessions, roles, audit logs, admin configuration). Local file path for SQLite or a Turso URL. |
-| `integrations` | `Provider[]` | `[]` | Database provider modules to load. Each provider adds support for a database type (postgres, mysql, sqlite, csv). |
-| `connections` | `Record<string, ConnectionConfig>` | `{}` | Named database connections. Keys become table namespace prefixes (e.g., `main.orders`). |
+| `superapp_db` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables (sessions, audit logs, admin configuration). Local file path for SQLite or a Turso URL. |
+| `connections` | `Record<string, string \| object>` | `{}` | Named database connections. Keys become table namespace prefixes (e.g., `main.orders`). Type is inferred from the URL protocol. |
 | `auth` | `AuthProvider` | `undefined` | Authentication provider. If omitted, the engine runs in open mode (no auth). |
-| `permissions` | `Record<string, Permission>` | `{}` | Permission definitions. Keys must be `snake_case` slugs. Only used in `programmatic` mode. |
-| `roles` | `Record<string, string[]>` | `{}` | Role-to-permission mappings. Each key is a role name, value is an array of permission slugs. |
-| `actions` | `Record<string, Action>` | `{}` | Typed server-side functions callable by the client via `POST /actions/{name}`. Each action defines Zod `input`/`output` schemas and a `run` function. Access controlled through `roles` using the `action_` prefix. See [Actions](/docs/backend/actions). |
+| `permissions` | `Record<string, Permission>` | `{}` | Permission definitions. Keys must be `snake_case` slugs. Roles are defined inline on each permission. |
+| `actions` | `Record<string, Action>` | `{}` | Typed server-side functions callable by the client via `POST /actions/{name}`. Each action defines Zod `input`/`output` schemas, a `run` function, and a `roles` array. See [Actions](/docs/backend/actions). |
 | `masterKey` | `string` | `undefined` | Master API key for admin access. Required for `admin_ui` mode and admin endpoints. Set via environment variable, never hardcode. |
 | `schemaEndpoint` | `SchemaEndpointConfig \| boolean` | `false` | Enable the `GET /schema` introspection endpoint. Set `true` for defaults or pass a config object. |
 | `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. |
@@ -40,23 +36,86 @@ const engine = createEngine({
 
 ## `connections`
 
-Each connection maps a name to a database configuration. The connection name becomes the namespace for all tables in that database.
+Each connection maps a name to a database URL or config object. The engine infers the database type from the URL protocol — no explicit `type` field needed.
 
 ```typescript
 connections: {
-  main: { type: 'postgres', url: 'postgres://localhost:5432/mydb' },
-  warehouse: { type: 'mysql', url: 'mysql://localhost:3306/warehouse' },
-  legacy: { type: 'sqlite', path: './legacy.db' },
-  imports: { type: 'csv', directory: './data/imports/' },
+  main: 'postgres://localhost:5432/mydb',           // inferred: postgres
+  warehouse: 'mysql://localhost:3306/warehouse',     // inferred: mysql
+  legacy: './legacy.db',                             // inferred: sqlite (file path)
+  imports: { directory: './data/imports/' },          // csv
 }
 ```
 
-| Type | Config Shape |
+### Type Inference
+
+| URL / Config | Inferred Type |
 |---|---|
-| `postgres` | `{ type: 'postgres', url: string }` |
-| `mysql` | `{ type: 'mysql', url: string }` |
-| `sqlite` | `{ type: 'sqlite', path: string }` |
-| `csv` | `{ type: 'csv', directory: string }` |
+| `postgres://...` or `postgresql://...` | PostgreSQL |
+| `mysql://...` | MySQL |
+| File path (`.db`, `.sqlite`) or `file:...` | SQLite |
+| `libsql://...` or Turso URL | SQLite (Turso) |
+| `{ directory: string }` | CSV |
+
+### Examples
+
+```typescript
+// Single Postgres
+connections: {
+  main: process.env.PG_URL!,
+}
+
+// Multiple databases
+connections: {
+  main: process.env.PG_URL!,
+  warehouse: process.env.MYSQL_URL!,
+  legacy: './legacy.db',
+  imports: { directory: './data/imports/' },
+}
+```
+
+## `permissions`
+
+Permission definitions using Drizzle-like syntax. Each permission targets a table, declares which roles have access, and configures operations (`select`, `insert`, `update`, `delete`) individually.
+
+```typescript
+permissions: {
+  view_own_orders: {
+    table: 'main.orders',
+    roles: ['viewer', 'editor', 'admin'],
+    select: {
+      columns: ['id', 'amount', 'status', 'created_at'],
+      where: { customer_id: { $eq: '$user.customer_id' } },
+    },
+  },
+}
+```
+
+See [Permission Object](/docs/reference/server-api/permission-object) for the complete shape reference.
+
+## `actions`
+
+Typed server-side functions with inline roles. Each action defines its allowed roles directly.
+
+```typescript
+actions: {
+  incrementStock: {
+    roles: ['warehouse_manager', 'admin'],
+    input: z.object({ productId: z.string(), amount: z.number().positive() }),
+    output: z.object({ id: z.string(), stock: z.number() }),
+    run: async ({ user, db }, { productId, amount }) => {
+      const [updated] = await db
+        .update(products)
+        .set({ stock: sql`stock + ${amount}` })
+        .where(eq(products.id, productId))
+        .returning({ id: products.id, stock: products.stock })
+      return updated
+    },
+  },
+},
+```
+
+See [Actions](/docs/backend/actions) for full documentation.
 
 ## `duckdb`
 
@@ -88,8 +147,8 @@ Query and rate limit constraints to prevent abuse and resource exhaustion.
 |---|---|---|---|
 | `maxLimit` | `number` | `10000` | Maximum number of rows a single query can return. Client `limit` values above this are capped. |
 | `maxIncludeDepth` | `number` | `3` | Maximum nesting depth for `include` (relation) joins. Prevents deeply nested relation chains. |
-| `maxFilterDepth` | `number` | `5` | Maximum nesting depth for filter conditions (`$and`, `$or`, `$not`). Prevents excessively complex filters. |
-| `maxFilterConditions` | `number` | `50` | Maximum total number of filter conditions in a single query. |
+| `maxFilterDepth` | `number` | `5` | Maximum nesting depth for where conditions (`$and`, `$or`, `$not`). Prevents excessively complex filters. |
+| `maxFilterConditions` | `number` | `50` | Maximum total number of where conditions in a single query. |
 | `maxRequestBodySize` | `string` | `'1mb'` | Maximum HTTP request body size. Accepts units: `'512kb'`, `'2mb'`, etc. |
 | `queryTimeout` | `number` | `30000` | Query-level timeout in milliseconds. Separate from DuckDB's internal timeout. |
 | `rateLimitPerUser` | `number` | `200` | Maximum requests per minute per authenticated user. |
@@ -120,7 +179,7 @@ Configure audit logging for queries, permission denials, and admin actions.
 | `logDuration` | `boolean` | `true` | Log query execution time in milliseconds. |
 | `logUser` | `boolean` | `true` | Log the authenticated user ID with each query. |
 | `logDenied` | `boolean` | `true` | Log permission denial events. Useful for detecting unauthorized access attempts. |
-| `logAdminActions` | `boolean` | `true` | Log admin UI actions (permission changes, connection edits, role assignments). |
+| `logAdminActions` | `boolean` | `true` | Log admin UI actions (permission changes, connection edits). |
 | `retention` | `string` | `'90d'` | Auto-delete audit logs older than this duration. Accepts `'30d'`, `'90d'`, `'1y'`, etc. |
 | `piiRedaction` | `boolean` | `false` | Redact PII (emails, phone numbers) from audit log entries. |
 
@@ -128,7 +187,7 @@ Configure audit logging for queries, permission denials, and admin actions.
 audit: {
   enabled: true,
   logQuery: true,
-  logParams: false,       // disable in production to avoid logging sensitive data
+  logParams: false,
   logDuration: true,
   logUser: true,
   logDenied: true,
@@ -208,16 +267,13 @@ schemaEndpoint: {
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
-import { postgresProvider } from '@superapp/backend/integrations/postgres'
-import { mysqlProvider } from '@superapp/backend/integrations/mysql'
 
 const engine = createEngine({
   mode: 'programmatic',
   superapp_db: process.env.TURSO_URL ?? './superapp.db',
-  integrations: [postgresProvider, mysqlProvider],
   connections: {
-    main: { type: 'postgres', url: process.env.PG_URL! },
-    warehouse: { type: 'mysql', url: process.env.MYSQL_URL! },
+    main: process.env.PG_URL!,
+    warehouse: process.env.MYSQL_URL!,
   },
   auth: betterAuthProvider({
     secret: process.env.AUTH_SECRET!,
@@ -275,15 +331,17 @@ const engine = createEngine({
   },
   permissions: {
     view_own_orders: {
-      name: 'View own orders',
       table: 'main.orders',
-      operations: { select: true },
-      columns: ['id', 'amount', 'status', 'created_at'],
-      filter: { customer_id: { $eq: '$user.customer_id' } },
+      roles: ['viewer', 'warehouse_manager'],
+      select: {
+        columns: ['id', 'amount', 'status', 'created_at'],
+        where: { customer_id: { $eq: '$user.customer_id' } },
+      },
     },
   },
   actions: {
     incrementStock: {
+      roles: ['warehouse_manager'],
       input: z.object({ productId: z.string(), amount: z.number().positive() }),
       output: z.object({ id: z.string(), stock: z.number() }),
       run: async ({ user, db }, { productId, amount }) => {
@@ -295,10 +353,6 @@ const engine = createEngine({
         return updated
       },
     },
-  },
-  roles: {
-    viewer: ['view_own_orders'],
-    warehouse_manager: ['view_own_orders', 'action_incrementStock'],
   },
 })
 ```
