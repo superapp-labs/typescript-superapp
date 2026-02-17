@@ -1,40 +1,39 @@
 ---
 title: Middleware
 icon: Code
-description: Run custom TypeScript that wraps query execution, with full access to the database, user session, and query data.
+description: Run custom TypeScript before and after query execution — modify where clauses, transform input, restrict columns, and run side effects.
 ---
 
-When declarative where clauses, validate rules, and defaults/overwrite are not enough, `middleware` lets you wrap the query execution with custom TypeScript. Middleware is defined inside an operation block. Every parameter is destructured — you work directly with `user`, `db`, `where`, `input`, and pass overrides to `next()` to modify what gets executed.
+When declarative where clauses, validate rules, and defaults/overwrite are not enough, `middleware` lets you wrap the query execution with custom TypeScript. Middleware is defined inside an operation block. Every parameter is destructured — you work directly with `user`, `db`, `where`, `input`, and pass overrides to `next()` to control what gets executed.
 
 ```typescript
 permissions: {
-  create_order: {
-    table: 'main.orders',
-    roles: ['customer'],
-    insert: {
-      columns: ['product_id', 'quantity'],
-      middleware: async ({ user, db, operation, input }, next) => {
-        // Look up the product to validate stock
-        const product = await db.query.products.findFirst({
-          where: eq(products.id, input.product_id),
+  manage_tasks: {
+    table: 'main.tasks',
+    roles: ['member'],
+    select: {
+      columns: '*',
+      where: { organization_id: { $eq: '$user.current_org_id' } },
+      middleware: async ({ user, db, where }, next) => {
+        // Before: tighten the where clause based on a dynamic lookup
+        const activeTeams = await db
+          .select({ id: teams.id })
+          .from(teams)
+          .innerJoin(teamMembers, eq(teamMembers.teamId, teams.id))
+          .where(and(
+            eq(teamMembers.userId, user.id),
+            eq(teamMembers.status, 'active'),
+          ))
+
+        const rows = await next({
+          where: { ...where, team_id: { $in: activeTeams.map(t => t.id) } },
         })
-        if (!product || product.stock < input.quantity) {
-          throw new PermissionError('Insufficient stock')
-        }
 
-        // Execute the insert inside a transaction so we can
-        // decrement stock atomically — if anything fails, both
-        // the insert and the stock update roll back
-        return db.transaction(async (tx) => {
-          const rows = await next({ db: tx })
-
-          await tx
-            .update(products)
-            .set({ stock: product.stock - input.quantity })
-            .where(eq(products.id, input.product_id))
-
-          return rows
-        })
+        // After: attach computed data before returning
+        return rows.map(row => ({
+          ...row,
+          is_mine: row.assigned_to === user.id,
+        }))
       },
     },
   },
@@ -43,38 +42,47 @@ permissions: {
 
 ## How It Works
 
-The middleware function receives destructured query context and a `next()` function. Call `next()` to execute the query — pass overrides to modify what gets executed:
+Middleware wraps the query with two hooks — **before** and **after** `next()`. You decide what runs at each stage:
 
 ```typescript
-insert: {
-  columns: ['product_id', 'quantity'],
-  middleware: async ({ user, db, table, operation, columns, query, input, where }, next) => {
-    // 1. Before query — validate, compute new values
-    const rows = await next({ where: { ...where, status: { $ne: 'archived' } } })
-    // 2. After query — transform rows, run side effects
+select: {
+  columns: '*',
+  middleware: async ({ user, db, where, input, columns }, next) => {
+    // BEFORE — runs before the query
+    // Validate access, look up data, modify the request
+
+    const rows = await next({
+      where: { ...where, status: { $ne: 'archived' } },
+    })
+
+    // AFTER — runs after the query
+    // Transform results, run side effects, enrich rows
+
     return rows
   },
 }
 ```
 
-- **Before `next()`** — validate access, look up data, compute overrides
-- **`next(overrides)`** — executes the query with any overrides applied
-- **After `next()`** — transform results, run side effects
-- **Skip `next()`** — throw to deny the request entirely
+| Stage | What happens |
+|---|---|
+| **Before `next()`** | Validate access, look up data, compute overrides, modify the request |
+| **`next(overrides)`** | Executes the query — pass overrides to change what runs |
+| **After `next()`** | Transform results, run side effects, enrich with computed data |
+| **Skip `next()`** | Throw to deny the request entirely |
 
 ```text
   6. Permission Check — where, validate, default, overwrite applied
-    │
-    ▼
-  6a. middleware (before next) ← your code runs here
-    │
-    ▼
-  7. Query Execution ← next() triggers this
-    │
-    ▼
-  7a. middleware (after next) ← your code runs here
-    │
-    ▼
+    |
+    v
+  6a. middleware (before next) <-- modify request here
+    |
+    v
+  7. Query Execution <-- next() triggers this
+    |
+    v
+  7a. middleware (after next) <-- transform results here
+    |
+    v
   8. Audit Log
 ```
 
@@ -97,22 +105,121 @@ middleware: async ({ user, db, table, operation, columns, query, input, where },
 | `input` | `Record<string, any> \| undefined` | Request body values (writes only) |
 | `where` | `Record<string, any> \| undefined` | Resolved where clause (after merging and `$user.*` substitution) |
 
-## Passing Overrides to next()
+## Modifying the Request
 
-Pass an object to `next()` to override any parameter before execution:
+Pass overrides to `next()` to change what gets executed. This is how you modify the incoming request before it hits the database.
+
+### Evaluate and Modify Where Clauses
+
+The `where` parameter contains the fully resolved where clause — after declarative `where`, `$user.*` substitution, and `sql` fragments are merged. You can read it, extend it, or replace it entirely:
 
 ```typescript
-middleware: async ({ where, columns, input }, next) => {
+// Extend: add conditions to the existing where
+middleware: async ({ user, db, where }, next) => {
+  const teamIds = await getActiveTeamIds(db, user.id)
+
   return next({
-    // Extend the where clause
-    where: { ...where, status: { $ne: 'archived' } },
-    // Restrict columns
-    columns: ['id', 'name', 'status'],
-    // Normalize input
-    input: { ...input, email: input?.email?.toLowerCase().trim() },
+    where: {
+      ...where,
+      team_id: { $in: teamIds },
+      status: { $ne: 'archived' },
+    },
   })
 },
 ```
+
+```typescript
+// Replace: swap the where clause entirely based on role
+middleware: async ({ user, where }, next) => {
+  if (user.roles.includes('admin')) {
+    // Admins see everything in their org
+    return next({
+      where: { organization_id: { $eq: user.current_org_id } },
+    })
+  }
+  // Everyone else keeps the original restrictive where
+  return next()
+},
+```
+
+```typescript
+// Conditional: evaluate the incoming where and decide
+middleware: async ({ user, db, where }, next) => {
+  // If the client is filtering by a specific project, verify access
+  if (where?.project_id) {
+    const hasAccess = await db.query.projectMembers.findFirst({
+      where: and(
+        eq(projectMembers.projectId, where.project_id.$eq ?? where.project_id),
+        eq(projectMembers.userId, user.id),
+      ),
+    })
+    if (!hasAccess) {
+      throw new PermissionError('Not a member of this project')
+    }
+  }
+  return next()
+},
+```
+
+### Transform Input
+
+Modify the request body before it's written to the database. Useful for normalizing values, computing derived fields, or injecting server-side data:
+
+```typescript
+// Normalize and enrich input on insert
+middleware: async ({ user, db, input }, next) => {
+  const product = await db.query.products.findFirst({
+    where: eq(products.id, input.product_id),
+  })
+  if (!product) throw new PermissionError('Product not found')
+
+  return next({
+    input: {
+      ...input,
+      email: input.email?.toLowerCase().trim(),
+      unit_price: product.price,
+      total: product.price * input.quantity,
+    },
+  })
+},
+```
+
+```typescript
+// Conditionally modify input on update
+middleware: async ({ user, input }, next) => {
+  if (input?.status === 'published') {
+    return next({
+      input: {
+        ...input,
+        published_at: new Date().toISOString(),
+        published_by: user.id,
+      },
+    })
+  }
+  return next()
+},
+```
+
+### Restrict Columns
+
+Narrow the column list based on runtime conditions — subscriptions, roles, or any dynamic lookup:
+
+```typescript
+// Free users see basic columns, paid see everything
+middleware: async ({ user, db }, next) => {
+  const sub = await db.query.subscriptions.findFirst({
+    where: eq(subscriptions.organizationId, user.current_org_id),
+    columns: { plan: true },
+  })
+
+  if (sub?.plan === 'free') {
+    return next({ columns: ['id', 'name', 'status', 'created_at'] })
+  }
+  return next()
+},
+```
+
+### Override Summary
 
 | Override | Effect |
 |---|---|
@@ -122,6 +229,47 @@ middleware: async ({ where, columns, input }, next) => {
 | `db` | Replaces the database instance (use for transactions) |
 
 If you call `next()` with no arguments, the query executes unchanged.
+
+## Transforming Results
+
+Code after `next()` runs once the query completes. Use it to transform, enrich, or redact rows before they reach the client:
+
+```typescript
+// Redact PII for non-clinical staff
+middleware: async ({ user }, next) => {
+  const rows = await next()
+
+  if (!user.roles.includes('clinical')) {
+    return rows.map(row => ({
+      ...row,
+      email: row.email ? `${row.email[0]}***@***` : null,
+      phone: row.phone ? '***-****' : null,
+      ssn: row.ssn ? '***-**-' + row.ssn.slice(-4) : null,
+    }))
+  }
+  return rows
+},
+```
+
+```typescript
+// Enrich rows with computed data from another table
+middleware: async ({ db }, next) => {
+  const rows = await next()
+  if (rows.length === 0) return rows
+
+  const counts = await db
+    .select({ orderId: orderItems.orderId, itemCount: count() })
+    .from(orderItems)
+    .where(inArray(orderItems.orderId, rows.map(r => r.id)))
+    .groupBy(orderItems.orderId)
+
+  const countMap = new Map(counts.map(c => [c.orderId, c.itemCount]))
+  return rows.map(row => ({
+    ...row,
+    item_count: countMap.get(row.id) ?? 0,
+  }))
+},
+```
 
 ## Transactions
 
@@ -170,7 +318,7 @@ create_order: {
       quantity: { $gte: 1, $lte: 100 },
     },
     middleware: async ({ user, db, input }, next) => {
-      // Validate: product exists in this org and has enough stock
+      // Before: validate product and check stock
       const product = await db.query.products.findFirst({
         where: and(
           eq(products.id, input.product_id),
@@ -190,6 +338,7 @@ create_order: {
       return db.transaction(async (tx) => {
         const rows = await next({
           db: tx,
+          // Before: enrich input with server-computed values
           input: {
             ...input,
             unit_price: product.price,
@@ -197,6 +346,7 @@ create_order: {
           },
         })
 
+        // After: side effects inside the transaction
         await tx
           .update(products)
           .set({ stock: sql`stock - ${input.quantity}` })
@@ -216,9 +366,9 @@ create_order: {
 }
 ```
 
-### Project Management: Team-Scoped Task Visibility
+### Project Management: Dynamic Where from Team Membership
 
-A project management app where users belong to multiple teams. Tasks should only be visible to members of the team that owns them. The team membership is complex — users can be active or inactive, and membership can expire — so a simple declarative `where` with `$user.team_ids` isn't enough. The middleware looks up the user's currently active team memberships at query time and injects a dynamic where clause.
+A project management app where users belong to multiple teams. Tasks should only be visible to members of the team that owns them. The team membership is complex — users can be active or inactive, and membership can expire — so a simple declarative `where` with `$user.team_ids` isn't enough. The middleware evaluates the user's current memberships and injects a dynamic where clause.
 
 ```typescript
 view_tasks: {
@@ -227,6 +377,7 @@ view_tasks: {
   select: {
     columns: '*',
     middleware: async ({ user, db, where }, next) => {
+      // Before: look up active teams and inject into where
       const activeTeams = await db
         .select({ id: teams.id })
         .from(teams)
@@ -254,101 +405,9 @@ view_tasks: {
 }
 ```
 
-### SaaS: Feature Gating by Subscription Plan
-
-A SaaS analytics platform where free-tier users can see basic metrics (name, status, created date) but paid users get access to all columns including revenue data, conversion rates, and custom fields. The plan is stored in a separate `subscriptions` table, so you can't express this with a static `columns` list — it depends on the user's current plan at query time.
-
-```typescript
-view_campaigns: {
-  table: 'main.campaigns',
-  roles: ['member'],
-  select: {
-    columns: '*',
-    where: { organization_id: { $eq: '$user.current_org_id' } },
-    middleware: async ({ user, db }, next) => {
-      const sub = await db.query.subscriptions.findFirst({
-        where: eq(subscriptions.organizationId, user.current_org_id),
-        columns: { plan: true },
-      })
-
-      if (sub?.plan === 'free') {
-        return next({
-          columns: ['id', 'name', 'status', 'created_at'],
-        })
-      }
-      return next()
-    },
-  },
-}
-```
-
-### Healthcare: PII Redaction for Non-Clinical Staff
-
-A hospital management system where administrative staff can look up patient records to schedule appointments, but only clinical staff (doctors, nurses) should see personally identifiable information. Admin staff sees masked emails, phone numbers, and social security numbers. The redaction happens after the query returns, so the database query itself is unchanged — only the response is sanitized.
-
-```typescript
-view_patients: {
-  table: 'main.patients',
-  roles: ['staff', 'clinical'],
-  select: {
-    columns: '*',
-    where: { facility_id: { $eq: '$user.facility_id' } },
-    middleware: async ({ user }, next) => {
-      const rows = await next()
-
-      if (!user.roles.includes('clinical')) {
-        return rows.map(row => ({
-          ...row,
-          email: row.email ? `${row.email[0]}***@***` : null,
-          phone: row.phone ? '***-****' : null,
-          ssn: row.ssn ? '***-**-' + row.ssn.slice(-4) : null,
-          date_of_birth: null,
-        }))
-      }
-      return rows
-    },
-  },
-}
-```
-
-### Marketplace: Order List with Item Counts
-
-A marketplace dashboard shows sellers a list of their orders. Each order row should include the number of line items, but `item_count` isn't stored on the `orders` table — it lives in `order_items`. Rather than forcing the client to make a second query and join the data, the middleware fetches item counts in a single batch query after the main query returns and attaches them to each row.
-
-```typescript
-view_orders: {
-  table: 'main.orders',
-  roles: ['seller'],
-  select: {
-    columns: '*',
-    where: { seller_id: { $eq: '$user.id' } },
-    middleware: async ({ db }, next) => {
-      const rows = await next()
-      if (rows.length === 0) return rows
-
-      const orderIds = rows.map(r => r.id)
-      const counts = await db
-        .select({
-          orderId: orderItems.orderId,
-          itemCount: count(),
-        })
-        .from(orderItems)
-        .where(inArray(orderItems.orderId, orderIds))
-        .groupBy(orderItems.orderId)
-
-      const countMap = new Map(counts.map(c => [c.orderId, c.itemCount]))
-      return rows.map(row => ({
-        ...row,
-        item_count: countMap.get(row.id) ?? 0,
-      }))
-    },
-  },
-}
-```
-
 ### Multi-Tenant: Cascading Delete with Usage Recalculation
 
-A multi-tenant platform tracks per-organization resource usage (number of projects, storage used, etc.) in a denormalized `organizations.project_count` column for fast billing lookups. When a user deletes a project, the count must be recalculated. Both the delete and the count update must succeed or fail together — otherwise the billing data drifts out of sync.
+A multi-tenant platform tracks per-organization resource usage in a denormalized `organizations.project_count` column for fast billing lookups. When a user deletes a project, the count must be recalculated. Both the delete and the count update must succeed or fail together.
 
 ```typescript
 delete_project: {
@@ -362,7 +421,7 @@ delete_project: {
       return db.transaction(async (tx) => {
         const rows = await next({ db: tx })
 
-        // Recalculate project count — if this fails, the delete rolls back
+        // After: recalculate count — if this fails, the delete rolls back
         const [{ total }] = await tx
           .select({ total: count() })
           .from(projects)
@@ -382,7 +441,7 @@ delete_project: {
 
 ### Approval Workflow: Role-Based Status Transitions
 
-A procurement system where purchase orders go through an approval workflow: `draft` → `submitted` → `approved` → `fulfilled`. Only managers can move an order to `approved`, and only the original creator can move it from `draft` to `submitted`. The declarative `validate` can validate that `status` is one of the allowed values, but it can't express "who is allowed to set which status" — that requires looking up the user's role and the order's current state.
+A procurement system where purchase orders go through an approval workflow: `draft` -> `submitted` -> `approved` -> `fulfilled`. The middleware evaluates the incoming input to enforce who can set which status, based on the current state and the user's role.
 
 ```typescript
 manage_purchase_orders: {
@@ -399,10 +458,10 @@ manage_purchase_orders: {
       status: { $in: ['draft', 'submitted', 'approved', 'fulfilled'] },
     },
     overwrite: { updated_by: '$user.id' },
-    middleware: async ({ user, db, operation, input, where }, next) => {
+    middleware: async ({ user, db, input, where }, next) => {
+      // Before: evaluate the incoming request and enforce transitions
       if (!input?.status) return next()
 
-      // Look up the current order to check the transition
       const [order] = await db
         .select({ status: purchaseOrders.status, createdBy: purchaseOrders.createdBy })
         .from(purchaseOrders)
@@ -411,21 +470,21 @@ manage_purchase_orders: {
 
       if (!order) throw new PermissionError('Order not found')
 
-      // draft → submitted: only the creator
+      // draft -> submitted: only the creator
       if (input.status === 'submitted' && order.status === 'draft') {
         if (order.createdBy !== user.id) {
           throw new PermissionError('Only the creator can submit this order')
         }
       }
 
-      // submitted → approved: only managers
+      // submitted -> approved: only managers
       if (input.status === 'approved' && order.status === 'submitted') {
         if (!user.roles.includes('manager')) {
           throw new PermissionError('Only managers can approve orders')
         }
       }
 
-      // No skipping steps (e.g., draft → approved)
+      // No skipping steps
       const allowedTransitions = {
         draft: ['submitted'],
         submitted: ['approved', 'draft'],
@@ -445,15 +504,15 @@ manage_purchase_orders: {
 
 ## Combining with Declarative Rules
 
-Middleware works alongside where clauses, validate rules, defaults, overwrite, and raw SQL. The engine applies them in order:
+Middleware works alongside where clauses, validate rules, defaults, overwrite, and raw SQL. The engine applies them in order — declarative rules run first, then middleware wraps the execution:
 
 ```text
-1. where       → WHERE clause injected
-2. validate    → Input values validated
-3. default     → Missing values filled
-4. overwrite   → Server values forced
-5. sql         → SQL fragment appended to WHERE
-6. middleware   → Your TypeScript wraps the execution
+1. where       -> WHERE clause injected
+2. validate    -> Input values validated
+3. default     -> Missing values filled
+4. overwrite   -> Server values forced
+5. sql         -> SQL fragment appended to WHERE
+6. middleware   -> Your TypeScript wraps the execution (before + after)
 7. Query executes (inside next())
 ```
 
@@ -477,7 +536,8 @@ manage_orders: {
     where: { organization_id: { $in: '$user.org_ids' } },
     validate: { amount: { $gte: 0 } },
     overwrite: { updated_by: '$user.id' },
-    middleware: async ({ user, db, operation, input }, next) => {
+    middleware: async ({ user, db, input }, next) => {
+      // Before: enforce business rules on the incoming request
       if (input?.status === 'approved') {
         const membership = await db.query.orgMembers.findFirst({
           where: and(
@@ -493,6 +553,7 @@ manage_orders: {
 
       const rows = await next()
 
+      // After: strip sensitive fields for non-managers
       if (!user.roles.includes('manager')) {
         return rows.map(({ internal_notes, ...row }) => row)
       }
@@ -523,10 +584,11 @@ Any other thrown error returns `500 Internal Server Error` and is logged but not
 | Fill missing values | Use [default](/docs/backend/permissions/defaults) |
 | Force server values | Use [overwrite](/docs/backend/permissions/defaults) |
 | Date math, computed WHERE | Use [raw SQL](/docs/backend/permissions/sql) |
-| Lookup-based access control | Use `middleware` |
-| Business rule validation | Use `middleware` |
-| Input transformation | Use `middleware` |
-| Result transformation | Use `middleware` |
+| Dynamic where from lookups | Use `middleware` with `next({ where })` |
+| Input normalization / enrichment | Use `middleware` with `next({ input })` |
+| Runtime column restriction | Use `middleware` with `next({ columns })` |
+| Result transformation / redaction | Use `middleware` (after `next()`) |
+| Business rule enforcement | Use `middleware` (before `next()`) |
 | Atomic writes with side effects | Use `middleware` with `db.transaction()` |
 
 Prefer declarative rules when possible. Use `middleware` only when the built-in mechanisms cannot express your logic.
