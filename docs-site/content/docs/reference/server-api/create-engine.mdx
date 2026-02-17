@@ -28,7 +28,6 @@ const engine = createEngine({
 | `actions` | `Record<string, Action>` | `{}` | Typed server-side functions callable by the client via `POST /actions/{name}`. Each action defines Zod `input`/`output` schemas, a `run` function, and a `roles` array. See [Actions](/docs/backend/actions). |
 | `masterKey` | `string` | `undefined` | Master API key for admin access. Required for `admin_ui` mode and admin endpoints. Set via environment variable, never hardcode. |
 | `schemaEndpoint` | `SchemaEndpointConfig \| boolean` | `false` | Enable the `GET /schema` introspection endpoint. Set `true` for defaults or pass a config object. |
-| `duckdb` | `DuckDBConfig` | See below | DuckDB engine configuration. |
 | `limits` | `LimitsConfig` | See below | Query and rate limit constraints. |
 | `audit` | `AuditConfig` | See below | Audit logging configuration. |
 | `jwt` | `JWTConfig` | See below | JWT verification settings. |
@@ -116,28 +115,6 @@ actions: {
 ```
 
 See [Actions](/docs/backend/actions) for full documentation.
-
-## `duckdb`
-
-Configure the DuckDB in-process engine.
-
-| Option | Type | Default | Description |
-|---|---|---|---|
-| `maxMemory` | `string` | `'256MB'` | Maximum memory DuckDB can use. Accepts units: `'128MB'`, `'1GB'`, etc. |
-| `threads` | `number` | `2` | Number of CPU threads DuckDB can use for query execution. |
-| `queryTimeout` | `number` | `30000` | Maximum query execution time in milliseconds. Queries exceeding this are killed. |
-| `poolSize` | `number` | `10` | Number of DuckDB connections in the pool. Each concurrent request uses one connection. |
-| `idleTimeout` | `number` | `300000` | Time in milliseconds before idle connections are reclaimed. Default is 5 minutes. |
-
-```typescript
-duckdb: {
-  maxMemory: '512MB',
-  threads: 4,
-  queryTimeout: 60_000,
-  poolSize: 20,
-  idleTimeout: 600_000,
-}
-```
 
 ## `limits`
 
@@ -283,13 +260,6 @@ const engine = createEngine({
       columns: ['id', 'email', 'name'],
     },
   }),
-  duckdb: {
-    maxMemory: '512MB',
-    threads: 4,
-    queryTimeout: 30_000,
-    poolSize: 20,
-    idleTimeout: 300_000,
-  },
   limits: {
     maxLimit: 10_000,
     maxIncludeDepth: 3,
