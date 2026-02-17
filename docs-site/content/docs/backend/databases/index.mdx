@@ -1,10 +1,10 @@
 ---
 title: Databases
 icon: Database
-description: Connect to any database with native drivers.
+description: Connect to any database with Drizzle-compatible adapters.
 ---
 
-Every database in `@superapp/backend` is accessed through its native driver. Just pass a connection URL and the engine infers the database type from the protocol.
+Every database in `@superapp/backend` is accessed through a **Drizzle-compatible adapter**. The adapter architecture mirrors [Drizzle ORM's driver pattern](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/src) -- a core dialect layer handles SQL generation, and a thin driver adapter handles the connection.
 
 ```typescript
 import { createEngine } from '@superapp/backend'
@@ -16,13 +16,80 @@ const engine = createEngine({
 })
 ```
 
-## Native vs Custom Providers
+## How Adapters Work
 
-**Native providers** connect directly using the database's own driver (`pg`, `mysql2`, `better-sqlite3`). Queries are executed directly against the database with no intermediary.
+Adapters follow a **two-layer architecture**, identical to how Drizzle ORM structures its database support:
 
-**Custom providers** implement a `CustomIntegrationProvider` interface for non-database sources -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary systems. Queries are translated into provider-specific calls and results are returned as virtual tables.
+1. **Core dialect** -- Defines SQL generation, column types, query builders, and dialect-specific features (`pg-core`, `mysql-core`, `sqlite-core`)
+2. **Driver adapter** -- A thin wrapper around a specific JavaScript database driver that handles connection management, session handling, and migrations
+
+```
+┌─────────────────────────────────────┐
+│          Your Application           │
+├─────────────────────────────────────┤
+│       @superapp/backend engine      │
+├──────────┬──────────┬───────────────┤
+│  pg-core │mysql-core│  sqlite-core  │  ← Core dialects
+├──────────┼──────────┼───────────────┤
+│    pg    │  mysql2  │better-sqlite3 │  ← Driver adapters
+└──────────┴──────────┴───────────────┘
+```
+
+## Supported Databases
+
+`@superapp/backend` supports every database that Drizzle ORM supports. Below is the full matrix organized by dialect.
+
+### PostgreSQL
+
+| Adapter | Driver | Best for |
+|---|---|---|
+| `node-postgres` | `pg` | Standard Node.js apps |
+| `postgres-js` | `postgres` | High-performance Node.js |
+| `neon-serverless` | `@neondatabase/serverless` | Neon (WebSocket) |
+| `neon-http` | `@neondatabase/serverless` | Neon (HTTP, edge/serverless) |
+| `vercel-postgres` | `@vercel/postgres` | Vercel managed Postgres |
+| `supabase` | `@supabase/supabase-js` | Supabase Postgres |
+| `xata-http` | Xata HTTP API | Xata serverless |
+| `pglite` | `@electric-sql/pglite` | In-browser/WASM Postgres |
+| `aws-data-api` | AWS RDS Data API | Aurora Serverless |
+| `bun-sql` | `Bun.sql` | Bun runtime |
+
+### MySQL
+
+| Adapter | Driver | Best for |
+|---|---|---|
+| `mysql2` | `mysql2` | Standard Node.js apps |
+| `planetscale-serverless` | `@planetscale/database` | PlanetScale (serverless HTTP) |
+| `tidb-serverless` | TiDB Cloud | TiDB Cloud serverless |
+
+### SQLite
+
+| Adapter | Driver | Best for |
+|---|---|---|
+| `better-sqlite3` | `better-sqlite3` | Node.js (synchronous) |
+| `libsql` | `@libsql/client` | Turso / LibSQL |
+| `d1` | Cloudflare D1 | Cloudflare Workers |
+| `durable-sqlite` | Cloudflare Durable Objects | Durable Object storage |
+| `bun-sqlite` | `bun:sqlite` | Bun runtime |
+| `expo-sqlite` | `expo-sqlite` | React Native (Expo) |
+| `op-sqlite` | `op-sqlite` | React Native (high-performance) |
+| `sql-js` | `sql.js` | In-browser WASM SQLite |
+
+### SingleStore
+
+| Adapter | Driver | Best for |
+|---|---|---|
+| `singlestore` | SingleStore driver | Direct connection |
+
+### Gel (formerly EdgeDB)
+
+| Adapter | Driver | Best for |
+|---|---|---|
+| `gel` | Gel client | Gel database |
 
 ## Built-in Providers
+
+The engine ships with three built-in providers that require zero configuration beyond a connection string:
 
 | Provider | Connection format | Read | Write | Driver |
 |---|---|---|---|---|
@@ -31,9 +98,11 @@ const engine = createEngine({
 | SQLite | `'./path/to/file.db'` | Yes | Yes | `better-sqlite3` |
 | CSV | `{ directory: './data/' }` | Yes | No | built-in |
 
+For any other database from the supported list above, register a custom provider using the Drizzle adapter pattern.
+
 ## Provider Interface
 
-Every native provider exports a single object that satisfies the `IntegrationProvider` interface:
+Every provider -- built-in or custom -- exports a single object that satisfies the `IntegrationProvider` interface:
 
 ```typescript
 interface IntegrationProvider {
@@ -71,4 +140,4 @@ const engine = createEngine({
 - [MySQL](/docs/backend/databases/mysql) -- Full CRUD with MySQL
 - [SQLite](/docs/backend/databases/sqlite) -- Local file-based databases
 - [CSV](/docs/backend/databases/csv) -- Read-only CSV file queries
-- [Custom Providers](/docs/backend/databases/custom-provider) -- Build your own provider
+- [Custom Providers](/docs/backend/databases/custom-provider) -- Build your own Drizzle-compatible provider

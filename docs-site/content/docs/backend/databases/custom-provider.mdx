@@ -1,81 +1,310 @@
 ---
 title: Custom Providers
 icon: Puzzle
-description: Build a provider for any data source.
+description: Build a Drizzle-compatible provider for any data source.
 ---
 
-When your data source is not a database with a built-in driver -- REST APIs, GraphQL endpoints, edge runtimes, or proprietary systems -- build a custom provider.
+When your database is not one of the built-in providers, or when you need to connect a non-database source (REST APIs, edge runtimes, proprietary systems), build a custom provider following the Drizzle adapter pattern.
+
+## Drizzle Adapter Structure
+
+Every Drizzle database adapter follows the same file structure. Your custom provider should mirror this pattern:
+
+```
+providers/
+└── my-database/
+    ├── driver.ts      # Connection initialization and public API
+    ├── session.ts     # Session and query execution
+    ├── migrator.ts    # Migration utilities (optional)
+    └── index.ts       # Public exports
+```
+
+This is the same structure used by every adapter in the [Drizzle ORM source](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/src) -- from `node-postgres` to `d1` to `planetscale-serverless`.
+
+## driver.ts
+
+The driver file initializes the connection and returns a database instance. It wraps the underlying JavaScript driver:
 
 ```typescript
-import { createEngine, CustomIntegrationProvider } from '@superapp/backend'
+import { IntegrationProvider, ConnectionConfig, DriverConnection } from '@superapp/backend'
 
-const httpProvider: CustomIntegrationProvider = {
-  type: 'http-api',
-  capabilities: { read: true, write: false, transactions: false },
-  configSchema: {
-    baseUrl: { type: 'string', required: true },
-    apiKey: { type: 'string', required: true, secret: true },
-  },
-  async testConnection(config) {
-    const res = await fetch(`${config.baseUrl}/health`)
-    return res.ok
-  },
-  async introspect(config) {
-    const res = await fetch(`${config.baseUrl}/schema`, {
-      headers: { Authorization: `Bearer ${config.apiKey}` },
-    })
-    return res.json()
-  },
-  async execute(config, query) {
-    const res = await fetch(`${config.baseUrl}/query`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(query),
-    })
-    return res.json()
-  },
+export interface MyDatabaseConfig extends ConnectionConfig {
+  connectionString: string
+  poolSize?: number
 }
 
+export const myDatabaseProvider: IntegrationProvider = {
+  type: 'my-database',
+
+  capabilities: {
+    read: true,
+    write: true,
+    transactions: true,
+  },
+
+  async connect(config: MyDatabaseConfig): Promise<DriverConnection> {
+    // Initialize the native driver — same as Drizzle's drizzle() entry point
+    const client = new MyDatabaseClient(config.connectionString, {
+      max: config.poolSize ?? 10,
+    })
+    await client.connect()
+
+    return {
+      client,
+      dialect: 'my-database',
+    }
+  },
+
+  async disconnect(connection: DriverConnection): Promise<void> {
+    await connection.client.end()
+  },
+
+  async introspect(connection: DriverConnection) {
+    const tables = await connection.client.query(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+    )
+    // Return TableSchema[] — same shape as Drizzle's introspect output
+    return Promise.all(
+      tables.rows.map(async (t: any) => {
+        const columns = await connection.client.query(
+          `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = $1`,
+          [t.table_name]
+        )
+        return {
+          name: t.table_name,
+          columns: columns.rows.map((c: any) => ({
+            name: c.column_name,
+            type: c.data_type,
+            nullable: c.is_nullable === 'YES',
+          })),
+        }
+      })
+    )
+  },
+}
+```
+
+## session.ts
+
+The session file manages query execution and transactions. In Drizzle, every adapter implements a `Session` class that wraps the driver's query method:
+
+```typescript
+import { DriverConnection, QueryRequest, QueryResult } from '@superapp/backend'
+
+export class MyDatabaseSession {
+  constructor(private connection: DriverConnection) {}
+
+  async execute(query: QueryRequest): Promise<QueryResult> {
+    const result = await this.connection.client.query(query.sql, query.params)
+    return {
+      rows: result.rows,
+      count: result.rowCount,
+    }
+  }
+
+  async transaction<T>(fn: (tx: MyDatabaseSession) => Promise<T>): Promise<T> {
+    const client = await this.connection.client.getConnection()
+    try {
+      await client.query('BEGIN')
+      const tx = new MyDatabaseSession({ ...this.connection, client })
+      const result = await fn(tx)
+      await client.query('COMMIT')
+      return result
+    } catch (error) {
+      await client.query('ROLLBACK')
+      throw error
+    } finally {
+      client.release()
+    }
+  }
+}
+```
+
+## index.ts
+
+The index file re-exports the public API, just like every Drizzle adapter:
+
+```typescript
+export { myDatabaseProvider } from './driver'
+export type { MyDatabaseConfig } from './driver'
+```
+
+## Registering the Provider
+
+Pass your custom provider in the `providers` array:
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { myDatabaseProvider } from './providers/my-database'
+
 const engine = createEngine({
-  providers: [httpProvider],
+  providers: [myDatabaseProvider],
   connections: {
-    crm: { type: 'http-api', baseUrl: 'https://api.crm.com', apiKey: process.env.CRM_API_KEY! },
+    main: {
+      type: 'my-database',
+      connectionString: process.env.MY_DB_URL!,
+    },
   },
 })
 ```
 
-## When to Use Custom Providers
+## Example: Neon Serverless Provider
 
-- **REST APIs** -- wrap a third-party API as queryable tables
-- **Edge runtimes** -- environments where native drivers cannot be loaded
-- **Proprietary databases** -- systems without a built-in driver
-- **Data virtualization** -- expose API data as queryable tables alongside SQL databases
-
-## CustomIntegrationProvider Interface
+A real-world example following the Drizzle adapter pattern for [Neon's serverless driver](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/src/neon-serverless):
 
 ```typescript
-interface CustomIntegrationProvider {
+import { neon } from '@neondatabase/serverless'
+import { IntegrationProvider } from '@superapp/backend'
+
+export const neonProvider: IntegrationProvider = {
+  type: 'neon',
+
+  capabilities: { read: true, write: true, transactions: false },
+
+  async connect(config) {
+    const sql = neon(config.connectionString)
+    return { client: sql, dialect: 'pg' }
+  },
+
+  async disconnect() {
+    // Neon HTTP connections are stateless — no cleanup needed
+  },
+
+  async introspect(connection) {
+    const tables = await connection.client(
+      `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'`
+    )
+    return Promise.all(
+      tables.map(async (t: any) => {
+        const columns = await connection.client(
+          `SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_name = '${t.table_name}'`
+        )
+        return {
+          name: t.table_name,
+          columns: columns.map((c: any) => ({
+            name: c.column_name,
+            type: c.data_type,
+            nullable: c.is_nullable === 'YES',
+          })),
+        }
+      })
+    )
+  },
+}
+
+// Usage
+const engine = createEngine({
+  providers: [neonProvider],
+  connections: {
+    main: { type: 'neon', connectionString: process.env.NEON_URL! },
+  },
+})
+```
+
+## Example: Cloudflare D1 Provider
+
+Following the [D1 adapter pattern](https://github.com/drizzle-team/drizzle-orm/tree/main/drizzle-orm/src/d1):
+
+```typescript
+import { IntegrationProvider } from '@superapp/backend'
+
+export const d1Provider: IntegrationProvider = {
+  type: 'd1',
+
+  capabilities: { read: true, write: true, transactions: true },
+
+  async connect(config) {
+    // D1 binding is passed from the Cloudflare Workers environment
+    return { client: config.binding, dialect: 'sqlite' }
+  },
+
+  async disconnect() {
+    // D1 bindings are managed by the Workers runtime
+  },
+
+  async introspect(connection) {
+    const result = await connection.client
+      .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+      .all()
+
+    return Promise.all(
+      result.results.map(async (t: any) => {
+        const columns = await connection.client
+          .prepare(`PRAGMA table_info('${t.name}')`)
+          .all()
+        return {
+          name: t.name,
+          columns: columns.results.map((c: any) => ({
+            name: c.name,
+            type: c.type,
+            nullable: c.notnull === 0,
+            primaryKey: c.pk === 1,
+          })),
+        }
+      })
+    )
+  },
+}
+
+// Usage in a Cloudflare Worker
+export default {
+  async fetch(request: Request, env: Env) {
+    const engine = createEngine({
+      providers: [d1Provider],
+      connections: {
+        main: { type: 'd1', binding: env.DB },
+      },
+    })
+    // ...
+  },
+}
+```
+
+## Non-Database Providers
+
+The same adapter pattern works for non-database sources. Instead of SQL, the session translates queries into API calls:
+
+```typescript
+import { IntegrationProvider } from '@superapp/backend'
+
+const httpProvider: IntegrationProvider = {
+  type: 'http-api',
+
+  capabilities: { read: true, write: false, transactions: false },
+
+  async connect(config) {
+    // Validate the API is reachable
+    const res = await fetch(`${config.baseUrl}/health`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+    })
+    if (!res.ok) throw new Error(`API unreachable: ${res.status}`)
+    return { client: config, dialect: 'http' }
+  },
+
+  async disconnect() {},
+
+  async introspect(connection) {
+    const res = await fetch(`${connection.client.baseUrl}/schema`, {
+      headers: { Authorization: `Bearer ${connection.client.apiKey}` },
+    })
+    return res.json()
+  },
+}
+```
+
+## IntegrationProvider Interface
+
+```typescript
+interface IntegrationProvider {
   type: string
   capabilities: {
     read: boolean
     write: boolean
     transactions: boolean
   }
-  configSchema: Record<string, ConfigField>
-  testConnection: (config: Record<string, unknown>) => Promise<boolean>
-  introspect: (config: Record<string, unknown>) => Promise<TableSchema[]>
-  execute: (config: Record<string, unknown>, query: QueryRequest) => Promise<QueryResult>
-}
-
-interface ConfigField {
-  type: 'string' | 'number' | 'boolean'
-  required?: boolean
-  secret?: boolean       // hidden in admin UI, encrypted at rest
-  default?: unknown
-  description?: string
+  connect: (config: ConnectionConfig) => Promise<DriverConnection>
+  disconnect: (connection: DriverConnection) => Promise<void>
+  introspect: (connection: DriverConnection) => Promise<TableSchema[]>
 }
 
 interface TableSchema {
@@ -87,113 +316,6 @@ interface TableSchema {
     primaryKey?: boolean
   }[]
 }
-```
-
-## Config Schema
-
-The `configSchema` object defines what fields appear in the admin UI when adding a connection of this type. Fields marked `secret: true` are encrypted with AES-256-GCM and never displayed after initial entry.
-
-```typescript
-configSchema: {
-  baseUrl: {
-    type: 'string',
-    required: true,
-    description: 'Base URL of the API',
-  },
-  apiKey: {
-    type: 'string',
-    required: true,
-    secret: true,
-    description: 'API key for authentication',
-  },
-  timeout: {
-    type: 'number',
-    default: 30000,
-    description: 'Request timeout in milliseconds',
-  },
-}
-```
-
-## testConnection
-
-Called when a user adds or edits a connection in the admin UI. Return `true` if the connection is valid, or throw an error with a descriptive message:
-
-```typescript
-async testConnection(config) {
-  const res = await fetch(`${config.baseUrl}/health`, {
-    headers: { Authorization: `Bearer ${config.apiKey}` },
-    signal: AbortSignal.timeout(5000),
-  })
-  if (!res.ok) {
-    throw new Error(`API returned ${res.status}: ${res.statusText}`)
-  }
-  return true
-}
-```
-
-## introspect
-
-Returns the schema of all available tables. The engine calls this on startup and when the admin clicks "Refresh Schema":
-
-```typescript
-async introspect(config) {
-  const res = await fetch(`${config.baseUrl}/schema`, {
-    headers: { Authorization: `Bearer ${config.apiKey}` },
-  })
-  const data = await res.json()
-
-  return data.resources.map((r: any) => ({
-    name: r.name,
-    columns: r.fields.map((f: any) => ({
-      name: f.name,
-      type: mapType(f.type),
-      nullable: f.nullable ?? true,
-      primaryKey: f.name === 'id',
-    })),
-  }))
-}
-```
-
-## execute
-
-Translates a `QueryRequest` into provider-specific calls and returns results:
-
-```typescript
-async execute(config, query) {
-  const url = new URL(`${config.baseUrl}/${query.table}`)
-
-  if (query.where) {
-    for (const [key, condition] of Object.entries(query.where)) {
-      url.searchParams.set(`filter[${key}]`, String(Object.values(condition)[0]))
-    }
-  }
-  if (query.limit) url.searchParams.set('limit', String(query.limit))
-  if (query.offset) url.searchParams.set('offset', String(query.offset))
-
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${config.apiKey}` },
-  })
-  const data = await res.json()
-
-  return {
-    rows: data.items,
-    count: data.total,
-  }
-}
-```
-
-## Registering the Provider
-
-Pass your custom provider in the `providers` array. Built-in databases (Postgres, MySQL, SQLite) do not need provider imports -- the engine infers them from the URL protocol:
-
-```typescript
-const engine = createEngine({
-  providers: [httpProvider],
-  connections: {
-    main: process.env.PG_URL!,
-    crm: { type: 'http-api', baseUrl: 'https://api.crm.com', apiKey: process.env.CRM_API_KEY! },
-  },
-})
 ```
 
 Client queries work the same regardless of provider type:
