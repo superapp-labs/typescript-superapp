@@ -110,7 +110,7 @@ When you call a Drizzle query method, the proxy driver:
 
 1. **Drizzle builds parameterized SQL** on the client (e.g., `SELECT ... FROM orders WHERE status = $1`).
 2. **POSTs SQL + params** to the backend's `/data` endpoint with the JWT in the `Authorization` header.
-3. **The server validates** the token, applies row-level permissions to the SQL, and executes through DuckDB.
+3. **The server validates** the token, applies row-level permissions to the SQL, and executes directly against the database.
 4. **Returns typed results** as JSON, deserialized into the expected TypeScript type.
 
 This is standard [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) — the query syntax is identical to any other Drizzle setup, only the transport layer differs.

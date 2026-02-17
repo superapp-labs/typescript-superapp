@@ -127,7 +127,7 @@ Query and rate limit constraints to prevent abuse and resource exhaustion.
 | `maxFilterDepth` | `number` | `5` | Maximum nesting depth for where conditions (`$and`, `$or`, `$not`). Prevents excessively complex filters. |
 | `maxFilterConditions` | `number` | `50` | Maximum total number of where conditions in a single query. |
 | `maxRequestBodySize` | `string` | `'1mb'` | Maximum HTTP request body size. Accepts units: `'512kb'`, `'2mb'`, etc. |
-| `queryTimeout` | `number` | `30000` | Query-level timeout in milliseconds. Separate from DuckDB's internal timeout. |
+| `queryTimeout` | `number` | `30000` | Maximum query execution time in milliseconds. Queries exceeding this are killed. |
 | `rateLimitPerUser` | `number` | `200` | Maximum requests per minute per authenticated user. |
 | `rateLimitPerIP` | `number` | `500` | Maximum requests per minute per IP address. Applies to unauthenticated requests too. |
 

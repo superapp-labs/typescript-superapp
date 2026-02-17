@@ -8,7 +8,7 @@ description: Drizzle ORM for the frontend — real Drizzle with a proxy driver t
 
 ## How It Works
 
-The client is built on [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) — Drizzle ORM builds parameterized SQL on the client, and the proxy driver sends SQL + params to the superapp backend over HTTP. The server validates your JWT, applies row-level permissions to the SQL, and executes against your database via DuckDB. The data returned to the client has already been filtered and restricted by the permission engine.
+The client is built on [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy) — Drizzle ORM builds parameterized SQL on the client, and the proxy driver sends SQL + params to the superapp backend over HTTP. The server validates your JWT, applies row-level permissions to the SQL, and executes directly against your database. The data returned to the client has already been filtered and restricted by the permission engine.
 
 ```text
   Your Frontend                superapp Backend                  Database
@@ -27,7 +27,7 @@ The client is built on [Drizzle Proxy](https://orm.drizzle.team/docs/connect-dri
                                      │
                                      ▼
                                Execute modified  ─── query ────▶  Postgres
-                               SQL via DuckDB                     MySQL
+                               SQL directly                       MySQL
                                Return filtered   ◀── results ──  SQLite
                                   results                         CSV
                                      │
