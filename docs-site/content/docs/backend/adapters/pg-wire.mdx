@@ -49,6 +49,7 @@ const engine = createEngine({
   }),
   permissions: {
     view_own_orders: {
+      name: 'View own orders',
       table: 'main.orders',
       roles: ['viewer'],
       select: {
@@ -207,6 +208,7 @@ The wire protocol runs on a separate TCP port in the same process. Use both tran
 ```typescript
 import { createEngine } from '@superapp/backend'
 import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 
