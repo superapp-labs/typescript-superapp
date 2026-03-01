@@ -6,6 +6,10 @@ icon: GitBranch
 
 Every `POST /data` request passes through a 9-step pipeline. The client sends parameterized SQL + params via [Drizzle Proxy](https://orm.drizzle.team/docs/connect-drizzle-proxy), and the server validates, applies permissions, and executes. Understanding this pipeline helps you debug permission issues, optimize queries, and reason about security.
 
+<Callout type="info">
+This pipeline applies to both HTTP (`POST /data`) and [PostgreSQL wire protocol](/docs/backend/adapters/pg-wire) requests. The wire protocol replaces steps 1-3 with TCP connection handshake + PG protocol parsing, but steps 4-9 are identical.
+</Callout>
+
 ```text
   Incoming Request — POST /data + Bearer JWT + SQL + params
     │
