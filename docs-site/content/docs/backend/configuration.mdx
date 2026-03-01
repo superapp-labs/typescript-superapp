@@ -62,6 +62,11 @@ const engine = createEngine({
     },
   },
 
+  pgWire: {
+    port: 5433,                              // TCP port for wire protocol
+    auth: { strategy: ['jwt', 'apiKey'] },   // auth strategies
+  },
+
   permissions: { /* ... */ },
 })
 ```
@@ -136,6 +141,7 @@ permissions: {
 | `security` | `SecurityConfig` | — | CORS and security headers |
 | `masterKey` | `string` | — | Master API key for admin access |
 | `permissions` | `Record<string, Permission>` | `{}` | Permissions with inline `roles` and Drizzle-like operation blocks (`select`, `insert`, `update`, `delete`) |
+| `pgWire` | `PgWireConfig \| boolean` | — | PostgreSQL wire protocol config. See [Wire Protocol](/docs/backend/adapters/pg-wire). |
 
 ## Minimal vs. Full
 

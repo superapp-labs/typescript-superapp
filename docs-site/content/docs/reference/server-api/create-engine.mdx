@@ -74,6 +74,10 @@ const engine = createEngine({
       type: "SecurityConfig",
       description: "CORS, CSP, and network security. See security section below.",
     },
+    pgWire: {
+      type: "PgWireConfig | boolean",
+      description: "PostgreSQL wire protocol configuration. Pass true for defaults (port 5433, trust auth) or an object to customize. Call engine.startPgWire() to start the TCP server.",
+    },
   }}
 />
 
@@ -446,6 +450,82 @@ schemaEndpoint: {
 }
 ```
 
+## `pgWire`
+
+Configure the PostgreSQL wire protocol server. When configured, calling `engine.startPgWire()` starts a TCP server that speaks the PostgreSQL wire protocol.
+
+<Tabs items={["Server", "Authentication", "TLS"]}>
+<Tab value="Server">
+
+<TypeTable
+  type={{
+    port: {
+      type: "number",
+      default: "5433",
+      description: "TCP port for the wire protocol server.",
+    },
+    serverVersion: {
+      type: "string",
+      default: "'16.3 (superapp)'",
+      description: "PostgreSQL version string returned to clients during connection handshake.",
+    },
+  }}
+/>
+
+</Tab>
+<Tab value="Authentication">
+
+<TypeTable
+  type={{
+    "auth.strategy": {
+      type: "'jwt' | 'password' | 'apiKey' | 'trust' | Array",
+      default: "'trust'",
+      description: "Authentication strategy. Pass an array to try multiple strategies in order.",
+    },
+  }}
+/>
+
+</Tab>
+<Tab value="TLS">
+
+<TypeTable
+  type={{
+    "tls.key": {
+      type: "Buffer | string",
+      description: "TLS private key (PEM format). Required for encrypted connections.",
+    },
+    "tls.cert": {
+      type: "Buffer | string",
+      description: "TLS certificate (PEM format). Required for encrypted connections.",
+    },
+    "tls.ca": {
+      type: "Buffer | string",
+      description: "CA certificate for client certificate validation.",
+    },
+  }}
+/>
+
+</Tab>
+</Tabs>
+
+```typescript
+// Shorthand — enable with defaults (port 5433, trust auth)
+pgWire: true
+
+// Full configuration
+pgWire: {
+  port: 5433,
+  auth: { strategy: ['jwt', 'apiKey'] },
+  tls: {
+    key: fs.readFileSync('server.key'),
+    cert: fs.readFileSync('server.crt'),
+  },
+  serverVersion: '16.3 (superapp)',
+}
+```
+
+See [PostgreSQL Wire Protocol](/docs/backend/adapters/pg-wire) for usage guide.
+
 ## Full Example
 
 ```typescript
@@ -540,5 +620,13 @@ const engine = createEngine({
       },
     },
   },
+
+  pgWire: {
+    port: 5433,                              // TCP port for wire protocol
+    auth: { strategy: ['jwt', 'apiKey'] },   // auth strategies (try in order)
+    serverVersion: '16.3 (superapp)',        // version string for clients
+  },
 })
+
+engine.startPgWire()
 ```
