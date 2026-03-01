@@ -1,0 +1,283 @@
+---
+title: PostgreSQL Wire Protocol
+icon: Database
+description: Expose the superapp engine as a PostgreSQL-compatible server using pg-gateway. Connect with psql, DBeaver, Metabase, or any PG driver.
+---
+
+Connect any PostgreSQL client directly to the superapp engine. Tools like psql, DBeaver, Metabase, Grafana, and any PostgreSQL driver can query your data with full permission enforcement — no HTTP adapter needed.
+
+Powered by [pg-gateway](https://github.com/supabase-community/pg-gateway), the engine speaks the PostgreSQL wire protocol (v3) natively over TCP.
+
+## Quick Start
+
+```typescript
+import { createEngine } from '@superapp/backend'
+
+const engine = createEngine({
+  connections: {
+    main: process.env.PG_URL!,
+  },
+  pgWire: {
+    port: 5433,
+  },
+})
+
+engine.startPgWire()
+```
+
+```bash
+# Connect with psql
+psql "host=localhost port=5433"
+```
+
+## With Authentication
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
+
+const engine = createEngine({
+  connections: {
+    main: process.env.PG_URL!,
+  },
+  auth: betterAuthProvider({
+    secret: process.env.AUTH_SECRET!,
+    userTable: {
+      table: 'main.users',
+      matchOn: { column: 'id', jwtField: 'id' },
+    },
+  }),
+  permissions: {
+    view_own_orders: {
+      table: 'main.orders',
+      roles: ['viewer'],
+      select: {
+        columns: '*',
+        where: { customer_id: { $eq: '$user.id' } },
+      },
+    },
+  },
+  pgWire: {
+    port: 5433,
+    auth: { strategy: 'jwt' },
+  },
+})
+
+engine.startPgWire()
+```
+
+```bash
+# Connect with JWT as password
+psql "host=localhost port=5433 user=viewer password=eyJhbGciOiJSUzI1NiIs..."
+```
+
+## Authentication Strategies
+
+The wire protocol supports multiple auth strategies. PostgreSQL clients send credentials via the standard username/password fields in the connection handshake.
+
+| Strategy | Username field | Password field | How it works |
+|---|---|---|---|
+| `jwt` | Ignored (or role hint) | JWT token | Validates JWT, resolves session. Same as HTTP `Authorization: Bearer`. |
+| `password` | Email | Password | Authenticates against the auth provider (e.g. better-auth). Session created for connection lifetime. |
+| `apiKey` | Role name | API key | Looks up API key in `superapp_db`. Maps to a user + role. Best for BI tools and machine-to-machine. |
+| `trust` | — | — | No auth. Dev-only. Only works when no `auth` provider is configured. |
+
+### Single Strategy
+
+```typescript
+pgWire: {
+  auth: { strategy: 'jwt' },
+}
+```
+
+### Multiple Strategies
+
+Pass an array to try strategies in order. The first successful match wins:
+
+```typescript
+pgWire: {
+  auth: { strategy: ['jwt', 'apiKey'] },
+}
+```
+
+### API Key Auth (BI Tools)
+
+For tools like Metabase or Grafana that can't send JWTs, use API key auth:
+
+```typescript
+pgWire: {
+  auth: { strategy: 'apiKey' },
+}
+```
+
+```bash
+# Metabase / DBeaver connection settings
+# Host: localhost
+# Port: 5433
+# User: analyst          ← role name
+# Password: sk_live_abc  ← API key
+```
+
+## Schema Routing
+
+All database connections are exposed as PostgreSQL schemas. The connection name becomes the schema prefix:
+
+```sql
+-- Connection 'main' → schema 'main'
+SELECT * FROM main.orders;
+SELECT * FROM main.products;
+
+-- Connection 'warehouse' → schema 'warehouse'
+SELECT * FROM warehouse.inventory;
+
+-- List tables from a connection
+\dt main.*
+\dt warehouse.*
+```
+
+This matches the existing `{connection}.{table}` namespacing used throughout superapp. See [Multi-Database Querying](/docs/advanced/multi-database) for details.
+
+## Permission Enforcement
+
+Every query through the wire protocol passes through the exact same permission pipeline as HTTP requests. There are no shortcuts or bypasses.
+
+```text
+  PG Client sends SQL
+    │
+    ▼
+  1. Parse SQL → extract tables, operation, columns
+    │
+    ▼
+  2. Permission Check → same CASL pipeline as HTTP
+     (column allowlist, filter injection, $user.* substitution,
+      validate rules, default/overwrite injection)
+    │
+    ▼
+  3. Middleware → before/after hooks (if defined)
+    │
+    ▼
+  4. Execute via Drizzle ORM → against the actual database
+    │
+    ▼
+  5. Audit Log → record query, user, duration
+    │
+    ▼
+  6. Return results as PG wire protocol messages
+```
+
+```sql
+-- With permission: where: { customer_id: { $eq: '$user.customer_id' } }
+SELECT * FROM main.orders;
+-- → Engine injects: WHERE customer_id = 'usr_123'
+-- → Only the user's own orders are returned
+
+-- Blocked operations
+DROP TABLE main.orders;
+-- ERROR:  DDL operations are not allowed
+
+INSERT INTO main.orders (amount) VALUES (-100);
+-- ERROR:  permission denied — validate rule failed: amount must be > 0
+```
+
+## TLS Encryption
+
+Enable TLS for encrypted connections:
+
+```typescript
+import fs from 'node:fs'
+
+pgWire: {
+  port: 5433,
+  tls: {
+    key: fs.readFileSync('server.key'),
+    cert: fs.readFileSync('server.crt'),
+  },
+}
+```
+
+```bash
+# Connect with SSL
+psql "host=localhost port=5433 sslmode=require"
+```
+
+## Running Alongside HTTP
+
+The wire protocol runs on a separate TCP port in the same process. Use both transports simultaneously:
+
+```typescript
+import { createEngine } from '@superapp/backend'
+import { createHonoMiddleware } from '@superapp/backend/adapters/hono'
+import { serve } from '@hono/node-server'
+import { Hono } from 'hono'
+
+const engine = createEngine({
+  connections: { main: process.env.PG_URL! },
+  auth: betterAuthProvider({ /* ... */ }),
+  permissions: { /* ... */ },
+  pgWire: {
+    port: 5433,
+    auth: { strategy: ['jwt', 'apiKey'] },
+  },
+})
+
+// HTTP on port 3001
+const app = new Hono()
+app.route('/', createHonoMiddleware(engine))
+serve({ fetch: app.fetch, port: 3001 })
+
+// Wire protocol on port 5433
+engine.startPgWire()
+```
+
+## Connection Lifecycle
+
+Unlike HTTP (stateless per-request), a wire protocol connection holds a session for its entire lifetime:
+
+1. **TCP connect** → optional TLS upgrade
+2. **Startup** → client sends username, database, params
+3. **Authentication** → credentials validated, session resolved
+4. **Ready for Query** → session cached (user, role, permissions)
+5. **Query loop** → each query goes through the permission pipeline
+6. **Disconnect** → session cleanup
+
+Permission changes (in interactive mode) apply only to new connections — existing connections keep their cached session.
+
+## Error Handling
+
+Errors are returned as standard PostgreSQL `ErrorResponse` messages with proper SQLSTATE codes:
+
+| Scenario | SQLSTATE | Message |
+|---|---|---|
+| Auth failure | `28P01` | `authentication failed for user "X"` |
+| Permission denied | `42501` | `permission denied for table "main.orders"` |
+| Table not found | `42P01` | `relation "main.xyz" does not exist` |
+| Column not found | `42703` | `column "secret_col" does not exist` |
+| Blocked operation | `42501` | `DDL operations are not allowed` |
+| Query timeout | `57014` | `query exceeded timeout of 30000ms` |
+| Rate limited | `53300` | `rate limit exceeded` |
+
+## Graceful Shutdown
+
+```typescript
+const wire = engine.startPgWire()
+
+process.on('SIGTERM', async () => {
+  await wire.close()  // stops accepting, drains existing connections
+  process.exit(0)
+})
+```
+
+## Limitations
+
+The wire protocol supports the Simple Query and Extended Query protocols (prepared statements, parameter binding). The following PostgreSQL features are not supported:
+
+- **Transactions** — `BEGIN`, `COMMIT`, `ROLLBACK` are not supported
+- **COPY protocol** — use `INSERT` statements instead
+- **LISTEN / NOTIFY** — not available through the wire protocol
+- **Server-side cursors** — all results are returned at once (subject to `maxRows` limit)
+- **SET commands** — session variables cannot be modified
+- **Cross-connection joins** — depend on underlying database support
+
+## Configuration Reference
+
+See the [`pgWire` section](/docs/reference/server-api/create-engine#pgwire) in `createEngine` options for the full configuration reference.
