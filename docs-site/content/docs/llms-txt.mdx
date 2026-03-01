@@ -1,0 +1,28 @@
+---
+title: llms.txt
+description: Machine-readable documentation for AI agents and LLMs.
+icon: Bot
+---
+
+Feed these files to AI agents so they understand the superapp documentation without crawling the site.
+
+## Files
+
+| File | What it contains |
+|---|---|
+| [`/llms.txt`](/llms.txt) | Index of all documentation pages with titles, descriptions, and URLs |
+| [`/llms-full.txt`](/llms-full.txt) | Full content of every page — titles, descriptions, and body text |
+
+## Usage
+
+Pass the URL to any AI agent or LLM that accepts context:
+
+```bash
+# Quick overview (page index only)
+curl https://your-docs-domain.com/llms.txt
+
+# Full documentation content
+curl https://your-docs-domain.com/llms-full.txt
+```
+
+Both files are generated at runtime from the MDX source files, so they're always in sync with the docs.

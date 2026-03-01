@@ -6,6 +6,10 @@ description: Typed server-side functions callable by the client, with full acces
 
 Actions are named server-side functions defined at the engine level. Unlike permissions (which are bound to a single table), actions can touch any table, run multi-table transactions, and execute arbitrary business logic. The client calls them by name — no raw SQL.
 
+<Callout type="info" title="Prefer the ORM over actions">
+Use as few actions as possible. For standard reads and writes, use the ORM directly through permissions — it's safer, simpler, and fully typed out of the box. Reserve actions for logic that genuinely can't be expressed as single-table CRUD: multi-table transactions, complex aggregations, or workflows with side effects.
+</Callout>
+
 Actions use Zod schemas for input and output validation, and the types flow end-to-end: the schema endpoint exposes them, the CLI generates TypeScript types, and the client gets full autocomplete on `db.action()` calls.
 
 ```typescript
@@ -22,7 +26,9 @@ const engine = createEngine({
       roles: ['warehouse_manager'],
       input: z.object({ productId: z.string(), amount: z.number().positive() }),
       output: z.object({ id: z.string(), stock: z.number() }),
-      run: async ({ user, db }, { productId, amount }) => {
+      handler: async (ctx, inputData) => {
+        const { db } = ctx
+        const { productId, amount } = inputData
         const [updated] = await db
           .update(products)
           .set({ stock: sql`stock + ${amount}` })
@@ -50,7 +56,7 @@ const result = await db.action('incrementStock', {
 2. Engine authenticates the user and resolves the session
 3. Engine checks if the user's role is listed in the action's `roles` array
 4. Engine validates the input against the Zod schema — rejects with `400` if invalid
-5. Engine calls `run` with `{ user, db }` and the validated input
+5. Engine calls `handler` with `ctx` and the validated input
 6. Engine validates the output against the Zod schema (if defined)
 7. Return value is sent back to the client as JSON
 
@@ -67,7 +73,7 @@ const result = await db.action('incrementStock', {
   3. Input validation — parse input against Zod schema
     │
     ▼
-  4. Execute — run({ user, db }, validatedInput)
+  4. Execute — handler(ctx, validatedInput)
     │
     ▼
   5. Response — return value sent as JSON
@@ -82,7 +88,7 @@ Each action has four fields:
 | `roles` | `string[]` | Yes | Roles allowed to call this action |
 | `input` | `ZodSchema` | Yes | Zod schema that validates and types the client's request body |
 | `output` | `ZodSchema` | No | Zod schema that validates and types the return value |
-| `run` | `({ user, db }, input) => Promise<Output>` | Yes | The function that executes the action |
+| `handler` | `(ctx, inputData) => Promise<Output>` | Yes | The function that executes the action |
 
 ```typescript
 import { z } from 'zod'
@@ -95,8 +101,9 @@ const engine = createEngine({
       roles: ['editor', 'admin'],
       input: z.object({ id: z.string() }),
       output: z.object({ success: z.boolean() }),
-      run: async ({ user, db }, { id }) => {
-        // input is typed as { id: string }
+      handler: async (ctx, inputData) => {
+        const { id } = inputData
+        // inputData is typed as { id: string }
         return { success: true }
         // return is typed as { success: boolean }
       },
@@ -107,13 +114,19 @@ const engine = createEngine({
 
 Each action declares its own `roles` array inline -- no need to reference actions in a top-level roles config.
 
-The `run` function receives:
+The `handler` function receives:
 
 | Parameter | Type | Description |
 |---|---|---|
-| `user` | `UserSession` | Resolved session (same as `$user.*` in filters) |
-| `db` | `DrizzleInstance` | Drizzle query builder — run any query, any table |
-| `input` | `z.infer<typeof input>` | The client's request body, validated and typed by the `input` schema |
+| `ctx` | `{ user, db }` | Context object containing the user session and Drizzle query builder |
+| `inputData` | `z.infer<typeof input>` | The client's request body, validated and typed by the `input` schema |
+
+The `ctx` object contains:
+
+| Property | Type | Description |
+|---|---|---|
+| `ctx.user` | `UserSession` | Resolved session (same as `$user.*` in filters) |
+| `ctx.db` | `DrizzleInstance` | Drizzle query builder — run any query, any table |
 
 If the function returns nothing, the client receives `{ ok: true }`.
 
@@ -247,7 +260,9 @@ actions: {
     roles: ['warehouse_manager', 'admin'],
     input: z.object({ productId: z.string(), amount: z.number().positive() }),
     output: z.object({ id: z.string(), stock: z.number() }),
-    run: async ({ user, db }, { productId, amount }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { productId, amount } = inputData
       const [updated] = await db
         .update(products)
         .set({
@@ -265,7 +280,9 @@ actions: {
     roles: ['warehouse_manager', 'admin'],
     input: z.object({ productId: z.string(), amount: z.number().positive() }),
     output: z.object({ id: z.string(), stock: z.number() }),
-    run: async ({ user, db }, { productId, amount }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { productId, amount } = inputData
       const product = await db.query.products.findFirst({
         where: eq(products.id, productId),
       })
@@ -290,7 +307,9 @@ actions: {
   resetStock: {
     roles: ['admin'],
     input: z.object({ productId: z.string() }),
-    run: async ({ user, db }, { productId }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { productId } = inputData
       await db
         .update(products)
         .set({
@@ -333,7 +352,9 @@ actions: {
       amount: z.number(),
       timestamp: z.string(),
     }),
-    run: async ({ user, db }, { fromAccountId, toAccountId, amount }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { fromAccountId, toAccountId, amount } = inputData
       return db.transaction(async (tx) => {
         const [source] = await tx
           .select()
@@ -387,7 +408,9 @@ actions: {
     roles: ['customer'],
     input: z.object({ orderId: z.string(), code: z.string().min(1) }),
     output: z.object({ discountAmount: z.number(), newTotal: z.number() }),
-    run: async ({ user, db }, { orderId, code }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { orderId, code } = inputData
       return db.transaction(async (tx) => {
         const order = await tx.query.orders.findFirst({
           where: and(
@@ -452,7 +475,9 @@ actions: {
       role: z.enum(['viewer', 'editor', 'admin']),
     }),
     output: z.object({ memberId: z.string(), status: z.literal('invited') }),
-    run: async ({ user, db }, { email, role }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { email, role } = inputData
       if (role === 'admin' && !user.roles.includes('owner')) {
         throw new PermissionError('Only owners can invite admins')
       }
@@ -513,7 +538,9 @@ actions: {
       orderCount: z.number(),
       avgOrderValue: z.number(),
     })),
-    run: async ({ user, db }, { startDate, endDate }) => {
+    handler: async (ctx, inputData) => {
+      const { db, user } = ctx
+      const { startDate, endDate } = inputData
       return db
         .select({
           month: sql`DATE_TRUNC('month', ${orders.createdAt})`.as('month'),
@@ -564,7 +591,7 @@ Throw `PermissionError` to reject with `403 Forbidden`:
 ```typescript
 myAction: {
   input: z.object({ id: z.string() }),
-  run: async ({ user, db }, { id }) => {
+  handler: async (ctx) => {
     throw new PermissionError('Reason shown in error response')
   },
 },

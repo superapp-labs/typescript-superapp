@@ -1,6 +1,6 @@
 {
   "title": "Permissions",
   "icon": "Lock",
-  "defaultOpen": true,
+  "defaultOpen": false,
   "pages": ["where", "validate", "defaults", "operators", "sql", "middleware"]
 }

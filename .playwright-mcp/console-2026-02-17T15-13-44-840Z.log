@@ -1,0 +1,112 @@
+[   22475ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed:  @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   23479ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   24482ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   25484ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   26487ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   27491ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   32498ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   37506ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   42515ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   47560ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   52632ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   57748ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[   62830ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=XtixUzr03ebqJfwOUM8uQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 2691246ms] [ERROR] ./components/admin-ui/PermissionBuilder.tsx:541:7
+Parsing ecmascript source code failed
+  539 |         </div>
+  540 |       )}
+> 541 |     </>
+      |       ^
+  542 |   )
+  543 | }
+  544 |
+
+Expression expected
+
+Import trace:
+  Server Component:
+    ./components/admin-ui/PermissionBuilder.tsx
+    ./mdx-components.tsx
+    ./app/docs/[[...slug]]/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2691247ms] [ERROR] ./components/admin-ui/PermissionBuilder.tsx:540:8
+Parsing ecmascript source code failed
+  538 |           </div>
+  539 |         </div>
+> 540 |       )}
+      |        ^
+  541 |     </>
+  542 |   )
+  543 | }
+
+Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+Import trace:
+  Server Component:
+    ./components/admin-ui/PermissionBuilder.tsx
+    ./mdx-components.tsx
+    ./app/docs/[[...slug]]/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2833299ms] [ERROR] ./components/admin-ui/RoleOverview.tsx:457:10
+Parsing ecmascript source code failed
+  455 |             </div>
+  456 |           </div>
+> 457 |         </div>
+      |          ^^^^^
+  458 |       )}
+  459 |     </>
+  460 |   )
+
+Unterminated regexp literal
+
+Import trace:
+  Server Component:
+    ./components/admin-ui/RoleOverview.tsx
+    ./mdx-components.tsx
+    ./app/docs/[[...slug]]/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2844546ms] [ERROR] ./components/admin-ui/RoleOverview.tsx:457:10
+Parsing ecmascript source code failed
+  455 |             </div>
+  456 |           </div>
+> 457 |         </div>
+      |          ^^^^^
+  458 |       )}
+  459 |     </>
+  460 |   )
+
+Unterminated regexp literal
+
+Import trace:
+  Server Component:
+    ./components/admin-ui/RoleOverview.tsx
+    ./mdx-components.tsx
+    ./app/docs/[[...slug]]/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2844828ms] [ERROR] ./components/admin-ui/RoleOverview.tsx:457:10
+Parsing ecmascript source code failed
+  455 |             </div>
+  456 |           </div>
+> 457 |         </div>
+      |          ^^^^^
+  458 |       )}
+  459 |     </>
+  460 |   )
+
+Unterminated regexp literal
+
+Import trace:
+  Server Component:
+    ./components/admin-ui/RoleOverview.tsx
+    ./mdx-components.tsx
+    ./app/docs/[[...slug]]/page.tsx @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_f3530cac._.js:3127
+[ 2873248ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed:  @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 2874258ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 3115265ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 3301865ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: Connection closed before receiving a handshake response @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 3302868ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 3303871ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 3548881ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 3793898ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 4038910ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 4283925ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 4528944ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 4773960ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 5018976ms] [ERROR] WebSocket connection to 'ws://localhost:3000/_next/webpack-hmr?id=w9i6pzRkOrERecdiDHvt0' failed: WebSocket opening handshake timed out @ http://localhost:3000/_next/static/chunks/node_modules_next_dist_client_17643121._.js:10878
+[ 5019141ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ chrome-error://chromewebdata/:0

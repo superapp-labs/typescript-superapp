@@ -1,14 +1,14 @@
 ---
 title: Engine Modes
 icon: Gauge
-description: "Programmatic vs Admin UI mode."
+description: "Programmatic vs Interactive mode."
 ---
 
 superapp supports two engine modes that control how permissions and connections are managed. Choose the mode that matches your team's workflow.
 
 ## Side-by-Side Comparison
 
-| Feature | `programmatic` | `admin_ui` |
+| Feature | `programmatic` | `interactive` |
 |---|---|---|
 | **Permissions defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
 | **Connections defined in** | Code (`createEngine` config) | Admin UI (stored in metadata DB) |
@@ -69,13 +69,13 @@ const engine = createEngine({
 - You have a CI/CD pipeline that deploys config changes.
 - Security is paramount and you want to audit permission changes in git history.
 
-## Admin UI Mode
+## Interactive Mode
 
-In `admin_ui` mode, the admin UI becomes the primary interface for managing permissions, connections, and roles. Changes are stored in the metadata database and take effect immediately — no code changes or redeployments needed.
+In `interactive` mode, the admin UI becomes the primary interface for managing permissions, connections, and roles. Changes are stored in the metadata database and take effect immediately — no code changes or redeployments needed.
 
 ```typescript
 const engine = createEngine({
-  mode: 'admin_ui',
+  mode: 'interactive',
   superapp_db: process.env.TURSO_URL ?? './superapp.db',
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   auth: betterAuthProvider({ /* ... */ }),
@@ -85,15 +85,15 @@ const engine = createEngine({
 
 ### How It Works
 
-1. Start the engine with `mode: 'admin_ui'` and a `masterKey`.
+1. Start the engine with `mode: 'interactive'` and a `masterKey`.
 2. Access the admin UI (served by the engine on the `/admin` route).
 3. Add connections, define permissions, and assign roles visually.
 4. Changes are persisted to the metadata database and applied immediately.
 5. All admin actions are audit-logged.
 
-### Admin UI Capabilities
+### Interactive Mode Capabilities
 
-In `admin_ui` mode, the admin UI provides:
+In `interactive` mode, the admin UI provides:
 
 - **Connection management** -- Add, edit, and test database connections.
 - **Permission editor** -- Visual builder for where clauses, columns, validate, and default/overwrite rules.
@@ -102,7 +102,7 @@ In `admin_ui` mode, the admin UI provides:
 - **Audit log viewer** -- Browse query and admin action logs.
 - **Schema browser** -- Explore attached database tables and columns.
 
-### When to Use Admin UI Mode
+### When to Use Interactive Mode
 
 - Non-technical team members need to manage access rules.
 - You want to iterate on permissions without redeploying.
@@ -111,9 +111,9 @@ In `admin_ui` mode, the admin UI provides:
 
 ## Switching Between Modes
 
-You can switch from programmatic to `admin_ui` mode at any time. When switching to `admin_ui` mode, any permissions defined in code are imported into the metadata database as a starting point.
+You can switch from programmatic to `interactive` mode at any time. When switching to `interactive` mode, any permissions defined in code are imported into the metadata database as a starting point.
 
-Switching from `admin_ui` back to programmatic requires exporting your current permissions from the admin UI and adding them to your `createEngine` config.
+Switching from `interactive` back to programmatic requires exporting your current permissions from the admin UI and adding them to your `createEngine` config.
 
 ```typescript
 // Start in programmatic mode during development
@@ -122,9 +122,9 @@ const engine = createEngine({
   permissions: { /* ... */ },
 })
 
-// Later, switch to admin_ui mode for production
+// Later, switch to interactive mode for production
 const engine = createEngine({
-  mode: 'admin_ui',
+  mode: 'interactive',
   masterKey: process.env.SUPERAPP_MASTER_KEY!,
   // permissions from code are imported into the metadata DB on first run
 })
@@ -132,7 +132,7 @@ const engine = createEngine({
 
 ## Hybrid Approach
 
-Some teams use programmatic mode in production with `admin_ui` mode in staging. This lets you:
+Some teams use programmatic mode in production with `interactive` mode in staging. This lets you:
 
 1. Prototype permission changes in the staging admin UI.
 2. Export the tested configuration.
@@ -140,7 +140,7 @@ Some teams use programmatic mode in production with `admin_ui` mode in staging. 
 
 ```typescript
 const engine = createEngine({
-  mode: process.env.NODE_ENV === 'production' ? 'programmatic' : 'admin_ui',
+  mode: process.env.NODE_ENV === 'production' ? 'programmatic' : 'interactive',
   permissions: {
     // These are always available as a baseline
     view_own_orders: { /* ... */ },

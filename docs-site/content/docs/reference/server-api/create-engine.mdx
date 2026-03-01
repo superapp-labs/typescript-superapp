@@ -21,9 +21,9 @@ const engine = createEngine({
 <TypeTable
   type={{
     mode: {
-      type: "'programmatic' | 'admin_ui'",
+      type: "'programmatic' | 'interactive'",
       default: "'programmatic'",
-      description: "How you manage config. programmatic = define in code, admin_ui = manage from the dashboard.",
+      description: "How you manage config. programmatic = define in code, interactive = manage from the dashboard.",
     },
     superapp_db: {
       type: "string",
@@ -51,7 +51,7 @@ const engine = createEngine({
     },
     masterKey: {
       type: "string",
-      description: "Admin API key. Required for admin_ui mode and /admin endpoints. Always use an env var, never hardcode.",
+      description: "Admin API key. Required for interactive mode and /admin endpoints. Always use an env var, never hardcode.",
     },
     schemaEndpoint: {
       type: "SchemaEndpointConfig | boolean",
@@ -453,7 +453,7 @@ import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 
 const engine = createEngine({
-  mode: 'programmatic',                              // config in code (or 'admin_ui')
+  mode: 'programmatic',                              // config in code (or 'interactive')
   superapp_db: process.env.TURSO_URL ?? './superapp.db', // internal tables storage
   masterKey: process.env.SUPERAPP_MASTER_KEY!,       // admin API key (use env var)
 

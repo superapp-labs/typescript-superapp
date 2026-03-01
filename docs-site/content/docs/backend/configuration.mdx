@@ -23,7 +23,7 @@ import { createEngine } from '@superapp/backend'
 import { betterAuthProvider } from '@superapp/backend/auth/better-auth'
 
 const engine = createEngine({
-  mode: 'programmatic',                              // config in code (or 'admin_ui')
+  mode: 'programmatic',                              // config in code (or 'interactive')
   superapp_db: process.env.TURSO_URL ?? './superapp.db', // internal tables storage
   masterKey: process.env.SUPERAPP_MASTER_KEY!,       // admin API key (use env var)
 
@@ -126,7 +126,7 @@ permissions: {
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `mode` | `'programmatic' \| 'admin_ui'` | `'programmatic'` | Engine operation mode |
+| `mode` | `'programmatic' \| 'interactive'` | `'programmatic'` | Engine operation mode |
 | `superapp_db` | `string` | `'./superapp.db'` | Path to the database where superapp stores its own internal tables. Local file path for SQLite or a Turso URL. |
 | `connections` | `Record<string, string \| object>` | `{}` | Named database connections. Type is inferred from URL protocol. |
 | `auth` | `AuthProvider` | — | Authentication provider |
