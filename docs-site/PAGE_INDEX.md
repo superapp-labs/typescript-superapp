@@ -61,6 +61,7 @@
 | `docs/backend/adapters/nextjs.mdx` | Next.js | Integrate the superapp backend into a Next.js App Router project with a catch-all route handler. |
 | `docs/backend/adapters/express.mdx` | Express | Add the superapp backend to an existing Express application as a router middleware. |
 | `docs/backend/adapters/generic.mdx` | Generic (Workers/Deno/Bun) | Use the generic adapter for Cloudflare Workers, Deno, Bun, or any runtime with the Web Fetch API. |
+| `docs/backend/adapters/pg-wire.mdx` | PostgreSQL Wire Protocol | Expose the superapp engine as a PostgreSQL-compatible server using pg-gateway. Connect with psql, DBeaver, Metabase, or any PG driver. |
 | **Client** | | |
 | `docs/client/overview.mdx` | Overview | Drizzle ORM for the frontend — real Drizzle with a proxy driver that returns permission-filtered data. |
 | `docs/client/setup.mdx` | Setup | Configure the Drizzle ORM client with your superapp backend connection and generated schema. |
@@ -111,4 +112,4 @@
 | `docs/reference/cli/generate.mdx` | generate | Generate TypeScript types from your engine. |
 | `docs/llms-txt.mdx` | llms.txt | Machine-readable documentation for AI agents and LLMs. |
 
-**Total: 87 pages**
+**Total: 88 pages**
