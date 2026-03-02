@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-const CONTENT_DIR = join(process.cwd(), 'content', 'docs')
+export const CONTENT_DIR = join(process.cwd(), 'content', 'docs')
 const BASE_URL = '/docs'
 
 interface Page {
@@ -18,7 +18,7 @@ function readJson(path: string): { title: string; pages: string[] } {
   return JSON.parse(readFileSync(path, 'utf-8'))
 }
 
-function parseFrontmatter(raw: string): Frontmatter {
+export function parseFrontmatter(raw: string): Frontmatter {
   const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/)
   if (!match) return { meta: {}, body: raw }
 
@@ -31,7 +31,7 @@ function parseFrontmatter(raw: string): Frontmatter {
   return { meta, body: match[2] }
 }
 
-function stripMdxSyntax(body: string): string {
+export function stripMdxSyntax(body: string): string {
   return body
     .replace(/^import\s+.*$/gm, '')
     .replace(/<(\w+)[^>]*\/>/g, '')
@@ -39,6 +39,13 @@ function stripMdxSyntax(body: string): string {
     .replace(/<\/?\w+[^>]*>/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+function toMdUrl(page: Page): string {
+  if (page.file.endsWith('/index.mdx') || page.file.endsWith('\\index.mdx')) {
+    return `${page.url}/index.md`
+  }
+  return `${page.url}.md`
 }
 
 function collectPages(dir: string, urlPrefix: string): Page[] {
@@ -55,7 +62,8 @@ function collectPages(dir: string, urlPrefix: string): Page[] {
 
     if (existsSync(subMeta)) {
       const indexMdx = join(subDir, 'index.mdx')
-      if (existsSync(indexMdx)) {
+      const subPages = readJson(subMeta).pages
+      if (existsSync(indexMdx) && !subPages.includes('index')) {
         pages.push({ file: indexMdx, url: `${urlPrefix}/${slug}` })
       }
       pages.push(...collectPages(subDir, `${urlPrefix}/${slug}`))
@@ -78,11 +86,12 @@ export function generateLlmsIndex(): string {
     '',
   ]
 
-  for (const { file, url } of pages) {
-    const { meta } = parseFrontmatter(readFileSync(file, 'utf-8'))
-    const title = meta.title || url
+  for (const page of pages) {
+    const { meta } = parseFrontmatter(readFileSync(page.file, 'utf-8'))
+    const title = meta.title || page.url
     const desc = meta.description || ''
-    lines.push(`- [${title}](${url})${desc ? `: ${desc}` : ''}`)
+    const mdUrl = toMdUrl(page)
+    lines.push(`- [${title}](${mdUrl})${desc ? `: ${desc}` : ''}`)
   }
 
   return lines.join('\n') + '\n'
@@ -110,6 +119,25 @@ export function generateLlmsFull(): string {
     lines.push(`\nURL: ${url}`, '')
     lines.push(cleaned, '')
   }
+
+  return lines.join('\n') + '\n'
+}
+
+export function generatePageMarkdown(slugParts: string[]): string | null {
+  const slugPath = slugParts.join('/')
+  const filePath = join(CONTENT_DIR, `${slugPath}.mdx`)
+
+  if (!existsSync(filePath)) return null
+
+  const raw = readFileSync(filePath, 'utf-8')
+  const { meta, body } = parseFrontmatter(raw)
+  const title = meta.title || slugPath
+  const desc = meta.description || ''
+  const cleaned = stripMdxSyntax(body)
+
+  const lines = [`# ${title}`]
+  if (desc) lines.push('', desc)
+  lines.push('', cleaned)
 
   return lines.join('\n') + '\n'
 }
