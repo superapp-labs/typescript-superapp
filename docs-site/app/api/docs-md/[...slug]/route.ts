@@ -1,6 +1,15 @@
-import { generatePageMarkdown } from '@/lib/llms-txt'
+import { collectPages, CONTENT_DIR, generatePageMarkdown } from '@/lib/llms-txt'
 
-export const unstable_includeFiles = ['content/docs/**/*']
+export const dynamic = 'force-static'
+
+export function generateStaticParams() {
+  const pages = collectPages(CONTENT_DIR, '/docs')
+  return pages
+    .filter((page) => page.url !== '/docs')
+    .map((page) => ({
+      slug: page.url.replace(/^\/docs\//, '').split('/'),
+    }))
+}
 
 export async function GET(
   _req: Request,

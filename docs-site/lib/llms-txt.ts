@@ -48,7 +48,7 @@ function toMdUrl(page: Page): string {
   return `${page.url}.md`
 }
 
-function collectPages(dir: string, urlPrefix: string): Page[] {
+export function collectPages(dir: string, urlPrefix: string): Page[] {
   const metaPath = join(dir, 'meta.json')
   if (!existsSync(metaPath)) return []
 

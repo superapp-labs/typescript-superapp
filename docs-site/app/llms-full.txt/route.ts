@@ -1,6 +1,6 @@
 import { generateLlmsFull } from '@/lib/llms-txt'
 
-export const unstable_includeFiles = ['content/docs/**/*']
+export const dynamic = 'force-static'
 
 export function GET() {
   return new Response(generateLlmsFull(), {
