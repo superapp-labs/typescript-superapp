@@ -1,5 +1,7 @@
 import { generatePageMarkdown } from '@/lib/llms-txt'
 
+export const unstable_includeFiles = ['content/docs/**/*']
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ slug: string[] }> },
