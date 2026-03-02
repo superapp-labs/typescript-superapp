@@ -8,6 +8,7 @@
     "advanced",
     "examples",
     "reference",
-    "llms-txt"
+    "llms-txt",
+    "[BotMessageSquare][Chat with Claude](https://claude.ai/new?q=Use%20https%3A%2F%2Ftypescript-superapp.bunnytech.app%2Fllms-full.txt%0AAnswer%20the%20following%20question%3A%0A%0A)"
   ]
 }

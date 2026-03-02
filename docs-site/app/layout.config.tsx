@@ -20,10 +20,5 @@ export const baseOptions: BaseLayoutProps = {
       url: 'https://github.com/superapp-labs/typescript-superapp/discussions',
       external: true,
     },
-    {
-      text: 'Chat with Claude',
-      url: 'https://claude.ai/new?q=Use%20https%3A%2F%2Ftypescript-superapp.bunnytech.app%2Fllms-full.txt%0AAnswer%20the%20following%20question%3A%0A%0A',
-      external: true,
-    },
   ],
 }
