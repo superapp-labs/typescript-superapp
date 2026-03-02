@@ -7,7 +7,7 @@ import {
 } from 'fumadocs-ui/page'
 import { notFound } from 'next/navigation'
 import { useMDXComponents } from '@/mdx-components'
-import { MessageSquare } from 'lucide-react'
+import { BotMessageSquare } from 'lucide-react'
 import type { Metadata } from 'next'
 
 const DOCS_BASE = 'https://typescript-superapp.bunnytech.app'
@@ -30,19 +30,6 @@ export default async function Page(props: {
   return (
     <DocsPage
       toc={page.data.toc}
-      tableOfContent={{
-        header: (
-          <a
-            href={buildClaudeUrl(params.slug)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mb-3 flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-fd-muted-foreground transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground"
-          >
-            <MessageSquare className="size-3.5" />
-            Chat in Claude
-          </a>
-        ),
-      }}
       editOnGithub={{
         owner: 'superapp-labs',
         repo: 'typescript-superapp',
@@ -50,8 +37,21 @@ export default async function Page(props: {
         path: `docs-site/content/docs/${page.path}`,
       }}
     >
-      <DocsTitle>{page.data.title}</DocsTitle>
-      <DocsDescription>{page.data.description}</DocsDescription>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <DocsTitle>{page.data.title}</DocsTitle>
+          <DocsDescription>{page.data.description}</DocsDescription>
+        </div>
+        <a
+          href={buildClaudeUrl(params.slug)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 flex shrink-0 items-center gap-2 rounded-lg border bg-fd-card px-3 py-2 text-sm font-medium text-fd-foreground shadow-sm transition-colors hover:bg-fd-accent"
+        >
+          <BotMessageSquare className="size-5" />
+          Chat in Claude
+        </a>
+      </div>
       <DocsBody>
         <MDX components={useMDXComponents({})} />
       </DocsBody>
